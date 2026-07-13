@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.5.0 — Living World & Rivals
+
+### Added
+
+- autonomous regional simulation driven by career time;
+- 30+ persistent world athletes with age, club, fame, specialty, ambition and career status;
+- six competing clubs with prestige, expeditions, summits and losses;
+- procedural NPC expeditions, team formation and target selection;
+- first ascents, summit attempts, retreats, accidents, injuries, deaths and missing climbers;
+- persistent mountain history with attempts, summits, losses and first-ascent holders;
+- world news feed with filters and breaking reports;
+- rival watch list, personal files, goals and regional rankings;
+- record archive for altitude, summit count, first ascents, rescues and speed;
+- club transfers for known competitors;
+- new rookie generation when the career advances into a new year;
+- player expeditions registered in world news and mountain history;
+- dedicated **World**, **News**, **Rivals** and **Records** sidebar tabs;
+- world signal card in the career headquarters.
+
+### Changed
+
+- every training action now advances the autonomous world;
+- closing an expedition advances world simulation and publishes its result;
+- club members injured, retired, lost or transferred in the world are synchronized with the player roster;
+- sidebar expanded to twelve focused workspaces;
+- save schema upgraded to v5 with migration from v4.
+
+### Validation
+
+- 16 deterministic unit and balance tests;
+- TypeScript strict build;
+- Vite production build;
+- public npm registry lockfile.
+
 ## 0.4.0 — People & Consequences
 
 ### Added

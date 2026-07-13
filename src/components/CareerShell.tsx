@@ -14,13 +14,17 @@ type Props = {
 
 const tabs: Array<{ id: CareerTabId; index: string; label: string; short: string }> = [
   { id: 'OVERVIEW', index: '01', label: 'Штаб', short: 'Ш' },
-  { id: 'ROUTE', index: '02', label: 'Маршрут', short: 'М' },
-  { id: 'TEAM', index: '03', label: 'Команда', short: 'К' },
-  { id: 'PEOPLE', index: '04', label: 'Люди', short: 'Л' },
-  { id: 'EQUIPMENT', index: '05', label: 'Снаряжение', short: 'С' },
-  { id: 'EXPEDITION', index: '06', label: 'Экспедиция', short: 'Э' },
-  { id: 'CLIMB', index: '07', label: 'Восхождение', short: 'В' },
-  { id: 'JOURNAL', index: '08', label: 'Журнал', short: 'Ж' },
+  { id: 'WORLD', index: '02', label: 'Мир', short: 'М' },
+  { id: 'NEWS', index: '03', label: 'Новости', short: 'Н' },
+  { id: 'RIVALS', index: '04', label: 'Соперники', short: 'С' },
+  { id: 'RECORDS', index: '05', label: 'Рекорды', short: 'Р' },
+  { id: 'ROUTE', index: '06', label: 'Маршрут', short: 'М' },
+  { id: 'TEAM', index: '07', label: 'Команда', short: 'К' },
+  { id: 'PEOPLE', index: '08', label: 'Люди', short: 'Л' },
+  { id: 'EQUIPMENT', index: '09', label: 'Снаряжение', short: 'С' },
+  { id: 'EXPEDITION', index: '10', label: 'Экспедиция', short: 'Э' },
+  { id: 'CLIMB', index: '11', label: 'Восхождение', short: 'В' },
+  { id: 'JOURNAL', index: '12', label: 'Журнал', short: 'Ж' },
 ];
 
 export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, children }: Props) {
@@ -30,7 +34,7 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
       <aside className="career-sidebar">
         <button className="career-sidebar__brand" onClick={onExit} aria-label="В главное меню">
           <span>AL</span>
-          <small>0.4</small>
+          <small>0.5</small>
         </button>
 
         <nav className="career-sidebar__nav" aria-label="Разделы карьеры">

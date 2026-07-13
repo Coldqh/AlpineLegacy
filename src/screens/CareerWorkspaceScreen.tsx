@@ -18,6 +18,10 @@ import {
 } from '../core/career';
 import type { CareerState, CareerTabId, ClimbOrderId, ClimbPace, ClimbStepResult, ExpeditionPlan, TrainingId, WorldState } from '../core/types';
 import { CareerOverviewScreen } from './CareerOverviewScreen';
+import { NewsScreen } from './NewsScreen';
+import { RecordsScreen } from './RecordsScreen';
+import { RivalsScreen } from './RivalsScreen';
+import { WorldScreen } from './WorldScreen';
 import { ClimbScreen } from './ClimbScreen';
 import { EquipmentScreen } from './EquipmentScreen';
 import { ExpeditionScreen } from './ExpeditionScreen';
@@ -45,7 +49,19 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
 
   function renderTab() {
     if (activeTab === 'OVERVIEW') {
-      return <CareerOverviewScreen world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab('EXPEDITION')} />;
+      return <CareerOverviewScreen world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab('EXPEDITION')} onOpenWorld={() => onTab('WORLD')} />;
+    }
+    if (activeTab === 'WORLD') {
+      return <WorldScreen world={world} career={career} />;
+    }
+    if (activeTab === 'NEWS') {
+      return <NewsScreen career={career} />;
+    }
+    if (activeTab === 'RIVALS') {
+      return <RivalsScreen career={career} />;
+    }
+    if (activeTab === 'RECORDS') {
+      return <RecordsScreen career={career} />;
     }
     if (activeTab === 'ROUTE') {
       return (

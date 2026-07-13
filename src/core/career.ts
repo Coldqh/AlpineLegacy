@@ -1,5 +1,6 @@
 import { createRng } from './rng';
 import { buildExpeditionReport, createClimbTeamStates, enrichRoster, finalizeRosterAfterClimb, memory, teamAverage } from './people';
+import { advanceLivingWorld, createLivingWorld, registerHeroExpedition } from './worldSimulation';
 import type {
   CalendarEntry,
   CareerDraft,
@@ -463,7 +464,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = makeTeam(world, club);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     createdAt: new Date().toISOString(),
@@ -499,6 +500,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     expeditionPlan: defaultPlan(routes, teamRoster, weatherWindows),
     reports: [],
     reputationProfile: { leadership: 8, reliability: 12, care: 10, ambition: 14 },
+    livingWorld: createLivingWorld(world, teamRoster, club),
   };
 
   career.log.push(careerLog(career, 'CAREER', 'Начало карьеры', `${career.hero.name}, ${career.hero.age} лет. Принят в «${club.name}», ${club.town}.`));
@@ -512,7 +514,7 @@ export function migrateCareerV2(career: any, world: WorldState): CareerState {
   const weatherWindows = makeWeatherWindows(world);
   return {
     ...career,
-    schemaVersion: 4,
+    schemaVersion: 5,
     activeClimb: null,
     routes,
     teamRoster,
@@ -520,6 +522,7 @@ export function migrateCareerV2(career: any, world: WorldState): CareerState {
     expeditionPlan: defaultPlan(routes, teamRoster, weatherWindows),
     reports: [],
     reputationProfile: { leadership: 8, reliability: 12, care: 10, ambition: 14 },
+    livingWorld: createLivingWorld(world, teamRoster, career.club),
   } as CareerState;
 }
 
@@ -534,11 +537,22 @@ export function migrateCareerV3(career: any, world: WorldState): CareerState {
   } : null;
   return {
     ...career,
-    schemaVersion: 4,
+    schemaVersion: 5,
     teamRoster,
     activeClimb,
     reports: career.reports ?? [],
     reputationProfile: career.reputationProfile ?? { leadership: 8, reliability: 12, care: 10, ambition: 14 },
+    livingWorld: career.livingWorld ?? createLivingWorld(world, teamRoster, career.club),
+  } as CareerState;
+}
+
+export function migrateCareerV4(career: any, world: WorldState): CareerState {
+  const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
+  return {
+    ...career,
+    schemaVersion: 5,
+    teamRoster,
+    livingWorld: career.livingWorld ?? createLivingWorld(world, teamRoster, career.club),
   } as CareerState;
 }
 
@@ -577,7 +591,7 @@ export function applyTraining(career: CareerState, trainingId: TrainingId): Care
     },
   };
   next.log = [...career.log, careerLog(next, 'TRAINING', action.title, `${action.days} дней работы. ${cost < 0 ? `Заработано ${Math.abs(cost)} кр.` : `Расходы ${cost} кр.`}`)];
-  return next;
+  return advanceLivingWorld(next, action.days);
 }
 
 export function updateExpeditionPlan(career: CareerState, patch: Partial<ExpeditionPlan>): CareerState {
@@ -1283,9 +1297,14 @@ export function waitWeather(career: CareerState): ClimbStepResult {
 export function closeClimb(career: CareerState): CareerState {
   if (!career.activeClimb || !['COMPLETE', 'FAILED', 'RETREATED'].includes(career.activeClimb.phase)) return career;
   const alreadyReported = career.reports.some(report => report.id === `report-${career.activeClimb!.id}`);
-  const finalized = alreadyReported ? career : finishClimb(career, career.activeClimb);
+  const climb = career.activeClimb;
+  let finalized = alreadyReported ? career : finishClimb(career, climb);
+  if (!alreadyReported) {
+    const report = finalized.reports[finalized.reports.length - 1];
+    if (report) finalized = registerHeroExpedition(finalized, climb, report);
+  }
   const timeline = advanceDays(finalized, 3);
-  return {
+  const closed: CareerState = {
     ...finalized,
     year: timeline.year,
     seasonDay: timeline.seasonDay,
@@ -1293,4 +1312,5 @@ export function closeClimb(career: CareerState): CareerState {
     hero: { ...finalized.hero, age: finalized.hero.age + timeline.ageDelta },
     activeClimb: null,
   };
+  return advanceLivingWorld(closed, 3);
 }

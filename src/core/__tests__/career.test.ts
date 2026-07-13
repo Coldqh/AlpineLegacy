@@ -42,10 +42,12 @@ describe('career and expedition module', () => {
     const world = generateWorld(config);
     const career = createCareer(world, draft);
     expect(career.worldId).toBe(world.id);
-    expect(career.schemaVersion).toBe(4);
+    expect(career.schemaVersion).toBe(5);
     expect(career.routes).toHaveLength(3);
     expect(career.teamRoster.length).toBeGreaterThanOrEqual(5);
     expect(career.weatherWindows).toHaveLength(3);
+    expect(career.livingWorld.athletes.length).toBeGreaterThanOrEqual(35);
+    expect(career.livingWorld.clubs).toHaveLength(6);
   });
 
   it('builds a launchable default expedition plan', () => {

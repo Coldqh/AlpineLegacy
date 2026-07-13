@@ -8,11 +8,12 @@ type Props = {
   career: CareerState;
   onTrain: (trainingId: TrainingId) => void;
   onOpenExpedition: () => void;
+  onOpenWorld: () => void;
 };
 
 const trainingOrder: TrainingId[] = ['CONDITIONING', 'ROCK_PRACTICE', 'ICE_PRACTICE', 'MAP_ROOM', 'FIRST_AID', 'CLUB_DUTY', 'RECOVERY'];
 
-export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition }: Props) {
+export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition, onOpenWorld }: Props) {
   const target = getSelectedRoute(career);
   const mountain = world.region.mountains.find(item => item.id === target.mountainId) ?? world.region.mountains[0]!;
   const readiness = careerReadiness(career);
@@ -70,6 +71,13 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition 
           </article>
         </section>
       </div>
+
+      {career.livingWorld.news[0] && (
+        <section className={`world-alert ${career.livingWorld.news[0].isBreaking ? 'is-breaking' : ''}`}>
+          <div><p className="eyebrow">WORLD SIGNAL / {career.livingWorld.news[0].year} · DAY {career.livingWorld.news[0].seasonDay}</p><h2>{career.livingWorld.news[0].headline}</h2><p>{career.livingWorld.news[0].summary}</p></div>
+          <button onClick={onOpenWorld}><span>Открыть живой мир</span><b>→</b></button>
+        </section>
+      )}
 
       <section className="workspace-panel training-section training-section--workspace">
         <div className="panel-heading"><div><p className="eyebrow">WEEKLY ACTIONS</p><h2>Подготовка</h2></div><span>ВРЕМЯ ДВИЖЕТСЯ</span></div>

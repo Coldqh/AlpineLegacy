@@ -11,7 +11,7 @@ export type ScreenId =
   | 'ARCHIVE'
   | 'SETTINGS';
 
-export type CareerTabId = 'OVERVIEW' | 'ROUTE' | 'TEAM' | 'PEOPLE' | 'EQUIPMENT' | 'EXPEDITION' | 'CLIMB' | 'JOURNAL';
+export type CareerTabId = 'OVERVIEW' | 'WORLD' | 'NEWS' | 'RIVALS' | 'RECORDS' | 'ROUTE' | 'TEAM' | 'PEOPLE' | 'EQUIPMENT' | 'EXPEDITION' | 'CLIMB' | 'JOURNAL';
 export type OriginId = 'CLUB_SCHOOL' | 'HIGHLAND_LOCAL' | 'ROCK_SECTION';
 export type SkillId = 'ENDURANCE' | 'ROCK' | 'ICE' | 'NAVIGATION' | 'MEDICINE' | 'LEADERSHIP';
 export type TrainingId = 'CONDITIONING' | 'ROCK_PRACTICE' | 'ICE_PRACTICE' | 'MAP_ROOM' | 'FIRST_AID' | 'CLUB_DUTY' | 'RECOVERY';
@@ -23,6 +23,9 @@ export type MemberStatus = 'ACTIVE' | 'INJURED' | 'LEFT' | 'RETIRED' | 'DEAD';
 export type ClimbMemberStatus = 'ACTIVE' | 'TURNED_BACK' | 'INCAPACITATED' | 'DEAD';
 export type MemoryType = 'FIRST_MEETING' | 'ORDER' | 'REFUSAL' | 'SUMMIT' | 'RETREAT' | 'RESCUE' | 'INJURY' | 'CONFLICT' | 'LOYALTY' | 'LOSS';
 export type ClimbOrderId = 'SLOW_DOWN' | 'PRESS_ON' | 'TURN_BACK_WEAKEST' | 'ASSIGN_HELPER';
+export type WorldAthleteStatus = 'ACTIVE' | 'INJURED' | 'RETIRED' | 'DEAD' | 'MISSING';
+export type WorldEventType = 'EXPEDITION' | 'SUMMIT' | 'RETREAT' | 'RECORD' | 'INJURY' | 'DEATH' | 'RETIREMENT' | 'CLUB' | 'RIVALRY';
+export type WorldExpeditionOutcome = 'SUMMIT' | 'RETREAT' | 'FAILED' | 'TRAGEDY';
 
 export interface WorldSeedConfig {
   seed: string;
@@ -366,8 +369,124 @@ export interface ExpeditionReport {
   moneyDelta: number;
 }
 
+
+export interface WorldClub {
+  id: string;
+  name: string;
+  country: string;
+  foundedYear: number;
+  prestige: number;
+  doctrine: string;
+  members: number;
+  expeditions: number;
+  summits: number;
+  losses: number;
+}
+
+export interface WorldAthlete {
+  id: string;
+  name: string;
+  age: number;
+  country: string;
+  clubId: string;
+  status: WorldAthleteStatus;
+  specialty: SkillId;
+  skill: number;
+  endurance: number;
+  altitude: number;
+  caution: number;
+  ambition: number;
+  fame: number;
+  experience: number;
+  summits: number;
+  firstAscents: number;
+  rescues: number;
+  injuries: string[];
+  knownToHero: boolean;
+  rivalry: number;
+  relationshipNote: string;
+  currentGoal: string;
+  lastEvent: string;
+}
+
+export interface MountainWorldHistory {
+  mountainId: string;
+  mountainName: string;
+  elevation: number;
+  technicality: number;
+  altitudeSeverity: number;
+  prestige: number;
+  attempts: number;
+  summits: number;
+  deaths: number;
+  firstAscentYear: number | null;
+  firstAscentAthleteIds: string[];
+  fastestMinutes: number | null;
+  fastestAthleteId: string | null;
+  winterAscentYear: number | null;
+  currentAttention: number;
+}
+
+export interface WorldRecord {
+  id: string;
+  category: 'HIGHEST_SUMMIT' | 'MOST_SUMMITS' | 'FIRST_ASCENTS' | 'SPEED' | 'YOUNGEST' | 'RESCUES';
+  title: string;
+  holderAthleteId: string | null;
+  holderName: string;
+  value: number;
+  unit: string;
+  mountainId: string | null;
+  mountainName: string | null;
+  year: number;
+  description: string;
+}
+
+export interface WorldNewsItem {
+  id: string;
+  year: number;
+  seasonDay: number;
+  type: WorldEventType;
+  headline: string;
+  summary: string;
+  athleteIds: string[];
+  clubIds: string[];
+  mountainId: string | null;
+  importance: number;
+  isBreaking: boolean;
+}
+
+export interface WorldExpedition {
+  id: string;
+  year: number;
+  seasonDay: number;
+  mountainId: string;
+  mountainName: string;
+  leaderAthleteId: string;
+  memberAthleteIds: string[];
+  clubId: string;
+  outcome: WorldExpeditionOutcome;
+  highestElevation: number;
+  durationDays: number;
+  casualties: string[];
+  recordId: string | null;
+  summary: string;
+}
+
+export interface LivingWorldState {
+  version: 1;
+  lastSimulatedYear: number;
+  lastSimulatedDay: number;
+  tick: number;
+  athletes: WorldAthlete[];
+  clubs: WorldClub[];
+  mountainHistory: MountainWorldHistory[];
+  news: WorldNewsItem[];
+  expeditions: WorldExpedition[];
+  records: WorldRecord[];
+}
+
 export interface CareerState {
-  schemaVersion: 4;
+  schemaVersion: 5;
   id: string;
   worldId: string;
   createdAt: string;
@@ -387,6 +506,7 @@ export interface CareerState {
   expeditionPlan: ExpeditionPlan;
   reports: ExpeditionReport[];
   reputationProfile: ReputationProfile;
+  livingWorld: LivingWorldState;
 }
 
 export interface CareerDraft {
