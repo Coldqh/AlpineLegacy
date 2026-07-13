@@ -146,7 +146,7 @@ function App() {
             <p className="eyebrow">NEW WORLD / NEW LIFE</p>
             <h1>Создай мир, который переживёт тебя.</h1>
             <p className="lead">Один seed определит географию, историю, вершины и людей. Смерть героя завершит карьеру, но не обязательно уничтожит мир.</p>
-            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.5.7</small></div>
+            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.5.9</small></div>
           </div>
 
           <div className="setup-form">
@@ -262,7 +262,7 @@ function App() {
 
           <div className="career-entry-banner">
             <div>
-              <p className="eyebrow">CAREER MODULE / 0.5.7</p>
+              <p className="eyebrow">CAREER MODULE / 0.5.9</p>
               <h2>{career ? career.hero.name : 'Горы уже существуют. Теперь войди в их историю.'}</h2>
               <p>{career
                 ? `${career.club.name}. ${career.completedClimbs} засчитанных восхождений. Высшая точка: ${career.highestElevation} м.`
@@ -373,7 +373,7 @@ function App() {
 
   const archiveCount = career?.log.length ?? 0;
   return (
-    <ScreenShell rightLabel="EDITION 0.5.7 / COMPACT SYSTEM">
+    <ScreenShell rightLabel="EDITION 0.5.9 / MOBILE REWORK">
       <section className="menu-page page-enter">
         <div className="menu-hero-copy">
           <p className="eyebrow">A MOUNTAINEERING CAREER ROGUELIKE</p>

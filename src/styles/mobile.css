@@ -1,0 +1,770 @@
+/* Alpine Legacy 0.5.9 — dedicated mobile application layer.
+   Imported after global.css so the phone layout no longer depends on the old
+   poster breakpoints. Desktop and tablet keep the museum composition. */
+
+.career-flow-guide__mobile { display: none; }
+.career-flow-guide__desktop { display: contents; }
+
+/* Complete dark-theme surface map. */
+html[data-theme='dark'] {
+  --mobile-card: #171f22;
+  --mobile-card-strong: #202b2f;
+  --mobile-active: #2b393e;
+  --mobile-active-fg: #f2eee5;
+}
+
+html[data-theme='dark'] :is(
+  body,
+  #root,
+  .screen-shell,
+  .career-shell,
+  .career-workspace,
+  .career-workspace__content,
+  .workspace-page,
+  .region-page,
+  .mountain-detail,
+  .character-page,
+  .archive-page,
+  .world-page,
+  .news-page,
+  .rivals-page,
+  .records-page,
+  .journal-page,
+  .people-page
+) {
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+}
+
+html[data-theme='dark'] :is(
+  .career-entry-banner,
+  .objective-card,
+  .career-next-step,
+  .world-alert,
+  .news-lead,
+  .record-poster-grid article:nth-child(1),
+  .overview-poster__plate,
+  .selected-objective-card,
+  .manifest-total,
+  .readiness-seal.is-ready,
+  .settings-update-card,
+  .route-decision-panel,
+  .no-return-warning,
+  .world-outcome.is-summit,
+  .mountain-state-status.is-open,
+  .club-table article.is-player-club
+) {
+  background: var(--mobile-card-strong) !important;
+  color: var(--mobile-active-fg) !important;
+  border-color: var(--line-strong) !important;
+}
+
+html[data-theme='dark'] :is(
+  .choice-card,
+  .difficulty-card,
+  .origin-card,
+  .mountain-card,
+  .mountain-choice-grid > button,
+  .route-choice-grid > button,
+  .team-card,
+  .training-card,
+  .equipment-preset-row button,
+  .weather-window-list button,
+  .readiness-explained-grid button,
+  .final-plan-card,
+  .final-plan-row article,
+  .save-toolkit button,
+  .impact-summary-grid article,
+  .consequence-board article,
+  .route-summary-panel,
+  .field-signal,
+  .settings-group,
+  .settings-toggle
+) {
+  background: var(--mobile-card) !important;
+  color: var(--ink) !important;
+}
+
+html[data-theme='dark'] :is(
+  .choice-card.is-active,
+  .difficulty-card.is-active,
+  .origin-card.is-active,
+  .mountain-choice-grid > button.is-active,
+  .route-choice-grid > button.is-active,
+  .team-card.is-selected,
+  .weather-window-list button.is-active,
+  .workspace-subnav button.is-active,
+  .career-sidebar__nav button.is-active,
+  .settings-segmented button.is-active,
+  .equipment-preset-row button.is-primary,
+  .pace-options--preview > button.is-primary,
+  .pace-options button.is-primary
+) {
+  background: var(--mobile-active) !important;
+  color: var(--mobile-active-fg) !important;
+  border-color: rgba(242, 238, 229, .24) !important;
+}
+
+html[data-theme='dark'] :is(
+  .choice-card.is-active,
+  .difficulty-card.is-active,
+  .origin-card.is-active,
+  .mountain-choice-grid > button.is-active,
+  .route-choice-grid > button.is-active,
+  .team-card.is-selected,
+  .weather-window-list button.is-active
+) :is(p, small, span, strong, h2, h3) {
+  color: inherit !important;
+}
+
+html[data-theme='dark'] :is(button:disabled, .primary-action:disabled, .character-submit:disabled) {
+  color: rgba(242, 238, 229, .42) !important;
+  -webkit-text-fill-color: rgba(242, 238, 229, .42) !important;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --mobile-topbar: 43px;
+    --mobile-subnav: 38px;
+    --mobile-bottom-nav: 52px;
+    --mobile-gap: 10px;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
+
+  body {
+    font-size: 13px;
+    line-height: 1.35;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  button,
+  input,
+  select,
+  textarea { min-width: 0; }
+
+  .screen-shell,
+  .career-shell { min-height: 100dvh; }
+
+  /* iPhone standalone safe areas. */
+  .museum-header {
+    position: sticky;
+    top: 0;
+    z-index: 80;
+    height: calc(var(--mobile-topbar) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 48px 0 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    background: color-mix(in srgb, var(--paper) 94%, transparent);
+    backdrop-filter: blur(18px);
+  }
+  .museum-header__center { display: none; }
+  .museum-header__right { display: none; }
+  .museum-header__left,
+  .museum-header__left > * { min-width: 0; }
+  .museum-header__brand,
+  .text-button {
+    font-size: 9px;
+    letter-spacing: .1em;
+    white-space: nowrap;
+  }
+
+  .app-settings-trigger {
+    top: calc(env(safe-area-inset-top) + 5px);
+    right: calc(env(safe-area-inset-right) + 7px);
+    width: 34px;
+    height: 34px;
+  }
+
+  /* Career shell is a real phone app: one top bar and one bottom bar. */
+  .career-shell {
+    display: block !important;
+    width: 100%;
+    padding-bottom: calc(var(--mobile-bottom-nav) + env(safe-area-inset-bottom));
+  }
+
+  .career-workspace { width: 100%; min-width: 0; }
+
+  .career-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 70;
+    width: 100%;
+    height: calc(var(--mobile-topbar) + env(safe-area-inset-top));
+    min-height: calc(var(--mobile-topbar) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) 50px 0 9px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px;
+    align-items: center;
+    background: color-mix(in srgb, var(--paper) 94%, transparent);
+    border-bottom: 1px solid var(--line-strong);
+    backdrop-filter: blur(18px);
+  }
+  .career-topbar__menu {
+    width: auto !important;
+    height: 29px !important;
+    margin: 0 !important;
+    padding: 0 8px !important;
+    border: 0 !important;
+    border-right: 1px solid var(--line-strong) !important;
+    font-size: 9px;
+    text-transform: uppercase;
+  }
+  .career-topbar__place { min-width: 0; }
+  .career-topbar__place small { display: none !important; }
+  .career-topbar__place strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+  .career-topbar__status,
+  .career-topbar__print { display: none !important; }
+
+  .career-sidebar {
+    position: fixed !important;
+    z-index: 90;
+    inset: auto 0 0 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: calc(var(--mobile-bottom-nav) + env(safe-area-inset-bottom)) !important;
+    padding-bottom: env(safe-area-inset-bottom);
+    border: 0 !important;
+    border-top: 1px solid var(--line-strong) !important;
+    background: color-mix(in srgb, var(--paper) 96%, transparent) !important;
+    backdrop-filter: blur(20px);
+  }
+  .career-sidebar__nav {
+    width: 100%;
+    height: var(--mobile-bottom-nav) !important;
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+  .career-sidebar__nav button,
+  .career-sidebar__nav button:first-child {
+    width: 100%;
+    min-width: 0 !important;
+    height: var(--mobile-bottom-nav) !important;
+    min-height: var(--mobile-bottom-nav) !important;
+    padding: 4px 1px 3px !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 21px 10px !important;
+    place-items: center;
+    gap: 1px !important;
+    border: 0 !important;
+    border-right: 1px solid var(--line) !important;
+  }
+  .career-sidebar__nav button:last-child { border-right: 0 !important; }
+  .career-sidebar__short { display: block !important; font-size: 17px !important; line-height: 1; }
+  .career-sidebar__mobile-label { display: block !important; font-size: 7px !important; line-height: 1; }
+  .career-sidebar__index,
+  .career-sidebar__copy,
+  .career-sidebar__nav button > i,
+  .career-sidebar__footer { display: none !important; }
+
+  .career-workspace__content {
+    width: 100%;
+    min-height: calc(100dvh - var(--mobile-topbar) - var(--mobile-bottom-nav) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-x: hidden;
+  }
+
+  /* One local navigation row. */
+  .workspace-subnav {
+    position: sticky;
+    top: calc(var(--mobile-topbar) + env(safe-area-inset-top));
+    z-index: 60;
+    width: 100%;
+    height: var(--mobile-subnav) !important;
+    min-height: var(--mobile-subnav) !important;
+    padding: 0 !important;
+    display: flex !important;
+    overflow-x: auto !important;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    background: color-mix(in srgb, var(--paper) 96%, transparent);
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .workspace-subnav::-webkit-scrollbar { display: none; }
+  .workspace-subnav button {
+    flex: 0 0 auto !important;
+    min-width: 78px !important;
+    min-height: var(--mobile-subnav) !important;
+    padding: 4px 9px !important;
+    display: grid !important;
+    place-items: center;
+    border-right: 1px solid var(--line) !important;
+  }
+  .workspace-subnav strong { font-size: 12px !important; line-height: 1; }
+  .workspace-subnav small { display: none !important; }
+
+  /* Replace the four-column onboarding table with one actionable strip. */
+  .career-flow-guide { padding: 6px 8px 0 !important; }
+  .career-flow-guide__desktop { display: none !important; }
+  .career-flow-guide__mobile {
+    position: relative;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 22px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+  }
+  .career-flow-guide__mobile-main {
+    min-height: 58px;
+    padding: 8px 40px 8px 10px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 1px 8px;
+    text-align: left;
+  }
+  .career-flow-guide__mobile-main > span {
+    grid-column: 1 / -1;
+    font-size: 7px;
+    letter-spacing: .14em;
+    color: var(--muted);
+  }
+  .career-flow-guide__mobile-main strong { font-family: var(--serif); font-size: 19px; font-weight: 500; }
+  .career-flow-guide__mobile-main small {
+    align-self: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .career-flow-guide__mobile-main b { align-self: center; font-size: 17px; }
+  .career-flow-guide__mobile-progress {
+    position: absolute;
+    left: 10px;
+    right: 38px;
+    bottom: 4px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+  }
+  .career-flow-guide__mobile-progress i { height: 2px; background: var(--line); }
+  .career-flow-guide__mobile-progress i.is-done { background: #4f7a69; }
+  .career-flow-guide__mobile-progress i.is-current { background: var(--red); }
+  .career-flow-guide__mobile-dismiss {
+    width: 22px;
+    border: 0;
+    border-left: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    font-size: 16px;
+  }
+
+  /* Phone typography: editorial, but no poster-sized headings. */
+  .workspace-page,
+  html[data-density='compact'] .workspace-page,
+  .region-page,
+  .mountain-detail,
+  .character-page,
+  .archive-page {
+    width: 100%;
+    max-width: none !important;
+    padding: 10px 9px 14px !important;
+  }
+  .workspace-title,
+  html[data-density='compact'] .workspace-title,
+  .region-title-block,
+  .detail-title,
+  .career-hero {
+    margin: 0 0 10px !important;
+    align-items: flex-start !important;
+  }
+  .workspace-title h1,
+  .workspace-title--compact h1,
+  html[data-density='compact'] .workspace-title h1,
+  html[data-density='compact'] .workspace-title--compact h1,
+  .region-title-block h1,
+  .detail-title h1,
+  .career-hero__copy h1,
+  .character-intro h1 {
+    font-size: clamp(30px, 9.2vw, 38px) !important;
+    line-height: .92 !important;
+    letter-spacing: -.035em !important;
+    margin: 0 !important;
+  }
+  .workspace-title__mark,
+  .region-index-number,
+  .career-hero__mark { display: none !important; }
+  .workspace-page .eyebrow,
+  .region-page .eyebrow,
+  .mountain-detail .eyebrow,
+  .character-page .eyebrow {
+    margin: 0 0 4px !important;
+    font-size: 7px !important;
+    line-height: 1.1;
+  }
+  .workspace-title > div:first-child > p:last-child,
+  .region-subtitle,
+  .detail-title p,
+  .career-hero__copy > p:last-child {
+    margin: 5px 0 0 !important;
+    font-size: 14px !important;
+    line-height: 1.3 !important;
+  }
+  .panel-heading { margin: 0 0 7px !important; padding-bottom: 6px !important; }
+  .panel-heading h2 { font-size: 22px !important; }
+
+  /* Cut supporting prose, never the actionable value. */
+  :is(
+    .workspace-title__mark,
+    .section-explainer,
+    .decision-guide p,
+    .career-next-step p,
+    .club-brief > p,
+    .objective-card > p,
+    .mountain-character-callout p,
+    .route-summary-panel > div:first-child > p:last-child,
+    .route-choice-grid p,
+    .training-card p,
+    .training-card--clear > p,
+    .team-card p,
+    .team-grid--clear .team-card p,
+    .equipment-preset-row small,
+    .manifest-insight p,
+    .weather-window-list--clear p,
+    .acclimatization-card > p,
+    .readiness-explained-grid p,
+    .final-plan-card > p,
+    .final-plan-row > article > p,
+    .launch-panel--clear > p,
+    .field-signal p,
+    .current-segment-card > p,
+    .team-orders--disclosure summary small,
+    .save-toolkit > p,
+    .world-metric-grid p,
+    .mountain-state-list p,
+    .club-table p,
+    .world-expedition-strip p,
+    .news-lead p,
+    .news-grid p,
+    .record-poster-grid em,
+    .settings-group__copy span,
+    .settings-toggle small,
+    .settings-update-card p
+  ) { display: none !important; }
+
+  /* Remove inherited desktop air. */
+  :is(
+    .career-entry-banner,
+    .training-section,
+    .career-main-grid,
+    .overview-columns,
+    .overview-columns--clear,
+    .route-detail-grid,
+    .equipment-layout,
+    .equipment-layout--clear,
+    .expedition-board,
+    .expedition-board--clear,
+    .conditions-board,
+    .readiness-breakdown,
+    .calendar-panel,
+    .club-card,
+    .objective-card,
+    .world-metric-grid,
+    .world-alert,
+    .news-lead,
+    .record-poster-grid,
+    .career-log,
+    .mountain-state-board,
+    .news-filter-row,
+    .rivals-layout
+  ) {
+    margin-top: 10px !important;
+    margin-bottom: 12px !important;
+  }
+
+  :is(
+    .career-entry-banner,
+    .objective-card,
+    .world-alert,
+    .news-lead,
+    .final-plan-card,
+    .route-summary-panel,
+    .route-decision-panel,
+    .save-toolkit,
+    .rival-file
+  ) { padding: 12px !important; min-height: 0 !important; }
+
+  .career-entry-banner {
+    display: block !important;
+    margin-inline: 0 !important;
+  }
+  .career-entry-banner::after { display: none !important; }
+  .career-entry-banner h2 {
+    margin: 0 0 7px !important;
+    font-size: 32px !important;
+    line-height: .94 !important;
+  }
+  .career-entry-banner p:not(.eyebrow) { font-size: 14px !important; line-height: 1.35 !important; }
+  .career-entry-banner button { min-height: 44px !important; margin-top: 10px !important; padding: 0 12px !important; }
+
+  /* Compact data blocks. */
+  .workspace-metrics,
+  .workspace-metrics--clear,
+  .career-metrics,
+  .world-metric-grid,
+  .result-metrics,
+  .route-summary-panel__metrics,
+  .team-summary-strip--clear,
+  .equipment-ledger-head--clear,
+  .impact-summary-grid,
+  .consequence-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    margin-block: 8px !important;
+  }
+  .workspace-metrics > div,
+  .workspace-metrics--clear > div,
+  .career-metrics > div,
+  .world-metric-grid article,
+  .result-metrics > div,
+  .team-summary-strip--clear > div,
+  .team-summary-strip--clear > button {
+    min-height: 68px !important;
+    padding: 9px !important;
+    border-bottom: 1px solid var(--line) !important;
+  }
+  .workspace-metrics strong,
+  .workspace-metrics--clear strong,
+  .career-metrics strong,
+  .world-metric-grid strong { font-size: 27px !important; line-height: .9 !important; }
+  .world-metric-grid small { font-size: 8px !important; line-height: 1.25 !important; }
+
+  /* Mountain profile keeps a wide, real aspect ratio. */
+  .mountain-art svg,
+  .route-blueprint svg {
+    width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 20 / 9 !important;
+    display: block;
+  }
+  .overview-poster,
+  html[data-density='compact'] .overview-poster,
+  .route-hero-panel,
+  html[data-density='compact'] .route-hero-panel {
+    min-height: 0 !important;
+    margin-bottom: 10px !important;
+  }
+  .overview-poster .mountain-art--hero svg,
+  html[data-density='compact'] .overview-poster .mountain-art--hero svg,
+  .route-hero-panel .mountain-art--hero svg,
+  html[data-density='compact'] .route-hero-panel .mountain-art--hero svg,
+  .mountain-art--detail svg,
+  .mountain-art--card svg { height: auto !important; }
+  .overview-poster__plate,
+  .selected-objective-card,
+  .route-hero-panel__legend {
+    position: static !important;
+    width: 100% !important;
+    padding: 8px 10px !important;
+  }
+  .overview-poster__plate strong,
+  .selected-objective-card h2,
+  .route-hero-panel__legend strong { font-size: 20px !important; }
+  .mountain-art__caption { padding-top: 5px !important; font-size: 7px !important; }
+
+  /* Selection screens. */
+  .mountain-choice-grid,
+  .training-grid,
+  .training-grid--clear,
+  .team-grid,
+  .team-grid--clear,
+  .route-choice-grid,
+  .route-choice-grid--clear,
+  .weather-window-list--clear,
+  .news-grid,
+  .record-poster-grid { grid-template-columns: 1fr 1fr !important; }
+
+  .mountain-choice-grid > button,
+  html[data-density='compact'] .mountain-choice-grid > button {
+    min-height: 102px !important;
+    padding: 9px !important;
+    grid-template-columns: 22px minmax(0, 1fr) !important;
+    grid-template-rows: auto auto 1fr !important;
+    gap: 3px 7px !important;
+  }
+  .mountain-choice-grid > button > strong,
+  .mountain-choice-grid footer { grid-column: 2 !important; }
+  .mountain-choice-grid h3 { margin: 0 !important; font-size: 20px !important; }
+  .mountain-choice-grid > button > strong { justify-self: start !important; font-size: 18px !important; }
+  .mountain-choice-grid footer { padding-top: 4px !important; font-size: 7px !important; }
+
+  .route-choice-grid > button,
+  .route-choice-grid--clear > button,
+  html[data-density='compact'] .route-choice-grid > button,
+  html[data-density='compact'] .route-choice-grid--clear > button {
+    min-height: 0 !important;
+    padding: 9px !important;
+  }
+  .route-choice-grid h3 { margin: 4px 0 !important; font-size: 20px !important; }
+  .route-choice-grid small { margin-top: 4px !important; font-size: 8px !important; }
+  .route-choice-grid dl { margin-top: 6px !important; }
+  .route-choice-grid dl div { padding: 5px 0 !important; }
+  .route-choice-grid dd { font-size: 15px !important; }
+
+  .training-card,
+  .training-card--clear,
+  html[data-density='compact'] .training-card,
+  html[data-density='compact'] .training-card--clear {
+    min-height: 112px !important;
+    padding: 9px !important;
+  }
+  .training-card h3,
+  .training-card--clear h3,
+  html[data-density='compact'] .training-card h3,
+  html[data-density='compact'] .training-card--clear h3 {
+    margin: 7px 0 !important;
+    font-size: 19px !important;
+  }
+  .training-card > div,
+  .training-card--clear footer { position: static !important; margin-top: 9px !important; font-size: 8px !important; }
+
+  .team-card,
+  .team-grid--clear .team-card,
+  html[data-density='compact'] .team-card,
+  html[data-density='compact'] .team-grid--clear .team-card {
+    min-height: 122px !important;
+    padding: 9px !important;
+  }
+  .team-card__portrait { width: 34px !important; height: 38px !important; margin-bottom: 5px !important; font-size: 16px !important; }
+  .team-card h2,
+  .team-grid--clear .team-card h2 { margin: 3px 0 !important; font-size: 19px !important; }
+  .team-card__specialty,
+  .team-card__stats { margin-top: 6px !important; padding-top: 5px !important; }
+
+  .equipment-preset-row { grid-template-columns: 1fr 1fr !important; gap: 6px !important; margin-bottom: 8px !important; }
+  .equipment-preset-row button { min-height: 56px !important; padding: 8px !important; }
+  .equipment-preset-row strong { font-size: 17px !important; }
+  .equipment-list--clear article { padding: 7px 0 !important; }
+  .equipment-list--clear h3 { font-size: 16px !important; }
+  .equipment-list--clear p { display: none !important; }
+  .supply-manifest--clear label { padding: 8px 0 !important; }
+
+  .weather-window-list--clear button,
+  html[data-density='compact'] .weather-window-list--clear button {
+    min-height: 94px !important;
+    padding: 9px !important;
+  }
+  .weather-window-list--clear strong { font-size: 18px !important; }
+  .readiness-explained-grid { grid-template-columns: 1fr 1fr !important; }
+  .readiness-explained-grid button,
+  html[data-density='compact'] .readiness-explained-grid button { min-height: 74px !important; padding: 8px !important; }
+  .readiness-explained-grid strong { font-size: 24px !important; }
+  .final-plan-row { grid-template-columns: 1fr 1fr !important; }
+  .final-plan-row article { min-height: 84px !important; padding: 9px !important; }
+
+  /* Living world and archive. */
+  .mountain-state-list article {
+    min-height: 0 !important;
+    grid-template-columns: 40px minmax(0, 1fr) !important;
+  }
+  .mountain-state-list article > div:nth-child(2) { padding: 10px !important; }
+  .mountain-state-list h3 { margin: 2px 0 !important; font-size: 21px !important; }
+  .mountain-state-stats { grid-column: 2 !important; min-height: 55px !important; }
+  .mountain-state-status { grid-column: 2 !important; min-height: 46px !important; padding: 8px !important; }
+  .news-lead h2 { margin: 8px 0 !important; font-size: 31px !important; }
+  .news-lead > span { display: none !important; }
+  .news-grid article { min-height: 150px !important; padding: 10px !important; }
+  .news-index { margin-bottom: 10px !important; font-size: 22px !important; }
+  .news-grid h3 { margin: 5px 0 !important; font-size: 21px !important; }
+  .record-poster-grid article,
+  .record-poster-grid article:nth-child(1) { min-height: 170px !important; padding: 11px !important; grid-column: auto !important; }
+  .record-poster-grid h2 { margin-bottom: 8px !important; font-size: 25px !important; }
+  .save-toolkit > div:last-child { grid-template-columns: 1fr 1fr !important; gap: 7px !important; }
+  .save-toolkit button { min-height: 86px !important; padding: 10px !important; }
+  .archive-ledger article,
+  .career-log article { padding: 10px 0 !important; }
+
+  /* Creation and atlas screens. */
+  .setup-grid {
+    min-height: 0 !important;
+    padding: 10px 9px 18px !important;
+    gap: 12px !important;
+  }
+  .setup-intro { position: static !important; }
+  .setup-intro h1 { margin: 0 0 7px !important; font-size: 34px !important; line-height: .95 !important; }
+  .setup-intro .lead { font-size: 15px !important; line-height: 1.35 !important; }
+  .edition-stamp { display: none !important; }
+  .form-section { grid-template-columns: 24px minmax(0, 1fr) !important; padding: 11px 0 !important; }
+  .choice-card { padding: 10px !important; }
+  .choice-card strong { font-size: 19px !important; }
+  .difficulty-grid { grid-template-columns: 1fr !important; }
+  .difficulty-card { min-height: 66px !important; padding: 9px !important; }
+  .difficulty-card strong { font-size: 21px !important; }
+  .year-head strong { font-size: 36px !important; }
+  .primary-action { min-height: 50px !important; font-size: 20px !important; }
+
+  .region-metrics { grid-template-columns: 1fr 1fr !important; }
+  .region-metrics div,
+  .region-metrics div + div { padding: 8px !important; }
+  .mountain-grid { grid-template-columns: 1fr 1fr !important; }
+  .mountain-card,
+  .mountain-card:nth-child(3n) { min-height: 180px !important; padding: 10px !important; }
+  .mountain-card h2 { font-size: 23px !important; }
+  .mountain-card .mountain-art--card svg { aspect-ratio: 20 / 9 !important; }
+
+  /* Climb screen. */
+  .climb-layout { grid-template-columns: 1fr !important; gap: 10px !important; }
+  .climb-instruments--workspace { grid-template-columns: repeat(3, 1fr) !important; }
+  .climb-instruments--workspace > div { min-height: 48px !important; padding: 6px !important; }
+  .current-segment-card { padding: 10px !important; }
+  .current-segment-card h2 { font-size: 22px !important; }
+  .pace-options--preview,
+  .pace-options--workspace { grid-template-columns: repeat(3, 1fr) !important; gap: 5px !important; }
+  .pace-options--preview > button,
+  .pace-options--workspace button { min-height: 88px !important; padding: 7px !important; }
+  .pace-options--workspace button strong { font-size: 16px !important; }
+  .field-actions button { min-height: 44px !important; padding: 7px !important; }
+
+  /* Settings opens as a bottom sheet. */
+  .app-settings-layer { align-items: flex-end; }
+  .app-settings-panel {
+    width: 100% !important;
+    height: auto !important;
+    max-height: calc(100dvh - env(safe-area-inset-top) - 12px) !important;
+    padding: 12px 10px calc(12px + env(safe-area-inset-bottom)) !important;
+    border: 0 !important;
+    border-top: 1px solid var(--line-strong) !important;
+    border-radius: 0 !important;
+  }
+  .app-settings-panel h2 { font-size: 28px !important; }
+  .settings-group,
+  .settings-toggle { margin-top: 8px !important; padding: 9px !important; }
+  .settings-update-card { margin-top: 8px !important; padding: 10px !important; }
+}
+
+@media (max-width: 380px) {
+  .mountain-choice-grid,
+  .training-grid,
+  .training-grid--clear,
+  .team-grid,
+  .team-grid--clear,
+  .route-choice-grid,
+  .route-choice-grid--clear,
+  .weather-window-list--clear,
+  .news-grid,
+  .record-poster-grid,
+  .mountain-grid { grid-template-columns: 1fr !important; }
+
+  .career-sidebar__mobile-label { font-size: 6px !important; }
+  .career-sidebar__short { font-size: 15px !important; }
+  .workspace-title h1,
+  .workspace-title--compact h1 { font-size: 30px !important; }
+}
