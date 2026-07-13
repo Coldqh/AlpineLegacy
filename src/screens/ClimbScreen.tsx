@@ -28,6 +28,13 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
   const activeSegment = climb.route[Math.max(0, Math.min(climb.route.length - 1, climb.segmentIndex))]!;
   const terminal = ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase);
   const liveTeam = climb.teamStates.map(state => ({ state, member: career.teamRoster.find(member => member.id === state.memberId) })).filter(item => item.member);
+  const fieldSignal = climb.supplies.waterUnits <= 3
+    ? { tone: 'danger', title: 'Вода почти закончилась', detail: 'Топи снег, если есть топливо. Следующий длинный участок резко ударит по группе.' }
+    : climb.hoursAwake >= 12
+      ? { tone: 'warning', title: 'Группа давно без сна', detail: activeSegment.campPossible ? 'На этом участке можно поставить лагерь.' : 'Ищи ближайший участок, где разрешена ночёвка.' }
+      : climb.windKmh >= 48 || climb.visibility <= 35
+        ? { tone: 'warning', title: 'Условия ухудшились', detail: 'Ожидание тратит время и запасы, но может изменить погоду до следующего движения.' }
+        : { tone: 'calm', title: 'Условия рабочие', detail: 'Выбери темп для текущего участка или выполни полевое действие.' };
 
   function resolve(action: () => ClimbStepResult) {
     const result = action();
@@ -85,6 +92,10 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
         <div><span>Видимость</span><strong>{climb.visibility}%</strong></div>
       </div>
 
+      <section className={`field-signal is-${fieldSignal.tone}`}>
+        <strong>{fieldSignal.title}</strong><p>{fieldSignal.detail}</p>
+      </section>
+
       <div className="climb-workspace-grid">
         <section className="climb-map-panel climb-map-panel--workspace">
           <RouteBlueprint climb={climb} />
@@ -118,15 +129,15 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
             <button onClick={() => resolve(onWait)}><span>Ждать окно</span><small>3 часа · погода меняется</small></button>
           </div>
 
-          <div className="team-orders">
-            <p className="eyebrow">TEAM ORDERS / AUTHORITY IS NOT CONTROL</p>
+          <details className="team-orders team-orders--disclosure">
+            <summary><span>Приказы группе</span><small>Открыть 4 команды · люди могут отказаться</small></summary>
             <div>
               <button onClick={() => resolve(() => onOrder('SLOW_DOWN'))}><strong>Снизить темп</strong><small>Собрать связки и стабилизировать состояние.</small></button>
               <button onClick={() => resolve(() => onOrder('PRESS_ON'))}><strong>Давить вверх</strong><small>Сохранить темп. Участник может отказаться.</small></button>
               <button onClick={() => resolve(() => onOrder('TURN_BACK_WEAKEST'))}><strong>Развернуть слабого</strong><small>Снять худшего участника с маршрута.</small></button>
               <button onClick={() => resolve(() => onOrder('ASSIGN_HELPER'))}><strong>Назначить помощь</strong><small>Один участник отдаёт силы другому.</small></button>
             </div>
-          </div>
+          </details>
 
           {climb.phase === 'ASCENT' && <button className="retreat-button" onClick={onRetreat}>Развернуть всю группу и начать спуск</button>}
         </section>

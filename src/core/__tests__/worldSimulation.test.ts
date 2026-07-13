@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyTraining, createCareer, migrateCareerV4 } from '../career';
+import { applyTraining, createCareer, getSelectedRoute, migrateCareerV4, migrateCareerV5, selectMountain } from '../career';
 import { generateWorld } from '../generator';
 import type { CareerDraft, WorldSeedConfig } from '../types';
 
@@ -33,13 +33,24 @@ describe('living world simulation', () => {
     expect(first.livingWorld).toEqual(second.livingWorld);
   });
 
+
+  it('migrates a v0.5 career and preserves the selected mountain', () => {
+    const world = generateWorld(config);
+    const target = world.region.mountains.at(-1)!;
+    const career = selectMountain(createCareer(world, draft), target.id);
+    const legacy = { ...career, schemaVersion: 5 } as any;
+    const migrated = migrateCareerV5(legacy, world);
+    expect(migrated.schemaVersion).toBe(6);
+    expect(getSelectedRoute(migrated).mountainId).toBe(target.id);
+  });
+
   it('migrates a v0.4 career without losing the roster', () => {
     const world = generateWorld(config);
     const career = createCareer(world, draft);
     const legacy = { ...career, schemaVersion: 4 } as any;
     delete legacy.livingWorld;
     const migrated = migrateCareerV4(legacy, world);
-    expect(migrated.schemaVersion).toBe(5);
+    expect(migrated.schemaVersion).toBe(6);
     expect(migrated.teamRoster.map(item => item.id)).toEqual(career.teamRoster.map(item => item.id));
     expect(migrated.livingWorld.athletes.length).toBeGreaterThan(30);
   });

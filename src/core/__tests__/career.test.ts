@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyEquipmentPreset,
   beginDescent,
   createCareer,
   establishCamp,
@@ -8,6 +9,8 @@ import {
   meltSnow,
   resolveClimbStep,
   startPlannedClimb,
+  selectMountain,
+  getSelectedRoute,
 } from '../career';
 import { generateWorld } from '../generator';
 import type { CareerDraft, CareerState, WorldSeedConfig } from '../types';
@@ -42,12 +45,22 @@ describe('career and expedition module', () => {
     const world = generateWorld(config);
     const career = createCareer(world, draft);
     expect(career.worldId).toBe(world.id);
-    expect(career.schemaVersion).toBe(5);
-    expect(career.routes).toHaveLength(3);
+    expect(career.schemaVersion).toBe(6);
+    expect(career.routes).toHaveLength(world.region.mountains.length * 3);
     expect(career.teamRoster.length).toBeGreaterThanOrEqual(5);
     expect(career.weatherWindows).toHaveLength(3);
     expect(career.livingWorld.athletes.length).toBeGreaterThanOrEqual(35);
     expect(career.livingWorld.clubs).toHaveLength(6);
+  });
+
+
+  it('lets the player choose any generated mountain', () => {
+    const world = generateWorld(config);
+    const career = createCareer(world, draft);
+    const target = world.region.mountains.at(-1)!;
+    const changed = selectMountain(career, target.id);
+    expect(getSelectedRoute(changed).mountainId).toBe(target.id);
+    expect(changed.routes.filter(route => route.mountainId === target.id)).toHaveLength(3);
   });
 
   it('builds a launchable default expedition plan', () => {
@@ -56,6 +69,14 @@ describe('career and expedition module', () => {
     const readiness = expeditionReadiness(career);
     expect(readiness.blockers).toEqual([]);
     expect(readiness.total).toBeGreaterThanOrEqual(54);
+  });
+
+
+  it('builds a valid equipment preset for the selected route', () => {
+    const world = generateWorld(config);
+    const career = createCareer(world, draft);
+    const packed = applyEquipmentPreset(career, 'RECOMMENDED');
+    expect(expeditionReadiness(packed).blockers.some(item => item.includes('снаряжения'))).toBe(false);
   });
 
   it('keeps the same action reproducible for equal state and pace', () => {

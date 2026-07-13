@@ -486,7 +486,7 @@ export interface LivingWorldState {
 }
 
 export interface CareerState {
-  schemaVersion: 5;
+  schemaVersion: 6;
   id: string;
   worldId: string;
   createdAt: string;

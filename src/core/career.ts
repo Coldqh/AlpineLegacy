@@ -263,84 +263,91 @@ export function getQualificationTarget(world: WorldState) {
   };
 }
 
-function makeRoutes(world: WorldState): ExpeditionRoute[] {
-  const target = getQualificationTarget(world);
-  const totalGain = target.summitElevation - target.startElevation;
-  const eraPenalty = world.config.eraId === 'PIONEER' ? 7 : world.config.eraId === 'EXPEDITION' ? 3 : 0;
+function routeEraPenalty(world: WorldState) {
+  return world.config.eraId === 'PIONEER' ? 8 : world.config.eraId === 'EXPEDITION' ? 3 : 0;
+}
 
-  const ridgeGain = splitGain(totalGain, [.12, .18, .22, .21, .27]);
-  const glacierGain = splitGain(totalGain, [.1, .16, .18, .19, .17, .2]);
-  const faceGain = splitGain(totalGain, [.08, .17, .25, .24, .26]);
+function mountainDifficulty(mountain: WorldState['region']['mountains'][number]) {
+  return mountain.elevation * .01 + mountain.technicality * .72 + mountain.altitudeSeverity * .55 + mountain.remoteness * .32;
+}
+
+function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['mountains'][number]): ExpeditionRoute[] {
+  const eraPenalty = routeEraPenalty(world);
+  const totalGain = clamp(Math.round(760 + mountain.prominence * .17 + mountain.remoteness * 2.1), 760, 1650);
+  const startElevation = Math.max(world.region.elevationMin + 80, mountain.elevation - totalGain);
+  const actualGain = mountain.elevation - startElevation;
+  const baseDifficulty = mountain.technicality * .48 + mountain.altitudeSeverity * .32 + mountain.remoteness * .16 + eraPenalty;
+  const baseRisk = mountain.altitudeSeverity * .36 + mountain.remoteness * .22 + mountain.technicality * .24;
+  const slug = mountain.id.replace(/[^a-zA-Z0-9-]/g, '-');
+
+  const ridgeGain = splitGain(actualGain, [.12, .18, .22, .21, .27]);
+  const glacierGain = splitGain(actualGain, [.1, .16, .18, .19, .17, .2]);
+  const faceGain = splitGain(actualGain, [.08, .17, .25, .24, .26]);
+
+  const ridgeTech = clamp(Math.round(18 + baseDifficulty * .62), 28, 82);
+  const glacierTech = clamp(Math.round(15 + baseDifficulty * .56), 25, 78);
+  const faceTech = clamp(Math.round(28 + baseDifficulty * .76), 40, 94);
+  const ridgeRisk = clamp(Math.round(16 + baseRisk * .55), 24, 82);
+  const glacierRisk = clamp(Math.round(22 + baseRisk * .66), 30, 88);
+  const faceRisk = clamp(Math.round(30 + baseRisk * .76), 42, 96);
+  const altitudeHours = actualGain / 165 + mountain.altitudeSeverity / 10 + mountain.remoteness / 18;
 
   return [
     {
-      id: 'south-ridge',
-      mountainId: target.mountain.id,
-      mountainName: target.displayName,
-      name: 'Южный гребень',
+      id: `${slug}-south-ridge`, mountainId: mountain.id, mountainName: mountain.name, name: 'Южный гребень',
       style: 'Классический смешанный маршрут',
-      summary: 'Длинный, читаемый и честный маршрут. Ошибки чаще накапливаются через усталость, а не приходят одним ударом.',
-      startElevation: target.startElevation,
-      summitElevation: target.summitElevation,
-      estimatedHours: 14,
-      technicality: 42 + eraPenalty,
-      objectiveRisk: 36,
-      recommendedTeamSize: 3,
+      summary: 'Самая читаемая линия массива. Длинный набор, смешанный рельеф и несколько мест, где можно остановить попытку до серьёзной аварии.',
+      startElevation, summitElevation: mountain.elevation, estimatedHours: Math.round(8 + altitudeHours), technicality: ridgeTech,
+      objectiveRisk: ridgeRisk, recommendedTeamSize: mountain.elevation > 6200 ? 4 : 3,
       requiredGearIds: ['rope', 'rock-kit', 'ice-kit', 'stove', 'medkit'],
       segments: [
-        segment('sr-moraine', 'Верхняя морена', 'Осыпь и камень', ridgeGain[0]!, 85, 24 + eraPenalty, 12, 'ENDURANCE', 'Длинный набор с грузом. Перерасход сил ударит по верхней части.', true, 'Сход камней'),
-        segment('sr-ribs', 'Разрушенные рёбра', 'Простые скалы', ridgeGain[1]!, 110, 32 + eraPenalty, 30, 'ROCK', 'Короткие стенки и обязательные станции.', false, 'Срыв камней'),
-        segment('sr-glacier', 'Ледниковый траверс', 'Закрытый ледник', ridgeGain[2]!, 125, 35 + eraPenalty, 34, 'NAVIGATION', 'Трещины читаются плохо. Связка обязана держать дистанцию.', true, 'Трещины'),
-        segment('sr-ice', 'Ледовый взлёт', 'Жёсткий лёд', ridgeGain[3]!, 100, 41 + eraPenalty, 47, 'ICE', 'Крутой участок. Ошибка здесь затрагивает всю связку.', false, 'Срыв'),
-        segment('sr-summit', 'Вершинный гребень', 'Снег и скальные выходы', ridgeGain[4]!, 135, 45 + eraPenalty, 58, 'ROCK', 'Узкий гребень. Ветер и усталость делают спуск тяжелее.', false, 'Ветер'),
+        segment(`${slug}-sr-moraine`, 'Верхняя морена', 'Осыпь и камень', ridgeGain[0]!, 80, clamp(ridgeTech - 22), 14, 'ENDURANCE', 'Длинный набор с грузом. Здесь проще всего заметить неверный темп.', true, 'Сход камней'),
+        segment(`${slug}-sr-ribs`, 'Разрушенные рёбра', 'Простые скалы', ridgeGain[1]!, 105, clamp(ridgeTech - 12), 31, 'ROCK', 'Короткие стенки и обязательные станции.', false, 'Срыв камней'),
+        segment(`${slug}-sr-glacier`, 'Ледниковый траверс', 'Закрытый ледник', ridgeGain[2]!, 125, clamp(ridgeTech - 8), 35, 'NAVIGATION', 'Трещины читаются плохо. Связка обязана держать дистанцию.', true, 'Трещины'),
+        segment(`${slug}-sr-ice`, 'Ледовый взлёт', 'Жёсткий лёд', ridgeGain[3]!, 110, clamp(ridgeTech - 1), 48, 'ICE', 'Крутой участок. Ошибка затрагивает всю связку.', false, 'Срыв'),
+        segment(`${slug}-sr-summit`, 'Вершинный гребень', 'Снег и скальные выходы', ridgeGain[4]!, 135, clamp(ridgeTech + 4), 59, 'ROCK', 'Узкий гребень. Ветер и усталость сильнее влияют на спуск.', false, 'Ветер'),
       ],
     },
     {
-      id: 'east-glacier',
-      mountainId: target.mountain.id,
-      mountainName: target.displayName,
-      name: 'Восточный ледник',
+      id: `${slug}-east-glacier`, mountainId: mountain.id, mountainName: mountain.name, name: 'Восточный ледник',
       style: 'Длинная ледниковая линия',
-      summary: 'Меньше сложного лазания, больше времени на высоте, закрытых трещин и зависимости от утреннего холода.',
-      startElevation: target.startElevation - 70,
-      summitElevation: target.summitElevation,
-      estimatedHours: 17,
-      technicality: 38 + eraPenalty,
-      objectiveRisk: 48,
-      recommendedTeamSize: 4,
+      summary: 'Меньше сложного лазания, больше времени на высоте, закрытых трещин и зависимости от холодного утреннего окна.',
+      startElevation: Math.max(world.region.elevationMin + 50, startElevation - 70), summitElevation: mountain.elevation,
+      estimatedHours: Math.round(11 + altitudeHours * 1.14), technicality: glacierTech, objectiveRisk: glacierRisk,
+      recommendedTeamSize: mountain.elevation > 5600 ? 4 : 3,
       requiredGearIds: ['rope', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'],
       segments: [
-        segment('eg-basin', 'Ледниковая чаша', 'Снег и морена', glacierGain[0]!, 95, 23 + eraPenalty, 15, 'ENDURANCE', 'Тяжёлый подход и ранняя проверка темпа.', true, 'Переохлаждение'),
-        segment('eg-labyrinth', 'Лабиринт трещин', 'Закрытый ледник', glacierGain[1]!, 145, 36 + eraPenalty, 38, 'NAVIGATION', 'Нужна точная линия и постоянная работа верёвки.', false, 'Провал в трещину'),
-        segment('eg-plateau', 'Белое плато', 'Открытый ледник', glacierGain[2]!, 150, 31 + eraPenalty, 27, 'ENDURANCE', 'Монотонный набор высоты без укрытия от ветра.', true, 'Потеря направления'),
-        segment('eg-serac', 'Серачная зона', 'Лёд и обломки', glacierGain[3]!, 115, 43 + eraPenalty, 52, 'ICE', 'Здесь нельзя останавливаться надолго.', false, 'Ледовый обвал'),
-        segment('eg-shoulder', 'Восточное плечо', 'Фирн', glacierGain[4]!, 120, 39 + eraPenalty, 44, 'ENDURANCE', 'Наклон умеренный, но высота забирает скорость.', true, 'Лавинная доска'),
-        segment('eg-top', 'Купол', 'Снег и лёд', glacierGain[5]!, 140, 45 + eraPenalty, 55, 'NAVIGATION', 'В плохой видимости легко уйти на опасный карниз.', false, 'Карниз'),
+        segment(`${slug}-eg-basin`, 'Ледниковая чаша', 'Снег и морена', glacierGain[0]!, 95, clamp(glacierTech - 18), 16, 'ENDURANCE', 'Тяжёлый подход и ранняя проверка темпа.', true, 'Переохлаждение'),
+        segment(`${slug}-eg-labyrinth`, 'Лабиринт трещин', 'Закрытый ледник', glacierGain[1]!, 145, clamp(glacierTech - 4), 40, 'NAVIGATION', 'Нужна точная линия и постоянная работа верёвки.', false, 'Провал в трещину'),
+        segment(`${slug}-eg-plateau`, 'Белое плато', 'Открытый ледник', glacierGain[2]!, 150, clamp(glacierTech - 9), 28, 'ENDURANCE', 'Монотонный набор без укрытия от ветра.', true, 'Потеря направления'),
+        segment(`${slug}-eg-serac`, 'Серачная зона', 'Лёд и обломки', glacierGain[3]!, 115, clamp(glacierTech + 2), 54, 'ICE', 'Здесь нельзя останавливаться надолго.', false, 'Ледовый обвал'),
+        segment(`${slug}-eg-shoulder`, 'Восточное плечо', 'Фирн', glacierGain[4]!, 120, clamp(glacierTech - 1), 45, 'ENDURANCE', 'Наклон умеренный, но высота забирает скорость.', true, 'Лавинная доска'),
+        segment(`${slug}-eg-top`, 'Купол', 'Снег и лёд', glacierGain[5]!, 140, clamp(glacierTech + 5), 57, 'NAVIGATION', 'В плохой видимости легко уйти на карниз.', false, 'Карниз'),
       ],
     },
     {
-      id: 'north-line',
-      mountainId: target.mountain.id,
-      mountainName: target.displayName,
-      name: 'Северная линия',
+      id: `${slug}-north-line`, mountainId: mountain.id, mountainName: mountain.name, name: 'Северная линия',
       style: 'Прямая техническая линия',
-      summary: 'Короткая по расстоянию, но требовательная к технике. Высокая открытость и мало мест для отдыха.',
-      startElevation: target.startElevation + 40,
-      summitElevation: target.summitElevation,
-      estimatedHours: 12,
-      technicality: 57 + eraPenalty,
-      objectiveRisk: 57,
-      recommendedTeamSize: 3,
+      summary: 'Короткая по расстоянию, но жёсткая по технике. Высокая открытость, мало мест для отдыха и тяжёлый отход после ключевой стены.',
+      startElevation: Math.max(world.region.elevationMin + 100, startElevation + 40), summitElevation: mountain.elevation,
+      estimatedHours: Math.round(7 + altitudeHours * .92), technicality: faceTech, objectiveRisk: faceRisk,
+      recommendedTeamSize: mountain.elevation > 6500 ? 4 : 3,
       requiredGearIds: ['rope', 'rock-kit', 'ice-kit', 'medkit', 'bivy'],
       segments: [
-        segment('nl-cone', 'Северный конус', 'Осыпь', faceGain[0]!, 70, 28 + eraPenalty, 18, 'ENDURANCE', 'Короткий подход под стену.', true, 'Камнепад'),
-        segment('nl-couloir', 'Тёмный кулуар', 'Снег и лёд', faceGain[1]!, 105, 45 + eraPenalty, 49, 'ICE', 'Узкий кулуар собирает лёд и камни.', false, 'Ледовый обвал'),
-        segment('nl-wall', 'Северная стена', 'Микст и скалы', faceGain[2]!, 165, 58 + eraPenalty, 69, 'ROCK', 'Ключ маршрута. Отступление после середины сложно.', false, 'Срыв'),
-        segment('nl-ramp', 'Ледовая рампа', 'Крутой лёд', faceGain[3]!, 135, 56 + eraPenalty, 64, 'ICE', 'Станции требуют времени и точности.', false, 'Разрушение станции'),
-        segment('nl-edge', 'Кромка вершины', 'Смешанный гребень', faceGain[4]!, 125, 52 + eraPenalty, 71, 'ROCK', 'Открытый финиш без места для лагеря.', false, 'Штормовой ветер'),
+        segment(`${slug}-nl-cone`, 'Северный конус', 'Осыпь', faceGain[0]!, 70, clamp(faceTech - 25), 20, 'ENDURANCE', 'Короткий подход под стену.', true, 'Камнепад'),
+        segment(`${slug}-nl-couloir`, 'Тёмный кулуар', 'Снег и лёд', faceGain[1]!, 105, clamp(faceTech - 11), 50, 'ICE', 'Узкий кулуар собирает лёд и камни.', false, 'Ледовый обвал'),
+        segment(`${slug}-nl-wall`, 'Северная стена', 'Микст и скалы', faceGain[2]!, 165, clamp(faceTech), 71, 'ROCK', 'Ключ маршрута. Отступление после середины сложно.', false, 'Срыв'),
+        segment(`${slug}-nl-ramp`, 'Ледовая рампа', 'Крутой лёд', faceGain[3]!, 135, clamp(faceTech - 3), 66, 'ICE', 'Станции требуют времени и точности.', false, 'Разрушение станции'),
+        segment(`${slug}-nl-edge`, 'Кромка вершины', 'Смешанный гребень', faceGain[4]!, 125, clamp(faceTech - 6), 73, 'ROCK', 'Открытый финиш без места для лагеря.', false, 'Штормовой ветер'),
       ],
     },
   ];
+}
+
+function makeRoutes(world: WorldState): ExpeditionRoute[] {
+  return [...world.region.mountains]
+    .sort((a, b) => mountainDifficulty(a) - mountainDifficulty(b))
+    .flatMap(mountain => makeMountainRoutes(world, mountain));
 }
 
 function makeTeam(world: WorldState, club: ClubData): TeamMember[] {
@@ -464,7 +471,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = makeTeam(world, club);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 5,
+    schemaVersion: 6,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     createdAt: new Date().toISOString(),
@@ -508,13 +515,20 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   return career;
 }
 
+function migrateLegacyRouteId(career: any, routes: ExpeditionRoute[]) {
+  const previous = career.routes?.find((route: ExpeditionRoute) => route.id === career.expeditionPlan?.routeId);
+  if (!previous) return routes[0]!.id;
+  const exactStyle = routes.find(route => route.mountainId === previous.mountainId && route.name === previous.name);
+  return exactStyle?.id ?? routes.find(route => route.mountainId === previous.mountainId)?.id ?? routes[0]!.id;
+}
+
 export function migrateCareerV2(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   const teamRoster = makeTeam(world, career.club);
   const weatherWindows = makeWeatherWindows(world);
   return {
     ...career,
-    schemaVersion: 5,
+    schemaVersion: 6,
     activeClimb: null,
     routes,
     teamRoster,
@@ -527,6 +541,7 @@ export function migrateCareerV2(career: any, world: WorldState): CareerState {
 }
 
 export function migrateCareerV3(career: any, world: WorldState): CareerState {
+  const routes = makeRoutes(world);
   const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
   const activeClimb = career.activeClimb ? {
     ...career.activeClimb,
@@ -537,7 +552,9 @@ export function migrateCareerV3(career: any, world: WorldState): CareerState {
   } : null;
   return {
     ...career,
-    schemaVersion: 5,
+    schemaVersion: 6,
+    routes,
+    expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     teamRoster,
     activeClimb,
     reports: career.reports ?? [],
@@ -547,12 +564,25 @@ export function migrateCareerV3(career: any, world: WorldState): CareerState {
 }
 
 export function migrateCareerV4(career: any, world: WorldState): CareerState {
+  const routes = makeRoutes(world);
   const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
   return {
     ...career,
-    schemaVersion: 5,
+    schemaVersion: 6,
+    routes,
+    expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     teamRoster,
     livingWorld: career.livingWorld ?? createLivingWorld(world, teamRoster, career.club),
+  } as CareerState;
+}
+
+export function migrateCareerV5(career: any, world: WorldState): CareerState {
+  const routes = makeRoutes(world);
+  return {
+    ...career,
+    schemaVersion: 6,
+    routes,
+    expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
   } as CareerState;
 }
 
@@ -604,6 +634,17 @@ export function selectRoute(career: CareerState, routeId: string): CareerState {
   return updateExpeditionPlan(career, { routeId });
 }
 
+export function routesForMountain(career: CareerState, mountainId: string) {
+  return career.routes.filter(route => route.mountainId === mountainId);
+}
+
+export function selectMountain(career: CareerState, mountainId: string): CareerState {
+  const routes = routesForMountain(career, mountainId);
+  if (!routes.length) return career;
+  const recommended = [...routes].sort((a, b) => (a.objectiveRisk + a.technicality) - (b.objectiveRisk + b.technicality))[0]!;
+  return updateExpeditionPlan(career, { routeId: recommended.id });
+}
+
 export function selectWeatherWindow(career: CareerState, weatherWindowId: string): CareerState {
   if (!career.weatherWindows.some(item => item.id === weatherWindowId)) return career;
   return updateExpeditionPlan(career, { weatherWindowId });
@@ -625,6 +666,25 @@ export function setGearQuantity(career: CareerState, gearId: string, quantity: n
   if (!definition) return career;
   const value = clamp(Math.round(quantity), 0, definition.maxQuantity);
   return updateExpeditionPlan(career, { gear: { ...career.expeditionPlan.gear, [gearId]: value } });
+}
+
+export function applyEquipmentPreset(career: CareerState, preset: 'MINIMUM' | 'RECOMMENDED'): CareerState {
+  const route = getSelectedRoute(career);
+  const gear: Record<string, number> = {};
+  for (const item of GEAR_CATALOG) gear[item.id] = route.requiredGearIds.includes(item.id) ? 1 : 0;
+  if (preset === 'RECOMMENDED') {
+    gear.rope = Math.max(1, gear.rope ?? 0);
+    gear.stove = Math.max(1, gear.stove ?? 0);
+    gear.medkit = Math.max(1, gear.medkit ?? 0);
+    gear.bivy = Math.max(1, gear.bivy ?? 0);
+    if (route.estimatedHours >= 16) gear.tent = Math.max(1, gear.tent ?? 0);
+  }
+  return updateExpeditionPlan(career, {
+    gear,
+    foodDays: preset === 'RECOMMENDED' ? Math.max(3, Math.ceil(route.estimatedHours / 24) + 2) : 2,
+    fuelUnits: preset === 'RECOMMENDED' ? 3 : 2,
+    ropeMeters: route.technicality >= 58 ? 70 : 50,
+  });
 }
 
 export function getSelectedRoute(career: CareerState) {

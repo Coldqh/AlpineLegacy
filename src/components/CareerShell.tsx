@@ -12,45 +12,54 @@ type Props = {
   children: ReactNode;
 };
 
-const tabs: Array<{ id: CareerTabId; index: string; label: string; short: string }> = [
-  { id: 'OVERVIEW', index: '01', label: 'Штаб', short: 'Ш' },
-  { id: 'WORLD', index: '02', label: 'Мир', short: 'М' },
-  { id: 'NEWS', index: '03', label: 'Новости', short: 'Н' },
-  { id: 'RIVALS', index: '04', label: 'Соперники', short: 'С' },
-  { id: 'RECORDS', index: '05', label: 'Рекорды', short: 'Р' },
-  { id: 'ROUTE', index: '06', label: 'Маршрут', short: 'М' },
-  { id: 'TEAM', index: '07', label: 'Команда', short: 'К' },
-  { id: 'PEOPLE', index: '08', label: 'Люди', short: 'Л' },
-  { id: 'EQUIPMENT', index: '09', label: 'Снаряжение', short: 'С' },
-  { id: 'EXPEDITION', index: '10', label: 'Экспедиция', short: 'Э' },
-  { id: 'CLIMB', index: '11', label: 'Восхождение', short: 'В' },
-  { id: 'JOURNAL', index: '12', label: 'Журнал', short: 'Ж' },
+type PrimaryTab = {
+  id: CareerTabId;
+  label: string;
+  short: string;
+  description: string;
+  children?: CareerTabId[];
+};
+
+const tabs: PrimaryTab[] = [
+  { id: 'OVERVIEW', label: 'Штаб', short: 'Ш', description: 'Состояние и действия' },
+  { id: 'ROUTE', label: 'Цель', short: 'Ц', description: 'Гора и маршрут' },
+  { id: 'EXPEDITION', label: 'Подготовка', short: 'П', description: 'Люди, груз, выход', children: ['TEAM', 'PEOPLE', 'EQUIPMENT', 'EXPEDITION'] },
+  { id: 'CLIMB', label: 'Восхождение', short: 'В', description: 'Маршрут в реальном времени' },
+  { id: 'WORLD', label: 'Мир', short: 'М', description: 'Новости и соперники', children: ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'] },
+  { id: 'JOURNAL', label: 'Архив', short: 'А', description: 'История карьеры' },
 ];
+
+function isPrimaryActive(tab: PrimaryTab, activeTab: CareerTabId) {
+  return tab.id === activeTab || tab.children?.includes(activeTab);
+}
 
 export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, children }: Props) {
   const initials = career.hero.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
+  const current = tabs.find(tab => isPrimaryActive(tab, activeTab)) ?? tabs[0]!;
+
   return (
     <main className="career-shell">
       <aside className="career-sidebar">
         <button className="career-sidebar__brand" onClick={onExit} aria-label="В главное меню">
           <span>AL</span>
-          <small>0.5</small>
+          <small>0.5.1</small>
         </button>
 
-        <nav className="career-sidebar__nav" aria-label="Разделы карьеры">
-          {tabs.map(tab => {
+        <nav className="career-sidebar__nav" aria-label="Главные разделы карьеры">
+          {tabs.map((tab, index) => {
             const disabled = tab.id === 'CLIMB' && !career.activeClimb;
+            const active = isPrimaryActive(tab, activeTab);
             return (
               <button
                 key={tab.id}
-                className={activeTab === tab.id ? 'is-active' : ''}
+                className={active ? 'is-active' : ''}
                 disabled={disabled}
-                onClick={() => onTab(tab.id)}
-                title={tab.label}
+                onClick={() => onTab(tab.id === 'EXPEDITION' ? 'TEAM' : tab.id)}
+                title={`${tab.label}: ${tab.description}`}
               >
                 <span className="career-sidebar__short">{tab.short}</span>
-                <span className="career-sidebar__index">{tab.index}</span>
-                <strong>{tab.label}</strong>
+                <span className="career-sidebar__index">{String(index + 1).padStart(2, '0')}</span>
+                <span className="career-sidebar__copy"><strong>{tab.label}</strong><small>{tab.description}</small></span>
                 {tab.id === 'CLIMB' && career.activeClimb && <i />}
               </button>
             );
@@ -65,14 +74,14 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
 
       <section className="career-workspace">
         <header className="career-topbar">
-          <div>
-            <small>{world.region.name}</small>
+          <div className="career-topbar__place">
+            <small>{current.label} · {world.region.name}</small>
             <strong>{formatSeasonDate(career.year, career.seasonDay)}</strong>
           </div>
           <div className="career-topbar__status">
-            <span>ФОРМА <b>{Math.round(career.hero.form)}</b></span>
-            <span>УСТАЛОСТЬ <b>{Math.round(career.hero.fatigue)}</b></span>
-            <span>СРЕДСТВА <b>{career.hero.money} кр.</b></span>
+            <span>Форма <b>{Math.round(career.hero.form)}</b></span>
+            <span>Усталость <b>{Math.round(career.hero.fatigue)}</b></span>
+            <span>Средства <b>{career.hero.money} кр.</b></span>
           </div>
           <button onClick={() => window.print()} aria-label="Печать">⎙</button>
         </header>

@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.5.1 — UX Clarity & Mountain Selection
+
+### Added
+
+- full mountain selection across every generated summit;
+- three route archetypes generated for each mountain;
+- guided expedition flow: objective, team, equipment, final review;
+- six primary navigation sections instead of twelve equal sidebar entries;
+- secondary navigation for preparation and living-world screens;
+- explicit training outcomes before committing time and money;
+- mandatory and recommended equipment presets;
+- clickable readiness breakdown and blocker repair actions;
+- weather and acclimatization controls moved into the final expedition review;
+- field-condition signal during an active climb;
+- collapsible team orders to reduce climb-screen overload;
+- save schema v6 and migration from v5.
+
+### Changed
+
+- increased operational text sizes across career and world workspaces;
+- reduced card density and moved route segments behind progressive disclosure;
+- preparation screens now finish with one obvious next-step action;
+- mobile navigation reduced to six stable destinations;
+- headquarters now states the current priority and explains training effects;
+- old v0.5 objectives are mapped to the same mountain after migration.
+
+### Fixed
+
+- the player was locked to one qualification mountain;
+- duplicate calendar identifier for the first rock camp;
+- microscopic labels in several world, rival, record and climb panels;
+- unclear meaning of readiness scores, equipment choices and preparation actions.
+
+### Validation
+
+- 19 deterministic unit, migration and balance tests;
+- TypeScript strict build;
+- Vite production build;
+- public npm registry lockfile.
+
 ## 0.5.0 — Living World & Rivals
 
 ### Added
