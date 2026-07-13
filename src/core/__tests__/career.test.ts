@@ -11,6 +11,8 @@ import {
   startPlannedClimb,
   selectMountain,
   getSelectedRoute,
+  previewClimbAction,
+  preparationInsights,
 } from '../career';
 import { generateWorld } from '../generator';
 import type { CareerDraft, CareerState, WorldSeedConfig } from '../types';
@@ -45,7 +47,7 @@ describe('career and expedition module', () => {
     const world = generateWorld(config);
     const career = createCareer(world, draft);
     expect(career.worldId).toBe(world.id);
-    expect(career.schemaVersion).toBe(6);
+    expect(career.schemaVersion).toBe(7);
     expect(career.routes).toHaveLength(world.region.mountains.length * 3);
     expect(career.teamRoster.length).toBeGreaterThanOrEqual(5);
     expect(career.weatherWindows).toHaveLength(3);
@@ -105,6 +107,25 @@ describe('career and expedition module', () => {
     const career = advanceExpedition(startPlannedClimb(createCareer(world, draft)));
     expect(career.activeClimb?.phase).toBe('COMPLETE');
     expect(career.completedClimbs).toBe(1);
+  });
+
+
+  it('previews time, resource cost and risk before a climb action', () => {
+    const world = generateWorld(config);
+    const career = startPlannedClimb(createCareer(world, draft));
+    const cautious = previewClimbAction(career, 'CAUTIOUS')!;
+    const fast = previewClimbAction(career, 'FAST')!;
+    expect(cautious.durationMinutes).toBeGreaterThan(fast.durationMinutes);
+    expect(cautious.incidentRisk).toBeLessThan(fast.incidentRisk);
+    expect(fast.energyCost).toBeGreaterThan(cautious.energyCost);
+  });
+
+  it('explains the selected mountain character in preparation', () => {
+    const world = generateWorld(config);
+    const career = createCareer(world, draft);
+    const insights = preparationInsights(career);
+    expect(insights.length).toBeGreaterThanOrEqual(3);
+    expect(insights[0]?.title).toContain('гора');
   });
 
   it('creates people with personality, relationships and memory', () => {

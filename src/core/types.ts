@@ -26,6 +26,7 @@ export type ClimbOrderId = 'SLOW_DOWN' | 'PRESS_ON' | 'TURN_BACK_WEAKEST' | 'ASS
 export type WorldAthleteStatus = 'ACTIVE' | 'INJURED' | 'RETIRED' | 'DEAD' | 'MISSING';
 export type WorldEventType = 'EXPEDITION' | 'SUMMIT' | 'RETREAT' | 'RECORD' | 'INJURY' | 'DEATH' | 'RETIREMENT' | 'CLUB' | 'RIVALRY';
 export type WorldExpeditionOutcome = 'SUMMIT' | 'RETREAT' | 'FAILED' | 'TRAGEDY';
+export type MountainCharacterId = 'WEATHER' | 'TECHNICAL' | 'ENDURANCE' | 'ALTITUDE' | 'DESCENT';
 
 export interface WorldSeedConfig {
   seed: string;
@@ -52,6 +53,9 @@ export interface MountainData {
   climateBand: string;
   massifType: string;
   dangerProfile: string;
+  characterId: MountainCharacterId;
+  characterTitle: string;
+  characterDescription: string;
   status: string;
   summary: string;
   profilePoints: ProfilePoint[];
@@ -160,6 +164,7 @@ export interface ExpeditionRoute {
   id: string;
   mountainId: string;
   mountainName: string;
+  mountainCharacterId: MountainCharacterId;
   name: string;
   style: string;
   summary: string;
@@ -486,7 +491,7 @@ export interface LivingWorldState {
 }
 
 export interface CareerState {
-  schemaVersion: 6;
+  schemaVersion: 7;
   id: string;
   worldId: string;
   createdAt: string;
@@ -513,6 +518,24 @@ export interface CareerDraft {
   name: string;
   age: number;
   originId: OriginId;
+}
+
+
+export interface ClimbActionPreview {
+  pace: ClimbPace;
+  durationMinutes: number;
+  energyCost: number;
+  incidentRisk: number;
+  foodCost: number;
+  waterCost: number;
+  riskLabel: 'НИЗКИЙ' | 'СРЕДНИЙ' | 'ВЫСОКИЙ' | 'КРИТИЧЕСКИЙ';
+  summary: string;
+}
+
+export interface PreparationInsight {
+  tone: 'GOOD' | 'WARNING' | 'DANGER';
+  title: string;
+  detail: string;
 }
 
 export interface ClimbStepResult {

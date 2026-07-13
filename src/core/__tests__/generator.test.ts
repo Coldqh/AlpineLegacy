@@ -39,6 +39,14 @@ describe('world generator', () => {
     expect(geography(pioneer)).toEqual(geography(modern));
   });
 
+
+  it('gives mountains distinct gameplay characters', () => {
+    const world = generateWorld(config);
+    const characters = new Set(world.region.mountains.map(mountain => mountain.characterId));
+    expect(characters.size).toBeGreaterThanOrEqual(4);
+    expect(world.region.mountains.every(mountain => mountain.characterTitle.length > 0)).toBe(true);
+  });
+
   it('does not generate mountain history after the career start year', () => {
     const world = generateWorld({ ...config, eraId: 'PIONEER', startYear: 1888 });
     const years = world.region.mountains.flatMap(mountain => mountain.history.map(line => Number(line.slice(0, 4))));

@@ -6,6 +6,8 @@ import type {
   CareerDraft,
   CareerLogEntry,
   CareerState,
+  ClimbActionPreview,
+  PreparationInsight,
   ClimbOrderId,
   ClimbPace,
   ClimbStepResult,
@@ -278,26 +280,29 @@ function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['m
   const actualGain = mountain.elevation - startElevation;
   const baseDifficulty = mountain.technicality * .48 + mountain.altitudeSeverity * .32 + mountain.remoteness * .16 + eraPenalty;
   const baseRisk = mountain.altitudeSeverity * .36 + mountain.remoteness * .22 + mountain.technicality * .24;
+  const characterTech = mountain.characterId === 'TECHNICAL' ? 9 : 0;
+  const characterRisk = mountain.characterId === 'WEATHER' ? 8 : mountain.characterId === 'DESCENT' ? 6 : 0;
+  const characterHours = mountain.characterId === 'ENDURANCE' ? 1.18 : 1;
   const slug = mountain.id.replace(/[^a-zA-Z0-9-]/g, '-');
 
   const ridgeGain = splitGain(actualGain, [.12, .18, .22, .21, .27]);
   const glacierGain = splitGain(actualGain, [.1, .16, .18, .19, .17, .2]);
   const faceGain = splitGain(actualGain, [.08, .17, .25, .24, .26]);
 
-  const ridgeTech = clamp(Math.round(18 + baseDifficulty * .62), 28, 82);
-  const glacierTech = clamp(Math.round(15 + baseDifficulty * .56), 25, 78);
-  const faceTech = clamp(Math.round(28 + baseDifficulty * .76), 40, 94);
-  const ridgeRisk = clamp(Math.round(16 + baseRisk * .55), 24, 82);
-  const glacierRisk = clamp(Math.round(22 + baseRisk * .66), 30, 88);
-  const faceRisk = clamp(Math.round(30 + baseRisk * .76), 42, 96);
+  const ridgeTech = clamp(Math.round(18 + baseDifficulty * .62 + characterTech), 28, 92);
+  const glacierTech = clamp(Math.round(15 + baseDifficulty * .56 + characterTech), 25, 90);
+  const faceTech = clamp(Math.round(28 + baseDifficulty * .76 + characterTech), 40, 98);
+  const ridgeRisk = clamp(Math.round(16 + baseRisk * .55 + characterRisk), 24, 92);
+  const glacierRisk = clamp(Math.round(22 + baseRisk * .66 + characterRisk), 30, 96);
+  const faceRisk = clamp(Math.round(30 + baseRisk * .76 + characterRisk), 42, 99);
   const altitudeHours = actualGain / 165 + mountain.altitudeSeverity / 10 + mountain.remoteness / 18;
 
   return [
     {
-      id: `${slug}-south-ridge`, mountainId: mountain.id, mountainName: mountain.name, name: 'Южный гребень',
+      id: `${slug}-south-ridge`, mountainId: mountain.id, mountainName: mountain.name, mountainCharacterId: mountain.characterId, name: 'Южный гребень',
       style: 'Классический смешанный маршрут',
       summary: 'Самая читаемая линия массива. Длинный набор, смешанный рельеф и несколько мест, где можно остановить попытку до серьёзной аварии.',
-      startElevation, summitElevation: mountain.elevation, estimatedHours: Math.round(8 + altitudeHours), technicality: ridgeTech,
+      startElevation, summitElevation: mountain.elevation, estimatedHours: Math.round((8 + altitudeHours) * characterHours), technicality: ridgeTech,
       objectiveRisk: ridgeRisk, recommendedTeamSize: mountain.elevation > 6200 ? 4 : 3,
       requiredGearIds: ['rope', 'rock-kit', 'ice-kit', 'stove', 'medkit'],
       segments: [
@@ -309,11 +314,11 @@ function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['m
       ],
     },
     {
-      id: `${slug}-east-glacier`, mountainId: mountain.id, mountainName: mountain.name, name: 'Восточный ледник',
+      id: `${slug}-east-glacier`, mountainId: mountain.id, mountainName: mountain.name, mountainCharacterId: mountain.characterId, name: 'Восточный ледник',
       style: 'Длинная ледниковая линия',
       summary: 'Меньше сложного лазания, больше времени на высоте, закрытых трещин и зависимости от холодного утреннего окна.',
       startElevation: Math.max(world.region.elevationMin + 50, startElevation - 70), summitElevation: mountain.elevation,
-      estimatedHours: Math.round(11 + altitudeHours * 1.14), technicality: glacierTech, objectiveRisk: glacierRisk,
+      estimatedHours: Math.round((11 + altitudeHours * 1.14) * characterHours), technicality: glacierTech, objectiveRisk: glacierRisk,
       recommendedTeamSize: mountain.elevation > 5600 ? 4 : 3,
       requiredGearIds: ['rope', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'],
       segments: [
@@ -326,11 +331,11 @@ function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['m
       ],
     },
     {
-      id: `${slug}-north-line`, mountainId: mountain.id, mountainName: mountain.name, name: 'Северная линия',
+      id: `${slug}-north-line`, mountainId: mountain.id, mountainName: mountain.name, mountainCharacterId: mountain.characterId, name: 'Северная линия',
       style: 'Прямая техническая линия',
       summary: 'Короткая по расстоянию, но жёсткая по технике. Высокая открытость, мало мест для отдыха и тяжёлый отход после ключевой стены.',
       startElevation: Math.max(world.region.elevationMin + 100, startElevation + 40), summitElevation: mountain.elevation,
-      estimatedHours: Math.round(7 + altitudeHours * .92), technicality: faceTech, objectiveRisk: faceRisk,
+      estimatedHours: Math.round((7 + altitudeHours * .92) * characterHours), technicality: faceTech, objectiveRisk: faceRisk,
       recommendedTeamSize: mountain.elevation > 6500 ? 4 : 3,
       requiredGearIds: ['rope', 'rock-kit', 'ice-kit', 'medkit', 'bivy'],
       segments: [
@@ -471,7 +476,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = makeTeam(world, club);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 6,
+    schemaVersion: 7,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     createdAt: new Date().toISOString(),
@@ -528,7 +533,7 @@ export function migrateCareerV2(career: any, world: WorldState): CareerState {
   const weatherWindows = makeWeatherWindows(world);
   return {
     ...career,
-    schemaVersion: 6,
+    schemaVersion: 7,
     activeClimb: null,
     routes,
     teamRoster,
@@ -552,7 +557,7 @@ export function migrateCareerV3(career: any, world: WorldState): CareerState {
   } : null;
   return {
     ...career,
-    schemaVersion: 6,
+    schemaVersion: 7,
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     teamRoster,
@@ -568,7 +573,7 @@ export function migrateCareerV4(career: any, world: WorldState): CareerState {
   const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
   return {
     ...career,
-    schemaVersion: 6,
+    schemaVersion: 7,
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     teamRoster,
@@ -580,7 +585,17 @@ export function migrateCareerV5(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   return {
     ...career,
-    schemaVersion: 6,
+    schemaVersion: 7,
+    routes,
+    expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
+  } as CareerState;
+}
+
+export function migrateCareerV6(career: any, world: WorldState): CareerState {
+  const routes = makeRoutes(world);
+  return {
+    ...career,
+    schemaVersion: 7,
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
   } as CareerState;
@@ -735,6 +750,31 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   return { total: clamp(total, 0, 100), hero: heroBase, routeFit, team: teamScore, equipment, weather: weatherScore, acclimatization, blockers };
 }
 
+export function preparationInsights(career: CareerState): PreparationInsight[] {
+  const route = getSelectedRoute(career);
+  const weather = getSelectedWeather(career);
+  const readiness = expeditionReadiness(career);
+  const weight = expeditionWeight(career);
+  const insights: PreparationInsight[] = [];
+
+  const characterInsight: Record<ExpeditionRoute['mountainCharacterId'], PreparationInsight> = {
+    WEATHER: { tone: weather.stability >= 68 ? 'GOOD' : 'WARNING', title: 'Эта гора решается временем выхода', detail: `Стабильность выбранного окна ${weather.stability}/100. На этой вершине ожидание и ранний старт важнее лишнего участника.` },
+    TECHNICAL: { tone: readiness.routeFit >= 62 ? 'GOOD' : 'DANGER', title: 'Эта гора проверяет технику', detail: `Соответствие маршруту ${readiness.routeFit}/100. Слабые скальные или ледовые навыки резко увеличат задержки на ключевых участках.` },
+    ENDURANCE: { tone: career.expeditionPlan.foodDays >= 3 && weight <= 17 ? 'GOOD' : 'WARNING', title: 'Эта гора забирает время и запасы', detail: `Запас еды: ${career.expeditionPlan.foodDays} дн., груз: ${weight.toFixed(1)} кг/чел. Длинный день без лагеря быстро съест резерв.` },
+    ALTITUDE: { tone: career.expeditionPlan.acclimatizationDays >= 4 ? 'GOOD' : 'DANGER', title: 'Эта гора проверяет высоту', detail: `Акклиматизация: ${career.expeditionPlan.acclimatizationDays} дн. Ниже 4 дней расход сил выше даже на простом рельефе.` },
+    DESCENT: { tone: (career.expeditionPlan.gear.bivy ?? 0) > 0 && career.expeditionPlan.ropeMeters >= 60 ? 'GOOD' : 'WARNING', title: 'Главная опасность начнётся после вершины', detail: 'Запас верёвки и аварийное укрытие снижают цену медленного спуска. Не планируй выход на нулевом остатке сил.' },
+  };
+  insights.push(characterInsight[route.mountainCharacterId]);
+
+  if (weight > 18) insights.push({ tone: 'DANGER', title: 'Группа перегружена', detail: `При ${weight.toFixed(1)} кг на человека каждый участок потребует больше сил. Убери лишнее или расширь состав.` });
+  else if (weight > 15.5) insights.push({ tone: 'WARNING', title: 'Груз замедлит группу', detail: `${weight.toFixed(1)} кг на человека — рабочая, но тяжёлая загрузка. Быстрый темп станет опаснее.` });
+  else insights.push({ tone: 'GOOD', title: 'Вес распределён нормально', detail: `${weight.toFixed(1)} кг на человека не создаёт отдельного штрафа к темпу.` });
+
+  if (readiness.blockers.length) insights.push({ tone: 'DANGER', title: 'Выход пока запрещён', detail: readiness.blockers[0]! });
+  else insights.push({ tone: 'GOOD', title: 'Критических ошибок в плане нет', detail: 'Оставшийся риск связан с горой и решениями на маршруте, а не с пропущенным обязательным пунктом.' });
+  return insights;
+}
+
 function packWeight(career: CareerState) {
   return expeditionWeight(career);
 }
@@ -818,6 +858,54 @@ function paceData(pace: ClimbPace) {
   return { time: 1, energy: 1, risk: 0, label: 'ровным темпом' };
 }
 
+function mountainActionMultipliers(route: ExpeditionRoute, phase: QualificationClimb['phase']) {
+  return {
+    duration: route.mountainCharacterId === 'ENDURANCE' ? 1.18 : route.mountainCharacterId === 'DESCENT' && phase === 'DESCENT' ? 1.12 : 1,
+    energy: route.mountainCharacterId === 'ALTITUDE' ? 1.2 : 1,
+    risk: route.mountainCharacterId === 'WEATHER' ? .045 : route.mountainCharacterId === 'TECHNICAL' ? .035 : route.mountainCharacterId === 'DESCENT' && phase === 'DESCENT' ? .07 : 0,
+  };
+}
+
+function calculateClimbAction(career: CareerState, pace: ClimbPace) {
+  const climb = career.activeClimb;
+  if (!climb || !['ASCENT', 'DESCENT'].includes(climb.phase)) return null;
+  const route = career.routes.find(item => item.id === climb.routeId) ?? getSelectedRoute(career);
+  const segment = climb.route[climb.segmentIndex]!;
+  const paceMod = paceData(pace);
+  const skill = career.hero.skills[segment.skill];
+  const descentPenalty = climb.phase === 'DESCENT' ? 7 : 0;
+  const fatiguePenalty = (100 - climb.energy) * .13 + career.hero.fatigue * .08 + climb.hoursAwake * .45;
+  const weatherPenalty = Math.max(0, climb.windKmh - 24) * .24 + Math.max(0, 65 - climb.visibility) * .15;
+  const teamSupport = Math.max(0, climb.teamCondition - 70) * .12 + climb.teamMemberIds.length * 1.8;
+  const packPenalty = Math.max(0, climb.packWeightKg - 13) * .7;
+  const ability = skill * 10 + career.hero.form * .28 + climb.energy * .16 + teamSupport - fatiguePenalty - weatherPenalty - packPenalty;
+  const target = segment.difficulty + descentPenalty + segment.exposure * .08;
+  const mountain = mountainActionMultipliers(route, climb.phase);
+  let incidentChance = clamp(.02 + Math.max(0, target - ability) * .011 + paceMod.risk + mountain.risk, .01, .78);
+  if (climb.supplies.waterUnits <= 0) incidentChance += .08;
+  if (climb.supplies.foodUnits <= 0) incidentChance += .06;
+  const durationMinutes = Math.round(segment.baseDurationMinutes * paceMod.time * (climb.phase === 'DESCENT' ? .84 : 1) * mountain.duration);
+  const energyCost = Math.round((4 + segment.difficulty * .078 + segment.exposure * .018 + climb.hoursAwake * .08) * paceMod.energy * (climb.phase === 'DESCENT' ? .8 : 1) * mountain.energy);
+  const teamSize = climb.teamMemberIds.length + 1;
+  const hours = durationMinutes / 60;
+  const foodCost = Math.max(1, Math.ceil(hours / 5)) * Math.max(1, Math.ceil(teamSize / 2));
+  const waterCost = Math.max(1, Math.ceil(hours / 4)) * Math.max(1, Math.ceil(teamSize / 3));
+  return { route, segment, paceMod, incidentChance: clamp(incidentChance, .01, .9), durationMinutes, energyCost, foodCost, waterCost };
+}
+
+export function previewClimbAction(career: CareerState, pace: ClimbPace): ClimbActionPreview | null {
+  const value = calculateClimbAction(career, pace);
+  if (!value) return null;
+  const risk = Math.round(value.incidentChance * 100);
+  const riskLabel: ClimbActionPreview['riskLabel'] = risk < 10 ? 'НИЗКИЙ' : risk < 23 ? 'СРЕДНИЙ' : risk < 42 ? 'ВЫСОКИЙ' : 'КРИТИЧЕСКИЙ';
+  const summary = pace === 'CAUTIOUS'
+    ? 'Меньше шанс ошибки, но больше времени под погодой.'
+    : pace === 'FAST'
+      ? 'Быстрее покинешь участок, но сильнее устанешь и дороже заплатишь за ошибку.'
+      : 'Ровный компромисс без дополнительной защиты и без форсирования.';
+  return { pace, durationMinutes: value.durationMinutes, energyCost: value.energyCost, incidentRisk: risk, foodCost: value.foodCost, waterCost: value.waterCost, riskLabel, summary };
+}
+
 function clock(minutes: number) {
   const start = 5 * 60 + 10;
   const value = start + minutes;
@@ -829,11 +917,13 @@ function clock(minutes: number) {
 
 function evolveWeather(career: CareerState, climb: QualificationClimb, elapsedDelta: number) {
   const rng = createRng(`${career.id}:${climb.id}:weather:${climb.weatherStep}:${Math.floor((climb.elapsedMinutes + elapsedDelta) / 90)}`);
+  const route = career.routes.find(item => item.id === climb.routeId) ?? getSelectedRoute(career);
+  const volatile = route.mountainCharacterId === 'WEATHER';
   const phase = Math.floor((climb.elapsedMinutes + elapsedDelta) / 240);
-  const frontPush = phase > 3 ? (phase - 3) * 2 : 0;
-  const temperatureC = clamp(climb.temperatureC + rng.int(-2, 2), -34, 6);
-  const windKmh = clamp(climb.windKmh + rng.int(-5, 8) + frontPush, 4, 88);
-  const visibility = clamp(climb.visibility + rng.int(-13, 9) - Math.max(0, frontPush - 4), 12, 100);
+  const frontPush = phase > 3 ? (phase - 3) * (volatile ? 3 : 2) : 0;
+  const temperatureC = clamp(climb.temperatureC + rng.int(volatile ? -4 : -2, volatile ? 3 : 2), -36, 8);
+  const windKmh = clamp(climb.windKmh + rng.int(volatile ? -8 : -5, volatile ? 14 : 8) + frontPush, 4, 96);
+  const visibility = clamp(climb.visibility + rng.int(volatile ? -20 : -13, volatile ? 13 : 9) - Math.max(0, frontPush - 4), 8, 100);
   return {
     temperatureC,
     windKmh,
@@ -1116,25 +1206,16 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
     return { career, headline: 'Действие недоступно', detail: 'Группа сейчас не движется по маршруту.', severity: 'WARNING' };
   }
 
-  const segment = climb.route[climb.segmentIndex]!;
+  const forecast = calculateClimbAction(career, pace)!;
+  const segment = forecast.segment;
   const direction = climb.phase === 'ASCENT' ? 1 : -1;
-  const paceMod = paceData(pace);
+  const paceMod = forecast.paceMod;
   const hero = career.hero;
-  const skill = hero.skills[segment.skill];
-  const descentPenalty = climb.phase === 'DESCENT' ? 7 : 0;
-  const fatiguePenalty = (100 - climb.energy) * .13 + hero.fatigue * .08 + climb.hoursAwake * .45;
-  const weatherPenalty = Math.max(0, climb.windKmh - 24) * .24 + Math.max(0, 65 - climb.visibility) * .15;
-  const teamSupport = Math.max(0, climb.teamCondition - 70) * .12 + climb.teamMemberIds.length * 1.8;
-  const packPenalty = Math.max(0, climb.packWeightKg - 13) * .7;
-  const ability = skill * 10 + hero.form * .28 + climb.energy * .16 + teamSupport - fatiguePenalty - weatherPenalty - packPenalty;
-  const target = segment.difficulty + descentPenalty + segment.exposure * .08;
-  let incidentChance = clamp(.02 + Math.max(0, target - ability) * .011 + paceMod.risk, .01, .67);
-  if (climb.supplies.waterUnits <= 0) incidentChance += .08;
-  if (climb.supplies.foodUnits <= 0) incidentChance += .06;
+  let incidentChance = forecast.incidentChance;
   const rng = createRng(`${career.id}:${climb.id}:${climb.phase}:${climb.moveCount}:${pace}`);
 
-  let duration = Math.round(segment.baseDurationMinutes * paceMod.time * (climb.phase === 'DESCENT' ? .84 : 1));
-  let energyCost = Math.round((4 + segment.difficulty * .078 + segment.exposure * .018 + climb.hoursAwake * .08) * paceMod.energy * (climb.phase === 'DESCENT' ? .8 : 1));
+  let duration = forecast.durationMinutes;
+  let energyCost = forecast.energyCost;
   let conditionLoss = 0;
   let teamLoss = rng.int(0, 2);
   let headline = `${segment.name} пройден`;

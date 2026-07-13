@@ -1,4 +1,5 @@
 import { CareerShell } from '../components/CareerShell';
+import { CareerFlowGuide } from '../components/CareerFlowGuide';
 import {
   applyEquipmentPreset,
   beginDescent,
@@ -151,6 +152,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   return (
     <CareerShell world={world} career={career} activeTab={activeTab} onTab={onTab} onExit={onExit} onAtlas={onAtlas}>
       <WorkspaceSubnav activeTab={activeTab} onTab={onTab} />
+      <CareerFlowGuide career={career} activeTab={activeTab} onTab={onTab} />
       {renderTab()}
     </CareerShell>
   );

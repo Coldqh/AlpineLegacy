@@ -53,7 +53,7 @@ export function RoutePlanningScreen({ world, career, onSelectMountain, onSelectR
             return (
               <button key={item.id} className={active ? 'is-active' : ''} onClick={() => onSelectMountain(item.id)}>
                 <span className="mountain-choice-grid__index">{String(index + 1).padStart(2, '0')}</span>
-                <div><small>{item.massifType}</small><h3>{item.name}</h3><p>{item.epithet}</p></div>
+                <div><small>{item.characterTitle}</small><h3>{item.name}</h3><p>{item.epithet}</p></div>
                 <strong>{item.elevation}<small>м</small></strong>
                 <footer><span>Техника {level(item.technicality)}</span><span>{history?.summits ? `${history.summits} восх.` : 'не покорена'}</span></footer>
               </button>
@@ -68,6 +68,7 @@ export function RoutePlanningScreen({ world, career, onSelectMountain, onSelectR
           <small>ВЫБРАННАЯ ВЕРШИНА</small>
           <strong>{mountain.name}</strong>
           <span>{mountain.elevation} м · {mountain.dangerProfile}</span>
+          <div className="mountain-character-callout"><small>{mountain.characterTitle}</small><p>{mountain.characterDescription}</p></div>
           <p>{mountain.summary}</p>
         </div>
       </div>
@@ -80,7 +81,7 @@ export function RoutePlanningScreen({ world, career, onSelectMountain, onSelectR
             return (
               <button key={item.id} className={active ? 'is-active' : ''} onClick={() => onSelectRoute(item.id)}>
                 <div><span>{String(index + 1).padStart(2, '0')}</span><i /></div>
-                <small>{item.style}</small>
+                <small>{mountain.characterTitle} · {item.style}</small>
                 <h3>{item.name}</h3>
                 <p>{item.summary}</p>
                 <dl>
