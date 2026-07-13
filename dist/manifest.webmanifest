@@ -1,0 +1,9 @@
+{
+  "name": "Alpine Legacy",
+  "short_name": "Alpine Legacy",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#eae7df",
+  "theme_color": "#1b2224",
+  "description": "Карьерная roguelike-RPG про альпинизм"
+}
