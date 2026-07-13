@@ -590,9 +590,11 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = makeTeam(world, club);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 8,
+    schemaVersion: 9,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
+    rootSeed: world.config.seed,
+    difficulty: world.config.difficulty,
     createdAt: new Date().toISOString(),
     year: world.config.startYear,
     seasonDay: 1,
@@ -626,6 +628,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     expeditionPlan: defaultPlan(routes, teamRoster, weatherWindows),
     reports: [],
     reputationProfile: { leadership: 8, reliability: 12, care: 10, ambition: 14 },
+    onboarding: { dismissed: false, completed: false },
     livingWorld: createLivingWorld(world, teamRoster, club),
   };
 
@@ -675,7 +678,10 @@ export function migrateCareerV2(career: any, world: WorldState): CareerState {
   const weatherWindows = makeWeatherWindows(world);
   return {
     ...career,
-    schemaVersion: 8,
+    schemaVersion: 9,
+    rootSeed: world.config.seed,
+    difficulty: world.config.difficulty,
+    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
     routes,
     teamRoster,
     weatherWindows,
@@ -692,7 +698,10 @@ export function migrateCareerV3(career: any, world: WorldState): CareerState {
   const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
   return {
     ...career,
-    schemaVersion: 8,
+    schemaVersion: 9,
+    rootSeed: world.config.seed,
+    difficulty: world.config.difficulty,
+    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     teamRoster,
@@ -708,7 +717,10 @@ export function migrateCareerV4(career: any, world: WorldState): CareerState {
   const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
   return {
     ...career,
-    schemaVersion: 8,
+    schemaVersion: 9,
+    rootSeed: world.config.seed,
+    difficulty: world.config.difficulty,
+    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
@@ -721,7 +733,10 @@ export function migrateCareerV5(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   return {
     ...career,
-    schemaVersion: 8,
+    schemaVersion: 9,
+    rootSeed: world.config.seed,
+    difficulty: world.config.difficulty,
+    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
@@ -732,7 +747,10 @@ export function migrateCareerV6(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   return {
     ...career,
-    schemaVersion: 8,
+    schemaVersion: 9,
+    rootSeed: world.config.seed,
+    difficulty: world.config.difficulty,
+    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
@@ -743,11 +761,32 @@ export function migrateCareerV7(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   return {
     ...career,
-    schemaVersion: 8,
+    schemaVersion: 9,
+    rootSeed: world.config.seed,
+    difficulty: world.config.difficulty,
+    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
   } as CareerState;
+}
+
+export function migrateCareerV8(career: any, world: WorldState): CareerState {
+  const routes = makeRoutes(world);
+  return {
+    ...career,
+    schemaVersion: 9,
+    rootSeed: career.rootSeed ?? world.config.seed,
+    difficulty: career.difficulty ?? world.config.difficulty,
+    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
+    routes,
+    expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
+    activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
+  } as CareerState;
+}
+
+export function dismissOnboarding(career: CareerState): CareerState {
+  return { ...career, onboarding: { ...career.onboarding, dismissed: true } };
 }
 
 export function careerReadiness(career: CareerState) {
@@ -1254,6 +1293,7 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     activeClimb: completed,
     teamRoster: roster,
     reports: [...career.reports, report],
+    onboarding: { ...career.onboarding, completed: true },
     reputationProfile: {
       leadership: clamp(career.reputationProfile.leadership + leadershipDelta),
       reliability: clamp(career.reputationProfile.reliability + reliabilityDelta),
@@ -1467,6 +1507,25 @@ export function issueClimbOrder(career: CareerState, order: ClimbOrderId): Climb
   return { career: { ...career, activeClimb: nextClimb, teamRoster }, headline, detail, severity };
 }
 
+function fieldTexture(segment: RouteSegment, climb: QualificationClimb, temperatureC: number, windKmh: number, visibility: number, pace: ClimbPace, rng: ReturnType<typeof createRng>) {
+  if (visibility <= 25) return rng.pick([
+    'Метки исчезают в белой пелене. Связка двигается по голосу и натяжению верёвки.',
+    'Передний участник видит только несколько метров склона. Ошибка линии сразу отнимает время.',
+  ]);
+  if (windKmh >= 55) return rng.pick([
+    'Порывы сбивают дыхание и заставляют людей останавливаться перед каждым открытым местом.',
+    'На гребне слышен только ветер. Команды передают жестами.',
+  ]);
+  if (temperatureC <= -22) return 'Пальцы быстро теряют чувствительность. Каждая операция со страховкой занимает больше времени.';
+  if (climb.supplies.waterUnits <= 3) return 'Фляги почти пусты. Люди экономят глотки и начинают двигаться суше.';
+  if (climb.hoursAwake >= 12) return 'Разговоров почти нет. Ошибки появляются в простых действиях: узлах, карабинах, порядке движения.';
+  if (segment.terrain.toLowerCase().includes('лед')) return 'Под кошками звенит жёсткий лёд. Каждая точка страховки проверяется дважды.';
+  if (segment.terrain.toLowerCase().includes('скал')) return 'Камень холодный и ломкий. Крупные блоки приходится проверять перед каждым движением.';
+  if (pace === 'FAST') return 'Темп высокий. Группа быстро выигрывает высоту, но паузы на проверку почти исчезли.';
+  if (pace === 'CAUTIOUS') return 'Связка идёт короткими отрезками и постоянно проверяет точки. Время уходит, контроль остаётся.';
+  return 'Движение ровное. Люди держат дистанцию и не тратят силы на лишние рывки.';
+}
+
 export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbStepResult {
   const climb = career.activeClimb;
   if (!climb || (climb.phase !== 'ASCENT' && climb.phase !== 'DESCENT')) {
@@ -1587,6 +1646,7 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
     detail = `${detail} ${teamEvolution.reveal}`;
     severity = severity === 'CALM' ? 'WARNING' : severity;
   }
+  detail = `${detail} ${fieldTexture(segment, climb, weather.temperatureC, weather.windKmh, weather.visibility, pace, rng)}`;
   const logLine = `${clock(elapsedMinutes)} — ${segment.name}: ${detail}${recoveredCacheNote}`;
   const injuries = newInjury ? [...climb.injuries, newInjury] : climb.injuries;
 

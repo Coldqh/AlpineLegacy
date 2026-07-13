@@ -2039,3 +2039,90 @@ button:disabled { cursor: not-allowed; }
   .route-decisions-disclosure article, .route-choice-debrief article { grid-template-columns: 1fr; }
   .route-decisions-disclosure article > span { text-align: left; max-width: none; }
 }
+
+/* ─────────────────────────────────────────────
+   PATCH 0.5.4 / PLAYTEST & HARDENING
+   ───────────────────────────────────────────── */
+
+.career-sidebar__copy small,
+.career-topbar small,
+.workspace-subnav small,
+.workspace-page small,
+.workspace-page dt { font-size: 12px; line-height: 1.4; }
+.workspace-page .eyebrow,
+.panel-heading > span { font-size: 11px; line-height: 1.4; }
+.save-toolkit > div:last-child { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.career-flow-guide__intro { justify-content: flex-start; }
+.career-flow-guide__intro span { line-height: 1.45; }
+.career-flow-guide__intro > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.career-flow-guide__intro > div button { border: 1px solid var(--line-strong); background: transparent; padding: 8px 10px; font-size: 11px; cursor: pointer; }
+.career-flow-guide__intro > div button:first-child { background: var(--ink); color: var(--paper); }
+
+.climb-briefing {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(90deg, rgba(87,116,129,.13), transparent 70%);
+  display: grid;
+  grid-template-columns: 180px 260px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+.climb-briefing span { font-size: 11px; letter-spacing: .13em; color: var(--blue); }
+.climb-briefing strong { font-family: var(--serif); font-size: 21px; font-weight: 500; }
+.climb-briefing p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
+
+.pace-options--preview > button.is-recommended { box-shadow: inset 0 0 0 2px #496f63; }
+.pace-options--preview > button.is-recommended header em { background: #496f63; color: #f1eee5; border-color: #496f63; }
+
+.difficulty-disclosure {
+  margin: 22px 0;
+  padding: 15px 18px;
+  border: 1px solid var(--line-strong);
+  display: grid;
+  grid-template-columns: minmax(260px, .75fr) 1fr;
+  gap: 22px;
+  align-items: start;
+}
+.difficulty-disclosure strong { font-family: var(--serif); font-size: 20px; font-weight: 500; }
+.difficulty-disclosure p { margin: 0; color: var(--muted); font-size: 13px; }
+.difficulty-disclosure.is-explorer { box-shadow: inset 4px 0 #496f63; }
+.difficulty-disclosure.is-climber { box-shadow: inset 4px 0 #8c754d; }
+.difficulty-disclosure.is-expedition { box-shadow: inset 4px 0 var(--red); }
+
+.report-playtest { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.report-playtest summary { cursor: pointer; font-weight: 700; font-size: 12px; }
+.report-playtest > div { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.report-playtest span { padding: 9px 10px; background: rgba(23,32,37,.045); font-size: 12px; line-height: 1.35; }
+.report-playtest span b { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 3px; }
+.report-playtest button { margin-top: 10px; border: 1px solid var(--line-strong); background: transparent; padding: 9px 12px; cursor: pointer; }
+
+/* Critical information gets a stable floor; secondary material stays collapsible. */
+.current-segment-card > p:not(.eyebrow),
+.field-signal p,
+.route-decision-panel button p,
+.pace-options--preview > button > p,
+.resource-warning,
+.team-orders--disclosure summary small,
+.team-orders--disclosure button small { font-size: 13px; }
+
+.route-progress-register { max-height: 420px; overflow: auto; scrollbar-width: thin; }
+.climb-resource-panel { position: sticky; top: 78px; align-self: start; }
+
+@media (max-width: 980px) {
+  .climb-briefing, .difficulty-disclosure { grid-template-columns: 1fr; gap: 7px; }
+  .report-playtest > div { grid-template-columns: 1fr 1fr; }
+  .climb-resource-panel { position: static; }
+}
+
+@media (max-width: 620px) {
+  .career-flow-guide__intro > div { display: grid; grid-template-columns: 1fr; }
+  .career-flow-guide__intro > div button { min-height: 42px; }
+  .climb-briefing { padding: 14px; }
+  .report-playtest > div, .save-toolkit > div:last-child { grid-template-columns: 1fr; }
+  .pace-options--preview > button { min-height: 0; }
+  .pace-options--preview dl { margin-top: 10px; }
+  .climb-instruments--workspace { grid-template-columns: 1fr 1fr; }
+  .climb-instruments--workspace > div { min-height: 72px; }
+}

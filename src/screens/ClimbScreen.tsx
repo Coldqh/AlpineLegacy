@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { RouteBlueprint } from '../components/RouteBlueprint';
 import { getCurrentRouteDecision, previewClimbAction, SKILL_LABELS } from '../core/career';
-import type { CareerState, ClimbActionPreview, ClimbOrderId, ClimbPace, ClimbStepResult } from '../core/types';
+import type { CareerState, ClimbActionPreview, ClimbOrderId, ClimbPace, ClimbStepResult, DifficultyId } from '../core/types';
 
 type Props = {
   career: CareerState;
+  difficulty: DifficultyId;
   onStep: (pace: ClimbPace) => ClimbStepResult;
   onCamp: () => ClimbStepResult;
   onMeltSnow: () => ClimbStepResult;
@@ -50,18 +51,40 @@ function resultReview(career: CareerState) {
   return { strengths, mistakes };
 }
 
-function PaceCard({ preview, primary, onClick }: { preview: ClimbActionPreview; primary?: boolean; onClick: () => void }) {
+function riskText(preview: ClimbActionPreview, difficulty: DifficultyId) {
+  if (difficulty === 'EXPLORER') return `${preview.incidentRisk}%`;
+  if (difficulty === 'CLIMBER') {
+    const low = Math.max(1, preview.incidentRisk - 4);
+    const high = Math.min(90, preview.incidentRisk + 5);
+    return `${low}–${high}%`;
+  }
+  return preview.riskLabel === 'НИЗКИЙ' ? 'контролируемый' : preview.riskLabel === 'СРЕДНИЙ' ? 'заметный' : preview.riskLabel === 'ВЫСОКИЙ' ? 'тяжёлый' : 'крайний';
+}
+
+function conditionText(value: number, difficulty: DifficultyId) {
+  if (difficulty === 'EXPLORER') return `${Math.round(value)}%`;
+  if (difficulty === 'CLIMBER') return `${Math.round(value / 5) * 5}%`;
+  return value >= 76 ? 'рабочая' : value >= 52 ? 'уставшая' : value >= 30 ? 'плохая' : 'критическая';
+}
+
+function visibilityText(value: number, difficulty: DifficultyId) {
+  if (difficulty === 'EXPLORER') return `${value}%`;
+  if (difficulty === 'CLIMBER') return `≈${Math.round(value / 10) * 10}%`;
+  return value >= 70 ? 'чисто' : value >= 40 ? 'ограничена' : value >= 20 ? 'плохая' : 'почти нулевая';
+}
+
+function PaceCard({ preview, primary, recommended, difficulty, onClick }: { preview: ClimbActionPreview; primary?: boolean; recommended?: boolean; difficulty: DifficultyId; onClick: () => void }) {
   return (
-    <button className={primary ? 'is-primary' : ''} onClick={onClick}>
-      <header><span>{preview.pace === 'CAUTIOUS' ? '01' : preview.pace === 'STEADY' ? '02' : '03'}</span><strong>{paceTitle(preview.pace)}</strong><em className={`risk-${preview.riskLabel.toLowerCase()}`}>{preview.riskLabel}</em></header>
+    <button className={`${primary ? 'is-primary' : ''} ${recommended ? 'is-recommended' : ''}`} onClick={onClick}>
+      <header><span>{preview.pace === 'CAUTIOUS' ? '01' : preview.pace === 'STEADY' ? '02' : '03'}</span><strong>{paceTitle(preview.pace)}</strong><em className={`risk-${preview.riskLabel.toLowerCase()}`}>{recommended ? 'СОВЕТ' : preview.riskLabel}</em></header>
       <p>{preview.summary}</p>
-      <dl><div><dt>Время</dt><dd>{durationLabel(preview.durationMinutes)}</dd></div><div><dt>Силы</dt><dd>−{preview.energyCost}%</dd></div><div><dt>Инцидент</dt><dd>{preview.incidentRisk}%</dd></div></dl>
-      <footer>Еда −{preview.foodCost} · вода −{preview.waterCost}</footer>
+      <dl><div><dt>Время</dt><dd>{durationLabel(preview.durationMinutes)}</dd></div><div><dt>Силы</dt><dd>−{preview.energyCost}%</dd></div><div><dt>Риск</dt><dd>{riskText(preview, difficulty)}</dd></div></dl>
+      <footer>Еда −{preview.foodCost} · вода −{preview.waterCost}{difficulty === 'EXPEDITION' ? ' · точность оценки ограничена' : ''}</footer>
     </button>
   );
 }
 
-export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onBeginDescent, onRetreat, onClose }: Props) {
+export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onBeginDescent, onRetreat, onClose }: Props) {
   const climb = career.activeClimb!;
   const [feedback, setFeedback] = useState<Pick<ClimbStepResult, 'headline' | 'detail' | 'severity'> | null>(null);
   const activeSegment = climb.route[Math.max(0, Math.min(climb.route.length - 1, climb.segmentIndex))]!;
@@ -69,6 +92,7 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
   const liveTeam = climb.teamStates.map(state => ({ state, member: career.teamRoster.find(member => member.id === state.memberId) })).filter(item => item.member);
   const currentDecision = getCurrentRouteDecision(career);
   const previews = useMemo(() => (['CAUTIOUS', 'STEADY', 'FAST'] as ClimbPace[]).map(pace => previewClimbAction(career, pace)).filter(Boolean) as ClimbActionPreview[], [career]);
+  const recommendedPace = difficulty === 'EXPLORER' ? [...previews].sort((a, b) => (a.incidentRisk + a.energyCost * .45 + a.durationMinutes / 180) - (b.incidentRisk + b.energyCost * .45 + b.durationMinutes / 180))[0]?.pace : null;
   const noReturn = climb.phase === 'ASCENT' && Boolean(activeSegment.noReturn || activeSegment.exposure >= 65);
   const clockMinutes = (5 * 60 + 10 + climb.elapsedMinutes) % 1440;
   const daylightMinutes = Math.max(0, 20 * 60 - clockMinutes);
@@ -132,7 +156,7 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
   return (
     <section className="workspace-page climb-page climb-page--embedded">
       <header className="workspace-title climb-workspace-title">
-        <div><p className="eyebrow">LIVE ROUTE / {climb.phase}</p><h1>{climb.mountainName}</h1><p>{climb.routeName} · {climb.routeStyle}</p></div>
+        <div><p className="eyebrow">LIVE ROUTE / {climb.phase} · {difficulty}</p><h1>{climb.mountainName}</h1><p>{climb.routeName} · {climb.routeStyle}</p></div>
         <div className="climb-phase-mark"><span>{climb.phase === 'ASCENT' ? '↑' : '↓'}</span><small>{climb.retreating ? 'ОТХОД' : climb.phase === 'ASCENT' ? 'ПОДЪЁМ' : 'СПУСК'}</small></div>
       </header>
 
@@ -140,11 +164,12 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
         <div><span>Высота</span><strong>{climb.currentElevation} м</strong></div>
         <div><span>Время</span><strong>{durationLabel(climb.elapsedMinutes)}</strong></div>
         <div><span>Энергия</span><strong>{Math.round(climb.energy)}%</strong><i style={{ '--value': `${climb.energy}%` } as React.CSSProperties} /></div>
-        <div><span>Группа</span><strong>{Math.round(climb.teamCondition)}%</strong><i style={{ '--value': `${climb.teamCondition}%` } as React.CSSProperties} /></div>
+        <div><span>Группа</span><strong>{conditionText(climb.teamCondition, difficulty)}</strong><i style={{ '--value': `${climb.teamCondition}%` } as React.CSSProperties} /></div>
         <div><span>Погода</span><strong>{climb.temperatureC}° · {climb.windKmh} км/ч</strong></div>
-        <div><span>Видимость</span><strong>{climb.visibility}%</strong></div>
+        <div><span>Видимость</span><strong>{visibilityText(climb.visibility, difficulty)}</strong></div>
       </div>
 
+      {!career.onboarding.completed && !career.onboarding.dismissed && <section className="climb-briefing"><span>ПЕРВАЯ ЭКСПЕДИЦИЯ</span><strong>Смотри на одну проблему за раз.</strong><p>Сначала оцени сигнал ниже. Затем сравни темп. Разворот не является поражением: вершина засчитывается только после спуска.</p></section>}
       <section className={`field-signal is-${fieldSignal.tone}`}><strong>{fieldSignal.title}</strong><p>{fieldSignal.detail}</p></section>
       {noReturn && <section className="no-return-warning"><span>ТОЧКА ТЯЖЁЛОГО ОТХОДА</span><strong>После этого участка спуск станет дороже.</strong><p>Оцени силы, погоду и состояние людей до движения. Кнопка отхода остаётся доступной, но время и риск вырастут.</p></section>}
 
@@ -181,7 +206,7 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
                     <button key={option.id} className={`is-${option.tone.toLowerCase()}`} disabled={unavailable} onClick={() => resolve(() => onChooseDecision(option.id))}>
                       <header><strong>{option.title}</strong><span>{option.tone === 'SAFE' ? 'БЕЗОПАСНЕЕ' : option.tone === 'BOLD' ? 'РИСКОВАННО' : 'БАЛАНС'}</span></header>
                       <p>{option.description}</p>
-                      <small>Время ×{option.durationModifier.toFixed(2)} · силы ×{option.energyModifier.toFixed(2)} · риск {option.riskModifier >= 0 ? '+' : ''}{Math.round(option.riskModifier * 100)}%</small>
+                      <small>{difficulty === 'EXPLORER' ? `Время ×${option.durationModifier.toFixed(2)} · силы ×${option.energyModifier.toFixed(2)} · риск ${option.riskModifier >= 0 ? '+' : ''}${Math.round(option.riskModifier * 100)}%` : difficulty === 'CLIMBER' ? `${option.durationModifier > 1 ? 'Дольше' : 'Быстрее'} · ${option.energyModifier > 1 ? 'тяжелее' : 'экономнее'} · ${option.riskModifier < 0 ? 'риск ниже' : option.riskModifier > 0 ? 'риск выше' : 'риск без изменения'}` : `${option.tone === 'SAFE' ? 'Больше контроля, меньше темпа' : option.tone === 'BOLD' ? 'Быстро, но с малым запасом' : 'Умеренный компромисс'}`}</small>
                       {option.requiresRopeMeters && <em>{unavailable ? `Нужно ${option.requiresRopeMeters} м верёвки` : `Будет оставлено ${option.requiresRopeMeters} м верёвки`}</em>}
                     </button>
                   );
@@ -190,7 +215,7 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
             </section>
           ) : (
             <div className="pace-options pace-options--preview">
-              {previews.map(preview => <PaceCard key={preview.pace} preview={preview} primary={preview.pace === 'STEADY'} onClick={() => resolve(() => onStep(preview.pace))} />)}
+              {previews.map(preview => <PaceCard key={preview.pace} preview={preview} primary={preview.pace === 'STEADY'} recommended={preview.pace === recommendedPace} difficulty={difficulty} onClick={() => resolve(() => onStep(preview.pace))} />)}
             </div>
           )}
 
@@ -233,7 +258,7 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
               <article key={state.memberId} className={`is-${state.status.toLowerCase()}`}>
                 <span>{member!.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2)}</span>
                 <div><strong>{member!.name}</strong><small>{state.status} · {state.visibleInjury ?? 'без выявленной травмы'}</small></div>
-                <b>{Math.round(state.condition)}</b>
+                <b>{conditionText(state.condition, difficulty)}</b>
                 <i style={{ '--value': `${state.condition}%` } as React.CSSProperties} />
               </article>
             ))}

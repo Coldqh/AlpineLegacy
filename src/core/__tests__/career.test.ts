@@ -57,7 +57,10 @@ describe('career and expedition module', () => {
     const world = generateWorld(config);
     const career = createCareer(world, draft);
     expect(career.worldId).toBe(world.id);
-    expect(career.schemaVersion).toBe(8);
+    expect(career.schemaVersion).toBe(9);
+    expect(career.rootSeed).toBe(config.seed);
+    expect(career.difficulty).toBe(config.difficulty);
+    expect(career.onboarding.completed).toBe(false);
     expect(career.routes).toHaveLength(world.region.mountains.length * 3);
     expect(career.teamRoster.length).toBeGreaterThanOrEqual(5);
     expect(career.weatherWindows).toHaveLength(3);
@@ -206,6 +209,17 @@ describe('career and expedition module', () => {
     } else {
       expect(result.headline).toContain('не требуется');
     }
+  });
+
+  it('writes a complete playtest snapshot into the expedition report', () => {
+    const world = generateWorld(config);
+    const career = advanceExpedition(startPlannedClimb(createCareer(world, draft)));
+    const report = career.reports.at(-1)!;
+    expect(report.playtest?.seed).toBe(config.seed);
+    expect(report.playtest?.difficulty).toBe(config.difficulty);
+    expect(report.playtest?.actionCount).toBeGreaterThan(0);
+    expect(report.playtest?.teamSize).toBeGreaterThanOrEqual(1);
+    expect(career.onboarding.completed).toBe(true);
   });
 
 });

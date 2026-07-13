@@ -432,6 +432,7 @@ export interface ExpeditionReport {
   routeChoices?: RouteChoiceRecord[];
   fixedRopes?: number;
   cachesRecovered?: number;
+  playtest?: PlaytestReportData;
 }
 
 
@@ -550,10 +551,36 @@ export interface LivingWorldState {
   records: WorldRecord[];
 }
 
+export interface OnboardingState {
+  dismissed: boolean;
+  completed: boolean;
+}
+
+export interface PlaytestReportData {
+  seed: string;
+  difficulty: DifficultyId;
+  mountainId: string;
+  routeId: string;
+  actionCount: number;
+  moveCount: number;
+  finalEnergy: number;
+  finalTeamCondition: number;
+  finalFood: number;
+  finalWater: number;
+  finalFuel: number;
+  packWeightKg: number;
+  teamSize: number;
+  acclimatizationDays: number;
+  weatherWindowId: string;
+  causeTags: string[];
+}
+
 export interface CareerState {
-  schemaVersion: 8;
+  schemaVersion: 9;
   id: string;
   worldId: string;
+  rootSeed: string;
+  difficulty: DifficultyId;
   createdAt: string;
   year: number;
   seasonDay: number;
@@ -571,6 +598,7 @@ export interface CareerState {
   expeditionPlan: ExpeditionPlan;
   reports: ExpeditionReport[];
   reputationProfile: ReputationProfile;
+  onboarding: OnboardingState;
   livingWorld: LivingWorldState;
 }
 

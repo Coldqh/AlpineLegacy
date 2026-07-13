@@ -42,7 +42,7 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
       <aside className="career-sidebar">
         <button className="career-sidebar__brand" onClick={onExit} aria-label="В главное меню">
           <span>AL</span>
-          <small>0.5.3</small>
+          <small>0.5.4</small>
         </button>
 
         <nav className="career-sidebar__nav" aria-label="Главные разделы карьеры">

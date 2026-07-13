@@ -1,3 +1,4 @@
+import { runBalanceSample } from '../core/playtest';
 import type { CareerState, WorldState } from '../core/types';
 
 type Props = { career: CareerState; world: WorldState };
@@ -36,6 +37,7 @@ export function JournalScreen({ career, world }: Props) {
           <button onClick={() => downloadJson(`alpine-legacy-${safeName}-save.json`, { world, career })}><strong>Экспортировать сейв</strong><small>Мир, герой, команда и вся симуляция</small></button>
           <button onClick={() => downloadJson(`alpine-legacy-${safeName}-replay.json`, { seed: world.config.seed, careerId: career.id, activeClimb: career.activeClimb ? { id: career.activeClimb.id, routeId: career.activeClimb.routeId, routeChoices: career.activeClimb.routeChoices, decisions: career.activeClimb.decisions, log: career.activeClimb.log } : null, reports: career.reports })}><strong>Экспортировать replay</strong><small>Seed, решения и журнал команд</small></button>
           <button onClick={() => navigator.clipboard?.writeText(world.config.seed)}><strong>Копировать seed</strong><small>{world.config.seed}</small></button>
+          <button onClick={() => downloadJson(`alpine-legacy-${safeName}-balance-sample.json`, runBalanceSample(world.config.seed, 8, world.config.difficulty))}><strong>Собрать balance sample</strong><small>24 детерминированных автопрохода текущего режима</small></button>
         </div>
       </section>
 
@@ -58,6 +60,21 @@ export function JournalScreen({ career, world }: Props) {
                 <div className="report-reactions"><span><b>Клуб</b>{report.clubReaction}</span><span><b>Пресса</b>{report.pressReaction}</span></div>
                 {report.routeChoices && report.routeChoices.length > 0 && <div className="report-route-choices">{report.routeChoices.map(choice => <span key={`${choice.decisionId}-${choice.optionId}`}><b>{choice.title}</b>{choice.note}</span>)}</div>}
                 {report.decisions.length > 0 && <div className="report-decisions">{report.decisions.map(decision => <span key={decision.id} className={decision.accepted ? 'is-accepted' : 'is-refused'}>{decision.accepted ? 'ПРИНЯТ' : 'ОТКАЗ'} · {decision.description}</span>)}</div>}
+                {report.playtest && (
+                  <details className="report-playtest">
+                    <summary>Технический разбор экспедиции</summary>
+                    <div>
+                      <span><b>Seed</b>{report.playtest.seed}</span>
+                      <span><b>Режим</b>{report.playtest.difficulty}</span>
+                      <span><b>Ходов</b>{report.playtest.actionCount}</span>
+                      <span><b>Силы</b>{report.playtest.finalEnergy}%</span>
+                      <span><b>Группа</b>{report.playtest.finalTeamCondition}%</span>
+                      <span><b>Остатки</b>{report.playtest.finalFood} еды · {report.playtest.finalWater} воды · {report.playtest.finalFuel} топлива</span>
+                      <span><b>Причины</b>{report.playtest.causeTags.join(' · ') || 'нет критических тегов'}</span>
+                    </div>
+                    <button onClick={() => downloadJson(`alpine-legacy-${safeName}-${report.id}.json`, report)}>Скачать отчёт</button>
+                  </details>
+                )}
               </div>
               <div className="report-numbers"><span>REP <b>{report.reputationDelta >= 0 ? '+' : ''}{report.reputationDelta}</b></span><span>КР. <b>{report.moneyDelta >= 0 ? '+' : ''}{report.moneyDelta}</b></span><span>FIX <b>{report.fixedRopes ?? 0}</b></span></div>
             </article>

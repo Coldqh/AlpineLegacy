@@ -199,6 +199,17 @@ export function buildExpeditionReport(career: CareerState, climb: QualificationC
     : casualtyNames.length
       ? 'Газеты пишут о трагедии и спорят, стоило ли группе продолжать движение.'
       : 'Результат почти не выходит за пределы клубного архива.';
+  const causeTags = [
+    climb.hoursAwake > 16 ? 'sleep-debt' : null,
+    climb.energy < 20 ? 'low-energy' : null,
+    climb.teamCondition < 45 ? 'team-collapse' : null,
+    climb.supplies.foodUnits <= 0 ? 'no-food' : null,
+    climb.supplies.waterUnits <= 0 ? 'no-water' : null,
+    climb.injuries.length ? 'injury' : null,
+    climb.casualties.length ? 'casualty' : null,
+    climb.retreating ? 'retreat' : null,
+    climb.summitReached ? 'summit' : null,
+  ].filter(Boolean) as string[];
   return {
     id: `report-${climb.id}`,
     year: career.year,
@@ -219,5 +230,23 @@ export function buildExpeditionReport(career: CareerState, climb: QualificationC
     routeChoices: climb.routeChoices,
     fixedRopes: climb.fixedRopeSegmentIds.length,
     cachesRecovered: climb.caches.filter(item => item.recovered).length,
+    playtest: {
+      seed: career.rootSeed,
+      difficulty: career.difficulty,
+      mountainId: climb.mountainId,
+      routeId: climb.routeId,
+      actionCount: climb.moveCount + climb.decisions.length + climb.routeChoices.length + climb.fixedRopeSegmentIds.length + climb.caches.length,
+      moveCount: climb.moveCount,
+      finalEnergy: Math.round(climb.energy),
+      finalTeamCondition: Math.round(climb.teamCondition),
+      finalFood: climb.supplies.foodUnits,
+      finalWater: climb.supplies.waterUnits,
+      finalFuel: climb.supplies.fuelUnits,
+      packWeightKg: climb.packWeightKg,
+      teamSize: climb.teamMemberIds.length + 1,
+      acclimatizationDays: career.expeditionPlan.acclimatizationDays,
+      weatherWindowId: career.expeditionPlan.weatherWindowId,
+      causeTags,
+    },
   };
 }

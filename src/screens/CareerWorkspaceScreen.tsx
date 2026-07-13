@@ -2,6 +2,7 @@ import { CareerShell } from '../components/CareerShell';
 import { CareerFlowGuide } from '../components/CareerFlowGuide';
 import {
   applyEquipmentPreset,
+  dismissOnboarding,
   beginDescent,
   closeClimb,
   chooseRouteDecision,
@@ -122,6 +123,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
       return (
         <ExpeditionScreen
           career={career}
+          difficulty={world.config.difficulty}
           onOpenTab={onTab}
           onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))}
           onSetAcclimatization={days => onPersist(updateExpeditionPlan(career, { acclimatizationDays: days }))}
@@ -138,6 +140,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
       return (
         <ClimbScreen
           career={career}
+          difficulty={world.config.difficulty}
           onStep={(pace: ClimbPace) => persistResult(resolveClimbStep(career, pace))}
           onCamp={() => persistResult(establishCamp(career))}
           onMeltSnow={() => persistResult(meltSnow(career))}
@@ -158,7 +161,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   return (
     <CareerShell world={world} career={career} activeTab={activeTab} onTab={onTab} onExit={onExit} onAtlas={onAtlas}>
       <WorkspaceSubnav activeTab={activeTab} onTab={onTab} />
-      <CareerFlowGuide career={career} activeTab={activeTab} onTab={onTab} />
+      <CareerFlowGuide career={career} activeTab={activeTab} onTab={onTab} onDismiss={() => onPersist(dismissOnboarding(career))} />
       {renderTab()}
     </CareerShell>
   );

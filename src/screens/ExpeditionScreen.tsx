@@ -1,8 +1,9 @@
 import { GEAR_CATALOG, expeditionCost, expeditionReadiness, expeditionWeight, getSelectedRoute, getSelectedWeather, preparationInsights, selectedTeam } from '../core/career';
-import type { CareerState, CareerTabId } from '../core/types';
+import type { CareerState, CareerTabId, DifficultyId } from '../core/types';
 
 type Props = {
   career: CareerState;
+  difficulty: DifficultyId;
   onLaunch: () => void;
   onOpenTab: (tab: CareerTabId) => void;
   onSelectWeather: (windowId: string) => void;
@@ -23,6 +24,12 @@ function status(value: number) {
   return 'Опасная';
 }
 
+function scoreText(value: number, difficulty: DifficultyId) {
+  if (difficulty === 'EXPLORER') return String(value);
+  if (difficulty === 'CLIMBER') return String(Math.round(value / 5) * 5);
+  return status(value);
+}
+
 function altitudeMeaning(days: number, routeHeight: number) {
   if (days <= 1) return `Группа почти не готова к ${routeHeight} м. Расход сил на высоте будет резким.`;
   if (days <= 3) return 'Базовая адаптация. Работает на умеренной высоте, но оставляет мало запаса.';
@@ -30,7 +37,7 @@ function altitudeMeaning(days: number, routeHeight: number) {
   return 'Сильная адаптация. Цена — потерянные дни и шанс, что соперники выйдут раньше.';
 }
 
-export function ExpeditionScreen({ career, onLaunch, onOpenTab, onSelectWeather, onSetAcclimatization }: Props) {
+export function ExpeditionScreen({ career, difficulty, onLaunch, onOpenTab, onSelectWeather, onSetAcclimatization }: Props) {
   const route = getSelectedRoute(career);
   const weather = getSelectedWeather(career);
   const team = selectedTeam(career);
@@ -52,8 +59,8 @@ export function ExpeditionScreen({ career, onLaunch, onOpenTab, onSelectWeather,
   return (
     <section className="workspace-page expedition-page expedition-page--clear">
       <header className="workspace-title workspace-title--compact">
-        <div><p className="eyebrow">ШАГ 4 ИЗ 4 · GO / NO-GO</p><h1>Прими решение.</h1><p>Здесь нет скрытого «идеального процента». Смотри на конкретные последствия: что случится с группой, если план оставить таким.</p></div>
-        <div className={`readiness-seal ${canLaunch ? 'is-ready' : ''}`}><span>{readiness.total}</span><small>ОБЩАЯ ГОТОВНОСТЬ</small></div>
+        <div><p className="eyebrow">ШАГ 4 ИЗ 4 · GO / NO-GO · {difficulty}</p><h1>Прими решение.</h1><p>Здесь нет скрытого «идеального процента». Смотри на конкретные последствия: что случится с группой, если план оставить таким.</p></div>
+        <div className={`readiness-seal ${canLaunch ? 'is-ready' : ''}`}><span>{difficulty === 'EXPEDITION' ? status(readiness.total) : readiness.total}</span><small>{difficulty === 'EXPEDITION' ? 'ОЦЕНКА ПЛАНА' : 'ОБЩАЯ ГОТОВНОСТЬ'}</small></div>
       </header>
 
       <section className={`decision-guide ${canLaunch ? 'is-good' : 'is-warning'}`}>
@@ -78,7 +85,7 @@ export function ExpeditionScreen({ career, onLaunch, onOpenTab, onSelectWeather,
                   <strong>{item.label}</strong>
                   <small>{item.temperatureC}°C · ветер {item.windKmh} км/ч · окно {item.durationHours} ч</small>
                   <p>{item.description}</p>
-                  <footer><b>Стабильность {item.stability}/100</b><em>{consequence}</em></footer>
+                  <footer><b>{difficulty === 'EXPLORER' ? `Стабильность ${item.stability}/100` : difficulty === 'CLIMBER' ? `Стабильность ≈${Math.round(item.stability / 10) * 10}/100` : item.stability >= 75 ? 'Устойчивое окно' : item.stability >= 58 ? 'Неустойчивое окно' : 'Слабое окно'}</b><em>{consequence}</em></footer>
                 </button>
               );
             })}
@@ -86,7 +93,7 @@ export function ExpeditionScreen({ career, onLaunch, onOpenTab, onSelectWeather,
         </div>
 
         <div className="workspace-panel acclimatization-card">
-          <div className="panel-heading"><div><p className="eyebrow">ACCLIMATIZATION</p><h2>Привыкание к высоте</h2></div><span>{readiness.acclimatization}/100</span></div>
+          <div className="panel-heading"><div><p className="eyebrow">ACCLIMATIZATION</p><h2>Привыкание к высоте</h2></div><span>{scoreText(readiness.acclimatization, difficulty)}{difficulty === 'EXPEDITION' ? '' : '/100'}</span></div>
           <strong>{career.expeditionPlan.acclimatizationDays} дней</strong>
           <p>{altitudeMeaning(career.expeditionPlan.acclimatizationDays, route.summitElevation)}</p>
           <input type="range" min="0" max="9" value={career.expeditionPlan.acclimatizationDays} onChange={event => onSetAcclimatization(Number(event.target.value))} />
@@ -100,18 +107,20 @@ export function ExpeditionScreen({ career, onLaunch, onOpenTab, onSelectWeather,
         <div className="readiness-explained-grid">
           {metrics.map(metric => (
             <button key={metric.label} onClick={() => onOpenTab(metric.tab)}>
-              <span>{metric.label}</span><strong>{metric.value}</strong><em>{status(metric.value)}</em><p>{metric.note}</p><i style={{ '--value': `${metric.value}%` } as React.CSSProperties} />
+              <span>{metric.label}</span><strong>{scoreText(metric.value, difficulty)}</strong><em>{difficulty === 'EXPEDITION' ? 'оценка' : status(metric.value)}</em><p>{metric.note}</p><i style={{ '--value': `${metric.value}%` } as React.CSSProperties} />
             </button>
           ))}
         </div>
       </section>
+
+      <section className={`difficulty-disclosure is-${difficulty.toLowerCase()}`}><strong>{difficulty === 'EXPLORER' ? 'Explorer показывает точные оценки и рекомендации.' : difficulty === 'CLIMBER' ? 'Climber округляет прогнозы и оставляет решение тебе.' : 'Expedition скрывает точные вероятности. Физика та же, информации меньше.'}</strong><p>Сложность не меняет лавины, холод или прочность снаряжения. Меняется только объём доступной информации.</p></section>
 
       <div className="expedition-board expedition-board--clear">
         <section className="expedition-board__main">
           <article className="final-plan-card">
             <header><div><p className="eyebrow">ЦЕЛЬ</p><h2>{route.mountainName}</h2><h3>{route.name}</h3></div><button onClick={() => onOpenTab('ROUTE')}>Изменить</button></header>
             <p>{route.summary}</p>
-            <dl><div><dt>Высота</dt><dd>{route.summitElevation} м</dd></div><div><dt>Время</dt><dd>≈ {route.estimatedHours} ч</dd></div><div><dt>Риск</dt><dd>{route.objectiveRisk}/100</dd></div></dl>
+            <dl><div><dt>Высота</dt><dd>{route.summitElevation} м</dd></div><div><dt>Время</dt><dd>≈ {route.estimatedHours} ч</dd></div><div><dt>Риск</dt><dd>{difficulty === 'EXPLORER' ? `${route.objectiveRisk}/100` : difficulty === 'CLIMBER' ? `≈${Math.round(route.objectiveRisk / 10) * 10}/100` : route.objectiveRisk >= 72 ? 'крайний' : route.objectiveRisk >= 54 ? 'высокий' : 'умеренный'}</dd></div></dl>
           </article>
           <div className="final-plan-row">
             <article><header><p className="eyebrow">КОМАНДА</p><button onClick={() => onOpenTab('TEAM')}>Изменить</button></header><h3>{team.length + 1} человека</h3><p>{team.length ? team.map(member => member.name).join(' · ') : 'Только герой'}</p></article>
