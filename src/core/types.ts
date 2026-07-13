@@ -8,15 +8,17 @@ export type ScreenId =
   | 'MOUNTAIN'
   | 'CHARACTER'
   | 'CAREER'
-  | 'CLIMB'
   | 'ARCHIVE'
   | 'SETTINGS';
 
+export type CareerTabId = 'OVERVIEW' | 'ROUTE' | 'TEAM' | 'EQUIPMENT' | 'EXPEDITION' | 'CLIMB' | 'JOURNAL';
 export type OriginId = 'CLUB_SCHOOL' | 'HIGHLAND_LOCAL' | 'ROCK_SECTION';
 export type SkillId = 'ENDURANCE' | 'ROCK' | 'ICE' | 'NAVIGATION' | 'MEDICINE' | 'LEADERSHIP';
 export type TrainingId = 'CONDITIONING' | 'ROCK_PRACTICE' | 'ICE_PRACTICE' | 'MAP_ROOM' | 'FIRST_AID' | 'CLUB_DUTY' | 'RECOVERY';
 export type ClimbPace = 'CAUTIOUS' | 'STEADY' | 'FAST';
 export type ClimbPhase = 'READY' | 'ASCENT' | 'SUMMIT' | 'DESCENT' | 'COMPLETE' | 'FAILED' | 'RETREATED';
+export type GearCategory = 'PROTECTION' | 'SHELTER' | 'SURVIVAL' | 'COMMUNICATION';
+export type TeamRole = 'LEADER' | 'ROPE_LEAD' | 'MEDIC' | 'NAVIGATOR' | 'SUPPORT';
 
 export interface WorldSeedConfig {
   seed: string;
@@ -120,7 +122,7 @@ export interface CareerLogEntry {
   id: string;
   year: number;
   seasonDay: number;
-  type: 'CAREER' | 'TRAINING' | 'CLIMB' | 'INJURY' | 'CLUB';
+  type: 'CAREER' | 'TRAINING' | 'CLIMB' | 'INJURY' | 'CLUB' | 'EXPEDITION';
   title: string;
   description: string;
 }
@@ -143,16 +145,104 @@ export interface RouteSegment {
   exposure: number;
   skill: SkillId;
   note: string;
+  campPossible: boolean;
+  hazard: string;
+}
+
+export interface ExpeditionRoute {
+  id: string;
+  mountainId: string;
+  mountainName: string;
+  name: string;
+  style: string;
+  summary: string;
+  startElevation: number;
+  summitElevation: number;
+  estimatedHours: number;
+  technicality: number;
+  objectiveRisk: number;
+  recommendedTeamSize: number;
+  requiredGearIds: string[];
+  segments: RouteSegment[];
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  age: number;
+  role: TeamRole;
+  specialty: SkillId;
+  skill: number;
+  endurance: number;
+  trust: number;
+  condition: number;
+  temperament: string;
+  note: string;
+  required?: boolean;
+}
+
+export interface GearDefinition {
+  id: string;
+  name: string;
+  category: GearCategory;
+  description: string;
+  weightKg: number;
+  unitCost: number;
+  maxQuantity: number;
+}
+
+export interface WeatherWindow {
+  id: string;
+  label: string;
+  startsInDays: number;
+  durationHours: number;
+  temperatureC: number;
+  windKmh: number;
+  snowfallCm: number;
+  stability: number;
+  description: string;
+}
+
+export interface ExpeditionPlan {
+  routeId: string;
+  weatherWindowId: string;
+  teamMemberIds: string[];
+  gear: Record<string, number>;
+  foodDays: number;
+  fuelUnits: number;
+  ropeMeters: number;
+  acclimatizationDays: number;
+}
+
+export interface ExpeditionReadiness {
+  total: number;
+  hero: number;
+  routeFit: number;
+  team: number;
+  equipment: number;
+  weather: number;
+  acclimatization: number;
+  blockers: string[];
+}
+
+export interface ClimbSupplies {
+  foodUnits: number;
+  waterUnits: number;
+  fuelUnits: number;
 }
 
 export interface QualificationClimb {
   id: string;
   mountainId: string;
   mountainName: string;
+  routeId: string;
   routeName: string;
+  routeStyle: string;
   startElevation: number;
   summitElevation: number;
   phase: ClimbPhase;
+  summitReached: boolean;
+  retreating: boolean;
   segmentIndex: number;
   moveCount: number;
   currentElevation: number;
@@ -160,6 +250,16 @@ export interface QualificationClimb {
   energy: number;
   condition: number;
   weather: string;
+  temperatureC: number;
+  windKmh: number;
+  visibility: number;
+  weatherStep: number;
+  packWeightKg: number;
+  teamMemberIds: string[];
+  teamCondition: number;
+  supplies: ClimbSupplies;
+  hoursAwake: number;
+  campEstablished: boolean;
   route: RouteSegment[];
   log: string[];
   injuries: string[];
@@ -168,7 +268,7 @@ export interface QualificationClimb {
 }
 
 export interface CareerState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   worldId: string;
   createdAt: string;
@@ -182,6 +282,10 @@ export interface CareerState {
   completedClimbs: number;
   highestElevation: number;
   activeClimb: QualificationClimb | null;
+  routes: ExpeditionRoute[];
+  teamRoster: TeamMember[];
+  weatherWindows: WeatherWindow[];
+  expeditionPlan: ExpeditionPlan;
 }
 
 export interface CareerDraft {

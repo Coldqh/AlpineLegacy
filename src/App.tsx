@@ -1,23 +1,13 @@
 import { useMemo, useState } from 'react';
 import { MountainArt } from './components/MountainArt';
 import { ScreenShell } from './components/ScreenShell';
-import {
-  applyTraining,
-  beginDescent,
-  closeClimb,
-  createCareer,
-  formatSeasonDate,
-  resolveClimbStep,
-  retreatClimb,
-  startQualificationClimb,
-} from './core/career';
+import { applyTraining, createCareer, formatSeasonDate } from './core/career';
 import { generateWorld } from './core/generator';
 import { deleteCareer, deleteWorld, loadCareer, loadWorld, saveCareer, saveWorld } from './core/storage';
 import type {
   CareerDraft,
   CareerState,
-  ClimbPace,
-  ClimbStepResult,
+  CareerTabId,
   DifficultyId,
   EraId,
   MountainData,
@@ -26,9 +16,8 @@ import type {
   WorldSeedConfig,
   WorldState,
 } from './core/types';
-import { CareerHubScreen } from './screens/CareerHubScreen';
 import { CharacterCreationScreen } from './screens/CharacterCreationScreen';
-import { ClimbScreen } from './screens/ClimbScreen';
+import { CareerWorkspaceScreen } from './screens/CareerWorkspaceScreen';
 
 const ERA_YEARS: Record<EraId, [number, number]> = {
   PIONEER: [1860, 1935],
@@ -56,10 +45,11 @@ function randomSeed() {
 function App() {
   const initial = useMemo(() => {
     const loadedWorld = loadWorld();
-    return { world: loadedWorld, career: loadedWorld ? loadCareer(loadedWorld.id) : null };
+    return { world: loadedWorld, career: loadedWorld ? loadCareer(loadedWorld) : null };
   }, []);
 
   const [screen, setScreen] = useState<ScreenId>('MENU');
+  const [careerTab, setCareerTab] = useState<CareerTabId>('OVERVIEW');
   const [world, setWorld] = useState<WorldState | null>(initial.world);
   const [career, setCareer] = useState<CareerState | null>(initial.career);
   const [selectedMountain, setSelectedMountain] = useState<MountainData | null>(null);
@@ -102,6 +92,7 @@ function App() {
       setScreen('SETUP');
       return;
     }
+    if (career) setCareerTab(career.activeClimb ? 'CLIMB' : 'OVERVIEW');
     setScreen(career ? 'CAREER' : 'CHARACTER');
   }
 
@@ -109,6 +100,7 @@ function App() {
     if (!world) return;
     const created = createCareer(world, draft);
     persistCareer(created);
+    setCareerTab('OVERVIEW');
     setScreen('CAREER');
   }
 
@@ -117,42 +109,9 @@ function App() {
     persistCareer(applyTraining(career, trainingId));
   }
 
-  function launchQualification() {
-    if (!career || !world) return;
-    const next = startQualificationClimb(career, world);
-    persistCareer(next);
-    setScreen('CLIMB');
-  }
-
-  function takeClimbStep(pace: ClimbPace): ClimbStepResult {
-    if (!career) {
-      return { career: career as never, headline: 'Нет активной карьеры', detail: '', severity: 'WARNING' };
-    }
-    const result = resolveClimbStep(career, pace);
-    persistCareer(result.career);
-    return result;
-  }
-
-  function startDescent() {
-    if (!career) return;
-    persistCareer(beginDescent(career));
-  }
-
-  function retreat() {
-    if (!career) return;
-    persistCareer(retreatClimb(career));
-  }
-
-  function finishClimbView() {
-    if (!career) return;
-    persistCareer(closeClimb(career));
-    setScreen('CAREER');
-  }
-
   function continueCareer() {
-    if (career?.activeClimb) {
-      setScreen('CLIMB');
-    } else if (career) {
+    if (career) {
+      setCareerTab(career.activeClimb ? 'CLIMB' : 'OVERVIEW');
       setScreen('CAREER');
     } else if (world) {
       setScreen('REGION');
@@ -165,25 +124,15 @@ function App() {
 
   if (screen === 'CAREER' && world && career) {
     return (
-      <CareerHubScreen
+      <CareerWorkspaceScreen
         world={world}
         career={career}
-        onBack={() => setScreen('MENU')}
+        activeTab={careerTab}
+        onTab={setCareerTab}
+        onPersist={persistCareer}
         onTrain={train}
-        onStartClimb={launchQualification}
-        onOpenAtlas={() => setScreen('REGION')}
-      />
-    );
-  }
-
-  if (screen === 'CLIMB' && career?.activeClimb) {
-    return (
-      <ClimbScreen
-        career={career}
-        onStep={takeClimbStep}
-        onBeginDescent={startDescent}
-        onRetreat={retreat}
-        onClose={finishClimbView}
+        onExit={() => setScreen('MENU')}
+        onAtlas={() => setScreen('REGION')}
       />
     );
   }
@@ -197,7 +146,7 @@ function App() {
             <p className="eyebrow">NEW WORLD / NEW LIFE</p>
             <h1>Создай мир, который переживёт тебя.</h1>
             <p className="lead">Один seed определит географию, историю, вершины и людей. Смерть героя завершит карьеру, но не обязательно уничтожит мир.</p>
-            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.2</small></div>
+            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.3</small></div>
           </div>
 
           <div className="setup-form">
@@ -313,7 +262,7 @@ function App() {
 
           <div className="career-entry-banner">
             <div>
-              <p className="eyebrow">CAREER MODULE / 0.2</p>
+              <p className="eyebrow">CAREER MODULE / 0.3</p>
               <h2>{career ? career.hero.name : 'Горы уже существуют. Теперь войди в их историю.'}</h2>
               <p>{career
                 ? `${career.club.name}. ${career.completedClimbs} засчитанных восхождений. Высшая точка: ${career.highestElevation} м.`
@@ -424,7 +373,7 @@ function App() {
 
   const archiveCount = career?.log.length ?? 0;
   return (
-    <ScreenShell rightLabel="EDITION 0.2 / FIRST ASCENT">
+    <ScreenShell rightLabel="EDITION 0.3 / EXPEDITION CORE">
       <section className="menu-page page-enter">
         <div className="menu-hero-copy">
           <p className="eyebrow">A MOUNTAINEERING CAREER ROGUELIKE</p>
@@ -445,7 +394,7 @@ function App() {
           <button className="menu-action" onClick={() => setScreen('SETTINGS')}><span><small>04</small>Настройки</span><b>◌</b></button>
         </div>
 
-        <footer className="menu-footer"><span>PROCEDURAL MOUNTAINEERING WORLD</span><span>CAREER / CLUB / FIRST CLIMB</span><span>© ALPINE LEGACY</span></footer>
+        <footer className="menu-footer"><span>PROCEDURAL MOUNTAINEERING WORLD</span><span>ROUTES / TEAM / EXPEDITIONS</span><span>© ALPINE LEGACY</span></footer>
       </section>
     </ScreenShell>
   );

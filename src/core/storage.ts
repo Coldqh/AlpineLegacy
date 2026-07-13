@@ -1,7 +1,9 @@
+import { migrateCareerV2 } from './career';
 import type { CareerState, WorldState } from './types';
 
 const WORLD_KEY = 'alpine-legacy:world:v1';
-const CAREER_KEY = 'alpine-legacy:career:v2';
+const CAREER_KEY_V2 = 'alpine-legacy:career:v2';
+const CAREER_KEY = 'alpine-legacy:career:v3';
 
 export function saveWorld(world: WorldState) {
   localStorage.setItem(WORLD_KEY, JSON.stringify(world));
@@ -24,22 +26,31 @@ export function saveCareer(career: CareerState) {
   localStorage.setItem(CAREER_KEY, JSON.stringify(career));
 }
 
-export function loadCareer(worldId?: string): CareerState | null {
-  const raw = localStorage.getItem(CAREER_KEY);
+export function loadCareer(world?: WorldState): CareerState | null {
+  const raw = localStorage.getItem(CAREER_KEY) ?? localStorage.getItem(CAREER_KEY_V2);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as CareerState;
-    if (parsed?.schemaVersion !== 2 || !parsed?.hero?.name || !parsed?.club?.id) throw new Error('Invalid career save');
-    if (worldId && parsed.worldId !== worldId) return null;
-    return parsed;
+    const parsed = JSON.parse(raw) as CareerState | (Omit<CareerState, 'schemaVersion' | 'routes' | 'teamRoster' | 'weatherWindows' | 'expeditionPlan'> & { schemaVersion: 2 });
+    if (!parsed?.hero?.name || !parsed?.club?.id) throw new Error('Invalid career save');
+    if (world && parsed.worldId !== world.id) return null;
+    if (parsed.schemaVersion === 3) return parsed as CareerState;
+    if (parsed.schemaVersion === 2 && world) {
+      const migrated = migrateCareerV2(parsed, world);
+      saveCareer(migrated);
+      localStorage.removeItem(CAREER_KEY_V2);
+      return migrated;
+    }
+    throw new Error('Unsupported career save');
   } catch {
     localStorage.removeItem(CAREER_KEY);
+    localStorage.removeItem(CAREER_KEY_V2);
     return null;
   }
 }
 
 export function deleteCareer() {
   localStorage.removeItem(CAREER_KEY);
+  localStorage.removeItem(CAREER_KEY_V2);
 }
 
 export function deleteWorld() {

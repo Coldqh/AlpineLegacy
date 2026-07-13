@@ -1,74 +1,85 @@
 import { describe, expect, it } from 'vitest';
-import { beginDescent, createCareer, resolveClimbStep, startQualificationClimb } from '../career';
+import {
+  beginDescent,
+  createCareer,
+  establishCamp,
+  expeditionReadiness,
+  meltSnow,
+  resolveClimbStep,
+  startPlannedClimb,
+} from '../career';
 import { generateWorld } from '../generator';
-import type { CareerDraft, WorldSeedConfig } from '../types';
+import type { CareerDraft, CareerState, WorldSeedConfig } from '../types';
 
-const config: WorldSeedConfig = {
-  seed: 'ALPINE-1907',
-  eraId: 'EXPEDITION',
-  startYear: 1968,
-  difficulty: 'CLIMBER',
-};
+const config: WorldSeedConfig = { seed: 'ALPINE-1907', eraId: 'EXPEDITION', startYear: 1968, difficulty: 'CLIMBER' };
+const draft: CareerDraft = { name: 'Test Climber', age: 20, originId: 'CLUB_SCHOOL' };
 
-const draft: CareerDraft = {
-  name: 'Test Climber',
-  age: 20,
-  originId: 'CLUB_SCHOOL',
-};
+function advanceExpedition(career: CareerState) {
+  for (let guard = 0; guard < 35; guard += 1) {
+    const climb = career.activeClimb;
+    if (!climb || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) break;
+    if (climb.phase === 'SUMMIT') {
+      career = beginDescent(career);
+      continue;
+    }
+    const segment = climb.route[climb.segmentIndex]!;
+    if (segment.campPossible && climb.hoursAwake > 6 && climb.supplies.fuelUnits > 0 && climb.supplies.foodUnits > 0) {
+      career = establishCamp(career).career;
+      continue;
+    }
+    if (climb.supplies.waterUnits < 4 && climb.supplies.fuelUnits > 0) {
+      career = meltSnow(career).career;
+      continue;
+    }
+    career = resolveClimbStep(career, 'CAUTIOUS').career;
+  }
+  return career;
+}
 
-describe('career module', () => {
-  it('creates a career bound to the generated world', () => {
+describe('career and expedition module', () => {
+  it('creates a career with deterministic routes, team and weather', () => {
     const world = generateWorld(config);
     const career = createCareer(world, draft);
-
     expect(career.worldId).toBe(world.id);
-    expect(career.hero.skills.ENDURANCE).toBe(4);
-    expect(career.club.foundedYear).toBeLessThan(config.startYear);
+    expect(career.schemaVersion).toBe(3);
+    expect(career.routes).toHaveLength(3);
+    expect(career.teamRoster.length).toBeGreaterThanOrEqual(5);
+    expect(career.weatherWindows).toHaveLength(3);
   });
 
-  it('keeps a qualification climb reproducible for equal state and pace', () => {
+  it('builds a launchable default expedition plan', () => {
     const world = generateWorld(config);
-    const career = startQualificationClimb(createCareer(world, draft), world);
+    const career = createCareer(world, draft);
+    const readiness = expeditionReadiness(career);
+    expect(readiness.blockers).toEqual([]);
+    expect(readiness.total).toBeGreaterThanOrEqual(54);
+  });
 
+  it('keeps the same action reproducible for equal state and pace', () => {
+    const world = generateWorld(config);
+    const career = startPlannedClimb(createCareer(world, draft));
     const first = resolveClimbStep(career, 'STEADY');
     const second = resolveClimbStep(career, 'STEADY');
-
     expect(first.career.activeClimb).toEqual(second.career.activeClimb);
   });
 
   it('requires a descent after reaching the summit', () => {
     const world = generateWorld(config);
-    let career = startQualificationClimb(createCareer(world, draft), world);
-
-    for (let step = 0; step < 5; step += 1) {
+    let career = startPlannedClimb(createCareer(world, draft));
+    for (let step = 0; step < 18 && career.activeClimb?.phase === 'ASCENT'; step += 1) {
       career = resolveClimbStep(career, 'CAUTIOUS').career;
-      if (career.activeClimb?.phase === 'FAILED') break;
     }
-
     if (career.activeClimb?.phase === 'SUMMIT') {
+      expect(career.completedClimbs).toBe(0);
       career = beginDescent(career);
       expect(career.activeClimb?.phase).toBe('DESCENT');
-      expect(career.completedClimbs).toBe(0);
     }
   });
 
-  it('can complete the full qualification route including descent', () => {
+  it('can complete a planned route with field management and descent', () => {
     const world = generateWorld(config);
-    let career = startQualificationClimb(createCareer(world, draft), world);
-
-    for (let guard = 0; guard < 20; guard += 1) {
-      const phase = career.activeClimb?.phase;
-      if (phase === 'SUMMIT') {
-        career = beginDescent(career);
-        continue;
-      }
-      if (phase === 'COMPLETE' || phase === 'FAILED' || phase === 'RETREATED') break;
-      career = resolveClimbStep(career, 'CAUTIOUS').career;
-    }
-
+    const career = advanceExpedition(startPlannedClimb(createCareer(world, draft)));
     expect(career.activeClimb?.phase).toBe('COMPLETE');
     expect(career.completedClimbs).toBe(1);
-    expect(career.highestElevation).toBe(career.activeClimb?.summitElevation);
   });
-
 });
