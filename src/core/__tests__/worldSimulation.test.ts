@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyTraining, createCareer, getSelectedRoute, migrateCareerV4, migrateCareerV5, migrateCareerV6, selectMountain } from '../career';
+import { applyTraining, createCareer, getSelectedRoute, migrateCareerV4, migrateCareerV5, migrateCareerV6, migrateCareerV7, selectMountain } from '../career';
 import { generateWorld } from '../generator';
 import type { CareerDraft, WorldSeedConfig } from '../types';
 
@@ -40,7 +40,7 @@ describe('living world simulation', () => {
     const career = createCareer(world, draft);
     const legacy = { ...career, schemaVersion: 6, routes: career.routes.map(({ mountainCharacterId, ...route }) => route) } as any;
     const migrated = migrateCareerV6(legacy, world);
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(8);
     expect(migrated.routes.every(route => route.mountainCharacterId)).toBe(true);
   });
 
@@ -50,7 +50,7 @@ describe('living world simulation', () => {
     const career = selectMountain(createCareer(world, draft), target.id);
     const legacy = { ...career, schemaVersion: 5 } as any;
     const migrated = migrateCareerV5(legacy, world);
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(8);
     expect(getSelectedRoute(migrated).mountainId).toBe(target.id);
   });
 
@@ -60,8 +60,17 @@ describe('living world simulation', () => {
     const legacy = { ...career, schemaVersion: 4 } as any;
     delete legacy.livingWorld;
     const migrated = migrateCareerV4(legacy, world);
-    expect(migrated.schemaVersion).toBe(7);
+    expect(migrated.schemaVersion).toBe(8);
     expect(migrated.teamRoster.map(item => item.id)).toEqual(career.teamRoster.map(item => item.id));
     expect(migrated.livingWorld.athletes.length).toBeGreaterThan(30);
   });
+  it('migrates an active v0.5.2 climb to the separate descent model', () => {
+    const world = generateWorld(config);
+    const career = createCareer(world, draft);
+    const legacy = { ...career, schemaVersion: 7, activeClimb: null } as any;
+    const migrated = migrateCareerV7(legacy, world);
+    expect(migrated.schemaVersion).toBe(8);
+    expect(migrated.routes.some(route => route.isSignature && route.descentSegments?.length)).toBe(true);
+  });
+
 });

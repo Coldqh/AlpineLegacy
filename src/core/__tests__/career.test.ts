@@ -2,15 +2,19 @@ import { describe, expect, it } from 'vitest';
 import {
   applyEquipmentPreset,
   beginDescent,
+  chooseRouteDecision,
   createCareer,
   establishCamp,
   expeditionReadiness,
+  fixRope,
   issueClimbOrder,
   meltSnow,
   resolveClimbStep,
   startPlannedClimb,
   selectMountain,
+  getCurrentRouteDecision,
   getSelectedRoute,
+  leaveCache,
   previewClimbAction,
   preparationInsights,
 } from '../career';
@@ -26,6 +30,12 @@ function advanceExpedition(career: CareerState) {
     if (!climb || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) break;
     if (climb.phase === 'SUMMIT') {
       career = beginDescent(career);
+      continue;
+    }
+    const decision = getCurrentRouteDecision(career);
+    if (decision) {
+      const choice = decision.options.find(option => option.tone === 'SAFE' && (!option.requiresRopeMeters || climb.ropeMetersRemaining >= option.requiresRopeMeters)) ?? decision.options[0]!;
+      career = chooseRouteDecision(career, choice.id).career;
       continue;
     }
     const segment = climb.route[climb.segmentIndex]!;
@@ -47,7 +57,7 @@ describe('career and expedition module', () => {
     const world = generateWorld(config);
     const career = createCareer(world, draft);
     expect(career.worldId).toBe(world.id);
-    expect(career.schemaVersion).toBe(7);
+    expect(career.schemaVersion).toBe(8);
     expect(career.routes).toHaveLength(world.region.mountains.length * 3);
     expect(career.teamRoster.length).toBeGreaterThanOrEqual(5);
     expect(career.weatherWindows).toHaveLength(3);
@@ -92,8 +102,10 @@ describe('career and expedition module', () => {
   it('requires a descent after reaching the summit', () => {
     const world = generateWorld(config);
     let career = startPlannedClimb(createCareer(world, draft));
-    for (let step = 0; step < 18 && career.activeClimb?.phase === 'ASCENT'; step += 1) {
-      career = resolveClimbStep(career, 'CAUTIOUS').career;
+    for (let step = 0; step < 24 && career.activeClimb?.phase === 'ASCENT'; step += 1) {
+      const decision = getCurrentRouteDecision(career);
+      if (decision) career = chooseRouteDecision(career, decision.options.find(option => option.tone === 'SAFE')?.id ?? decision.options[0]!.id).career;
+      else career = resolveClimbStep(career, 'CAUTIOUS').career;
     }
     if (career.activeClimb?.phase === 'SUMMIT') {
       expect(career.completedClimbs).toBe(0);
@@ -144,6 +156,56 @@ describe('career and expedition module', () => {
     expect(result.career.activeClimb?.decisions).toHaveLength(1);
     expect(result.career.activeClimb?.elapsedMinutes).toBeGreaterThan(0);
     expect(result.career.teamRoster.some(member => member.memories.length > 1)).toBe(true);
+  });
+
+  it('gives the signature mountain route choices and a separate descent line', () => {
+    const world = generateWorld(config);
+    const career = createCareer(world, draft);
+    const route = getSelectedRoute(career);
+    expect(route.isSignature).toBe(true);
+    expect(route.decisions?.length).toBeGreaterThanOrEqual(2);
+    expect(route.descentSegments).toBeDefined();
+    expect(route.descentSegments).not.toEqual(route.segments);
+  });
+
+  it('records a route choice and can leave a cache for descent', () => {
+    const world = generateWorld(config);
+    let career = startPlannedClimb(createCareer(world, draft));
+    const firstSegment = career.activeClimb!.route[0]!;
+    expect(firstSegment.campPossible).toBe(true);
+    career = leaveCache(career).career;
+    expect(career.activeClimb?.caches).toHaveLength(1);
+    career = resolveClimbStep(career, 'CAUTIOUS').career;
+    const decision = getCurrentRouteDecision(career)!;
+    career = chooseRouteDecision(career, decision.options[0]!.id).career;
+    expect(career.activeClimb?.routeChoices).toHaveLength(1);
+    expect(career.activeClimb?.segmentChoices[decision.id]).toBe(decision.options[0]!.id);
+  });
+
+  it('recovers a field cache during the separate descent', () => {
+    const world = generateWorld(config);
+    let career = startPlannedClimb(createCareer(world, draft));
+    career = leaveCache(career).career;
+    career = advanceExpedition(career);
+    expect(career.activeClimb?.phase).toBe('COMPLETE');
+    expect(career.activeClimb?.caches[0]?.recovered).toBe(true);
+  });
+
+  it('spends rope to protect a technical segment', () => {
+    const world = generateWorld(config);
+    let career = startPlannedClimb(createCareer(world, draft));
+    career = resolveClimbStep(career, 'CAUTIOUS').career;
+    const decision = getCurrentRouteDecision(career)!;
+    career = chooseRouteDecision(career, decision.options[0]!.id).career;
+    career = resolveClimbStep(career, 'CAUTIOUS').career;
+    const before = career.activeClimb!.ropeMetersRemaining;
+    const result = fixRope(career);
+    if (result.severity === 'SUCCESS') {
+      expect(result.career.activeClimb!.ropeMetersRemaining).toBe(before - 20);
+      expect(result.career.activeClimb!.fixedRopeSegmentIds.length).toBeGreaterThan(0);
+    } else {
+      expect(result.headline).toContain('не требуется');
+    }
   });
 
 });

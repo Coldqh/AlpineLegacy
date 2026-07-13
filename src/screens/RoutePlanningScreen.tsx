@@ -50,10 +50,11 @@ export function RoutePlanningScreen({ world, career, onSelectMountain, onSelectR
           {mountains.map((item, index) => {
             const active = item.id === mountain.id;
             const history = career.livingWorld.mountainHistory.find(entry => entry.mountainId === item.id);
+            const signature = routesForMountain(career, item.id).some(entry => entry.isSignature);
             return (
               <button key={item.id} className={active ? 'is-active' : ''} onClick={() => onSelectMountain(item.id)}>
                 <span className="mountain-choice-grid__index">{String(index + 1).padStart(2, '0')}</span>
-                <div><small>{item.characterTitle}</small><h3>{item.name}</h3><p>{item.epithet}</p></div>
+                <div><small>{signature ? 'ЭТАЛОННАЯ ГОРА · ' : ''}{item.characterTitle}</small><h3>{item.name}</h3><p>{item.epithet}</p></div>
                 <strong>{item.elevation}<small>м</small></strong>
                 <footer><span>Техника {level(item.technicality)}</span><span>{history?.summits ? `${history.summits} восх.` : 'не покорена'}</span></footer>
               </button>
@@ -65,11 +66,12 @@ export function RoutePlanningScreen({ world, career, onSelectMountain, onSelectR
       <div className="route-hero-panel route-hero-panel--clear">
         <MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} />
         <div className="selected-objective-card">
-          <small>ВЫБРАННАЯ ВЕРШИНА</small>
+          <small>{route.isSignature ? 'ЭТАЛОННЫЙ ВЕРТИКАЛЬНЫЙ СРЕЗ' : 'ВЫБРАННАЯ ВЕРШИНА'}</small>
           <strong>{mountain.name}</strong>
           <span>{mountain.elevation} м · {mountain.dangerProfile}</span>
           <div className="mountain-character-callout"><small>{mountain.characterTitle}</small><p>{mountain.characterDescription}</p></div>
           <p>{mountain.summary}</p>
+          {route.isSignature && <div className="signature-mountain-note"><strong>Эта гора проработана глубже остальных.</strong><span>Здесь есть выбор линии внутри маршрута, закладки, стационарные верёвки и отдельный спуск.</span></div>}
         </div>
       </div>
 
@@ -81,13 +83,14 @@ export function RoutePlanningScreen({ world, career, onSelectMountain, onSelectR
             return (
               <button key={item.id} className={active ? 'is-active' : ''} onClick={() => onSelectRoute(item.id)}>
                 <div><span>{String(index + 1).padStart(2, '0')}</span><i /></div>
-                <small>{mountain.characterTitle} · {item.style}</small>
+                <small>{item.isSignature ? 'VERTICAL SLICE · ' : ''}{mountain.characterTitle} · {item.style}</small>
                 <h3>{item.name}</h3>
                 <p>{item.summary}</p>
                 <dl>
                   <div><dt>Время</dt><dd>≈ {item.estimatedHours} ч</dd></div>
                   <div><dt>Техника</dt><dd>{level(item.technicality)}</dd></div>
                   <div><dt>Риск</dt><dd>{level(item.objectiveRisk)}</dd></div>
+                  <div><dt>Решения</dt><dd>{item.decisions?.length ?? 0}</dd></div>
                 </dl>
                 <footer>{active ? 'ВЫБРАНО' : 'ВЫБРАТЬ МАРШРУТ'}</footer>
               </button>
@@ -108,6 +111,22 @@ export function RoutePlanningScreen({ world, career, onSelectMountain, onSelectR
           <span><small>ГРУППА</small><strong>{route.recommendedTeamSize}+</strong></span>
           <span><small>СООТВЕТСТВИЕ</small><strong>{readiness.routeFit}/100</strong></span>
         </div>
+
+        {route.routeStory && (
+          <div className="route-story-grid">
+            {route.routeStory.map((item, index) => <article key={item}><span>{String(index + 1).padStart(2, '0')}</span><p>{item}</p></article>)}
+          </div>
+        )}
+        <section className="descent-plan-card">
+          <div><p className="eyebrow">DESCENT PLAN</p><h3>Спуск — отдельная линия</h3><p>{route.descentSummary}</p></div>
+          <strong>{route.descentSegments?.length ?? route.segments.length}<small>участков вниз</small></strong>
+        </section>
+        {route.decisions && route.decisions.length > 0 && (
+          <details className="route-decisions-disclosure" open>
+            <summary>Ключевые решения на маршруте ({route.decisions.length})</summary>
+            <div>{route.decisions.map(decision => <article key={decision.id}><div><small>ВЫБОР ЛИНИИ</small><h3>{decision.title}</h3><p>{decision.situation}</p></div><span>{decision.options.map(option => option.title).join(' / ')}</span></article>)}</div>
+          </details>
+        )}
         <details className="route-segments-disclosure">
           <summary>Показать участки маршрута ({route.segments.length})</summary>
           <div className="route-segment-list">

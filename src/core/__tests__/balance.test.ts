@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { beginDescent, createCareer, establishCamp, meltSnow, resolveClimbStep, startPlannedClimb } from '../career';
+import { beginDescent, chooseRouteDecision, createCareer, establishCamp, getCurrentRouteDecision, meltSnow, resolveClimbStep, startPlannedClimb } from '../career';
 import { generateWorld } from '../generator';
 import type { CareerState, OriginId } from '../types';
 
@@ -10,6 +10,12 @@ function simulate(seed: string, originId: OriginId) {
     const climb = career.activeClimb;
     if (!climb || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) return climb?.phase;
     if (climb.phase === 'SUMMIT') { career = beginDescent(career); continue; }
+    const decision = getCurrentRouteDecision(career);
+    if (decision) {
+      const option = decision.options.find(item => item.tone === 'SAFE' && (!item.requiresRopeMeters || climb.ropeMetersRemaining >= item.requiresRopeMeters)) ?? decision.options[0]!;
+      career = chooseRouteDecision(career, option.id).career;
+      continue;
+    }
     const segment = climb.route[climb.segmentIndex]!;
     if (segment.campPossible && climb.hoursAwake > 6 && climb.supplies.fuelUnits > 0 && climb.supplies.foodUnits > 0) {
       career = establishCamp(career).career;

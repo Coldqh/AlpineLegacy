@@ -273,6 +273,118 @@ function mountainDifficulty(mountain: WorldState['region']['mountains'][number])
   return mountain.elevation * .01 + mountain.technicality * .72 + mountain.altitudeSeverity * .55 + mountain.remoteness * .32;
 }
 
+
+function defaultDescentSegments(route: ExpeditionRoute): RouteSegment[] {
+  return [...route.segments].reverse().map((item, index) => ({
+    ...item,
+    id: `${item.id}-descent`,
+    name: index === route.segments.length - 1 ? 'Возвращение к старту' : `Спуск: ${item.name}`,
+    baseDurationMinutes: Math.round(item.baseDurationMinutes * .82),
+    difficulty: clamp(item.difficulty + 5),
+    exposure: clamp(item.exposure + (index < 2 ? 9 : 4)),
+    note: item.descentNote ?? `Усталость делает знакомый участок другим. ${item.note}`,
+    hazard: index < 2 ? `${item.hazard}; ошибка на спуске` : item.hazard,
+    campPossible: item.campPossible,
+    linkedAscentSegmentId: item.id,
+    noReturn: false,
+    safeHaven: item.campPossible,
+    decisionId: undefined,
+  }));
+}
+
+function signatureDecisionTemplates(route: ExpeditionRoute, routeIndex: number) {
+  const firstSegment = route.segments[Math.min(1, route.segments.length - 1)]!;
+  const keySegment = route.segments[Math.min(3, route.segments.length - 1)]!;
+  const prefix = `${route.id}-decision`;
+  if (routeIndex === 0) {
+    return [
+      {
+        id: `${prefix}-ribs`, segmentId: firstSegment.id, title: 'Разрушенные рёбра',
+        situation: 'Прямая линия короче, но под группой лежит рыхлая порода. Слева есть длинный обход по полке.',
+        options: [
+          { id: 'direct', title: 'Идти прямо', tone: 'BOLD' as const, description: 'Сэкономить время и быстрее выйти к леднику.', durationModifier: .78, energyModifier: 1.08, riskModifier: .09, resultNote: 'Группа выбрала короткую линию по разрушенным рёбрам.' },
+          { id: 'ledge', title: 'Обойти по полке', tone: 'SAFE' as const, description: 'Дольше находиться под склоном, но снизить риск срыва камней.', durationModifier: 1.28, energyModifier: .92, riskModifier: -.07, resultNote: 'Группа ушла на длинную защищённую полку.' },
+        ],
+      },
+      {
+        id: `${prefix}-ice`, segmentId: keySegment.id, title: 'Ледовый взлёт',
+        situation: 'Крутой лёд можно пройти быстро в движении или потратить верёвку на защищённую линию.',
+        options: [
+          { id: 'moving', title: 'Двигаться без закрепления', tone: 'BALANCED' as const, description: 'Не тратить верёвку, сохранить обычный темп.', durationModifier: 1, energyModifier: 1, riskModifier: .025, resultNote: 'Связка прошла взлёт без стационарной линии.' },
+          { id: 'protected', title: 'Подготовить защищённую линию', tone: 'SAFE' as const, description: 'Нужно не меньше 20 м свободной верёвки. Спуск по этому месту станет безопаснее.', durationModifier: 1.22, energyModifier: .94, riskModifier: -.08, requiresRopeMeters: 20, resultNote: 'Группа заранее подготовила линию для обратного пути.' },
+        ],
+      },
+    ];
+  }
+  if (routeIndex === 1) {
+    return [
+      {
+        id: `${prefix}-crevasses`, segmentId: firstSegment.id, title: 'Лабиринт трещин',
+        situation: 'Старая линия короче, но мосты после снегопада не проверены. Внешняя дуга длиннее и лучше читается.',
+        options: [
+          { id: 'old-track', title: 'Старая линия', tone: 'BOLD' as const, description: 'Сохранить около часа, принять риск скрытого моста.', durationModifier: .74, energyModifier: 1.03, riskModifier: .11, resultNote: 'Группа пошла по старой линии через закрытые трещины.' },
+          { id: 'outer-arc', title: 'Внешняя дуга', tone: 'SAFE' as const, description: 'Потратить время на проверяемый рельеф.', durationModifier: 1.34, energyModifier: .94, riskModifier: -.08, resultNote: 'Группа обошла центр ледника по внешней дуге.' },
+        ],
+      },
+      {
+        id: `${prefix}-serac`, segmentId: keySegment.id, title: 'Серачная зона',
+        situation: 'Под обломками нельзя стоять. Можно форсировать участок или переждать холодный час у защищённой стенки.',
+        options: [
+          { id: 'dash', title: 'Форсировать', tone: 'BOLD' as const, description: 'Быстрее выйти из зоны, сильнее нагрузить группу.', durationModifier: .66, energyModifier: 1.3, riskModifier: .065, resultNote: 'Группа форсировала серачную зону без остановки.' },
+          { id: 'cold-hour', title: 'Ждать холодный час', tone: 'BALANCED' as const, description: 'Потратить время и часть запасов, снизить вероятность обвала.', durationModifier: 1.38, energyModifier: .88, riskModifier: -.065, resultNote: 'Группа дождалась более холодного часа у защищённой стенки.' },
+        ],
+      },
+    ];
+  }
+  return [
+    {
+      id: `${prefix}-couloir`, segmentId: firstSegment.id, title: 'Тёмный кулуар',
+      situation: 'Центр кулуара быстрее, но собирает лёд и камни. Правый край требует сложного микста.',
+      options: [
+        { id: 'center', title: 'Центр кулуара', tone: 'BOLD' as const, description: 'Короткая линия под объективными опасностями.', durationModifier: .72, energyModifier: 1.06, riskModifier: .12, resultNote: 'Связка пошла по центру кулуара.' },
+        { id: 'right-mixed', title: 'Правый микст', tone: 'SAFE' as const, description: 'Технически тяжелее, но меньше времени под падающим льдом.', durationModifier: 1.2, energyModifier: 1.1, riskModifier: -.055, resultNote: 'Связка ушла на правый микстовый край.' },
+      ],
+    },
+    {
+      id: `${prefix}-wall`, segmentId: keySegment.id, title: 'Северная стена',
+      situation: 'После стены простой отход закончится. Можно оставить стационарную линию или сохранить верёвку для верхней части.',
+      options: [
+        { id: 'free', title: 'Сохранить верёвку', tone: 'BOLD' as const, description: 'Меньше времени сейчас, сложнее аварийный спуск.', durationModifier: .86, energyModifier: 1.08, riskModifier: .07, resultNote: 'Группа прошла стену без оставленной линии.' },
+        { id: 'fixed', title: 'Оставить 30 м верёвки', tone: 'SAFE' as const, description: 'Потратить верёвку и время, создать защищённый отход.', durationModifier: 1.28, energyModifier: .96, riskModifier: -.09, requiresRopeMeters: 30, resultNote: 'На стене оставлена стационарная линия.' },
+      ],
+    },
+  ];
+}
+
+function enrichRouteForVerticalSlice(route: ExpeditionRoute, routeIndex: number, signatureMountain: boolean): ExpeditionRoute {
+  const decisions = signatureMountain ? signatureDecisionTemplates(route, routeIndex) : [];
+  const bySegment = new Map(decisions.map(item => [item.segmentId, item.id]));
+  const segments = route.segments.map((item, index) => ({
+    ...item,
+    decisionId: bySegment.get(item.id),
+    noReturn: signatureMountain && index >= Math.ceil(route.segments.length * .58),
+    safeHaven: item.campPossible,
+    descentNote: index >= route.segments.length - 2
+      ? 'На обратном пути здесь мало места, а усталость усиливает каждую ошибку.'
+      : item.note,
+  }));
+  const enriched = { ...route, segments };
+  return {
+    ...enriched,
+    isSignature: signatureMountain,
+    decisions,
+    descentSegments: defaultDescentSegments(enriched),
+    routeStory: signatureMountain ? [
+      'Нижняя часть позволяет проверить темп и оставить запас до серьёзного рельефа.',
+      'Средняя часть содержит выбор линии, который меняет время, риск и обратный путь.',
+      'После верхней трети простого отхода нет: вершина требует сохранённого резерва на спуск.',
+    ] : undefined,
+    descentSummary: signatureMountain
+      ? 'Спуск идёт отдельной линией: знакомые места становятся опаснее из-за усталости, снятия страховки и времени без сна.'
+      : 'Обратный путь повторяет основные элементы маршрута и становится тяжелее из-за накопленной усталости.',
+  };
+}
+
 function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['mountains'][number]): ExpeditionRoute[] {
   const eraPenalty = routeEraPenalty(world);
   const totalGain = clamp(Math.round(760 + mountain.prominence * .17 + mountain.remoteness * 2.1), 760, 1650);
@@ -297,7 +409,7 @@ function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['m
   const faceRisk = clamp(Math.round(30 + baseRisk * .76 + characterRisk), 42, 99);
   const altitudeHours = actualGain / 165 + mountain.altitudeSeverity / 10 + mountain.remoteness / 18;
 
-  return [
+  const routes: ExpeditionRoute[] = [
     {
       id: `${slug}-south-ridge`, mountainId: mountain.id, mountainName: mountain.name, mountainCharacterId: mountain.characterId, name: 'Южный гребень',
       style: 'Классический смешанный маршрут',
@@ -347,6 +459,8 @@ function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['m
       ],
     },
   ];
+  const signatureMountain = getQualificationTarget(world).mountain.id === mountain.id;
+  return routes.map((route, routeIndex) => enrichRouteForVerticalSlice(route, routeIndex, signatureMountain));
 }
 
 function makeRoutes(world: WorldState): ExpeditionRoute[] {
@@ -476,7 +590,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = makeTeam(world, club);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 7,
+    schemaVersion: 8,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     createdAt: new Date().toISOString(),
@@ -520,6 +634,34 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   return career;
 }
 
+function migrateActiveClimbV8(active: any, routes: ExpeditionRoute[]): QualificationClimb | null {
+  if (!active) return null;
+  const route = routes.find(item => item.id === active.routeId) ?? routes[0]!;
+  const ascentRoute = route.segments;
+  const descentRoute = route.descentSegments ?? defaultDescentSegments(route);
+  const wasLegacyDescent = active.phase === 'DESCENT' && !active.descentRoute;
+  const segmentIndex = wasLegacyDescent
+    ? clamp(descentRoute.length - 1 - (active.segmentIndex ?? 0), 0, descentRoute.length - 1)
+    : active.segmentIndex ?? 0;
+  const currentRoute = active.phase === 'DESCENT' ? descentRoute : ascentRoute;
+  return {
+    ...active,
+    route: currentRoute,
+    ascentRoute,
+    descentRoute,
+    segmentIndex,
+    segmentChoices: active.segmentChoices ?? {},
+    routeChoices: active.routeChoices ?? [],
+    fixedRopeSegmentIds: active.fixedRopeSegmentIds ?? [],
+    ropeMetersRemaining: active.ropeMetersRemaining ?? 0,
+    caches: active.caches ?? [],
+    teamStates: active.teamStates ?? [],
+    decisions: active.decisions ?? [],
+    casualties: active.casualties ?? [],
+    rescuedMemberIds: active.rescuedMemberIds ?? [],
+  } as QualificationClimb;
+}
+
 function migrateLegacyRouteId(career: any, routes: ExpeditionRoute[]) {
   const previous = career.routes?.find((route: ExpeditionRoute) => route.id === career.expeditionPlan?.routeId);
   if (!previous) return routes[0]!.id;
@@ -533,12 +675,12 @@ export function migrateCareerV2(career: any, world: WorldState): CareerState {
   const weatherWindows = makeWeatherWindows(world);
   return {
     ...career,
-    schemaVersion: 7,
-    activeClimb: null,
+    schemaVersion: 8,
     routes,
     teamRoster,
     weatherWindows,
     expeditionPlan: defaultPlan(routes, teamRoster, weatherWindows),
+    activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
     reports: [],
     reputationProfile: { leadership: 8, reliability: 12, care: 10, ambition: 14 },
     livingWorld: createLivingWorld(world, teamRoster, career.club),
@@ -548,20 +690,13 @@ export function migrateCareerV2(career: any, world: WorldState): CareerState {
 export function migrateCareerV3(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
-  const activeClimb = career.activeClimb ? {
-    ...career.activeClimb,
-    teamStates: career.activeClimb.teamStates ?? createClimbTeamStates(teamRoster.filter(member => career.activeClimb.teamMemberIds.includes(member.id))),
-    decisions: career.activeClimb.decisions ?? [],
-    casualties: career.activeClimb.casualties ?? [],
-    rescuedMemberIds: career.activeClimb.rescuedMemberIds ?? [],
-  } : null;
   return {
     ...career,
-    schemaVersion: 7,
+    schemaVersion: 8,
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     teamRoster,
-    activeClimb,
+    activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
     reports: career.reports ?? [],
     reputationProfile: career.reputationProfile ?? { leadership: 8, reliability: 12, care: 10, ambition: 14 },
     livingWorld: career.livingWorld ?? createLivingWorld(world, teamRoster, career.club),
@@ -573,9 +708,10 @@ export function migrateCareerV4(career: any, world: WorldState): CareerState {
   const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
   return {
     ...career,
-    schemaVersion: 7,
+    schemaVersion: 8,
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
+    activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
     teamRoster,
     livingWorld: career.livingWorld ?? createLivingWorld(world, teamRoster, career.club),
   } as CareerState;
@@ -585,9 +721,10 @@ export function migrateCareerV5(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   return {
     ...career,
-    schemaVersion: 7,
+    schemaVersion: 8,
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
+    activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
   } as CareerState;
 }
 
@@ -595,9 +732,21 @@ export function migrateCareerV6(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   return {
     ...career,
-    schemaVersion: 7,
+    schemaVersion: 8,
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
+    activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
+  } as CareerState;
+}
+
+export function migrateCareerV7(career: any, world: WorldState): CareerState {
+  const routes = makeRoutes(world);
+  return {
+    ...career,
+    schemaVersion: 8,
+    routes,
+    expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
+    activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
   } as CareerState;
 }
 
@@ -830,6 +979,13 @@ export function startPlannedClimb(career: CareerState): CareerState {
     hoursAwake: 0,
     campEstablished: false,
     route: route.segments,
+    ascentRoute: route.segments,
+    descentRoute: route.descentSegments ?? defaultDescentSegments(route),
+    segmentChoices: {},
+    routeChoices: [],
+    fixedRopeSegmentIds: [],
+    ropeMetersRemaining: career.expeditionPlan.ropeMeters,
+    caches: [],
     log: [`05:10 — группа вышла на ${route.name}. Высота старта ${route.startElevation} м. Окно: ${window.label}.`],
     injuries: [],
     earnedReputation: 0,
@@ -866,11 +1022,97 @@ function mountainActionMultipliers(route: ExpeditionRoute, phase: QualificationC
   };
 }
 
+export function getCurrentRouteDecision(career: CareerState) {
+  const climb = career.activeClimb;
+  if (!climb || climb.phase !== 'ASCENT') return null;
+  const route = career.routes.find(item => item.id === climb.routeId) ?? getSelectedRoute(career);
+  const segment = climb.route[climb.segmentIndex];
+  if (!segment?.decisionId || climb.segmentChoices[segment.decisionId]) return null;
+  return route.decisions?.find(item => item.id === segment.decisionId) ?? null;
+}
+
+export function chooseRouteDecision(career: CareerState, optionId: string): ClimbStepResult {
+  const climb = career.activeClimb;
+  const decision = getCurrentRouteDecision(career);
+  if (!climb || !decision) return { career, headline: 'Решение недоступно', detail: 'На текущем участке нет открытого выбора линии.', severity: 'WARNING' };
+  const option = decision.options.find(item => item.id === optionId);
+  if (!option) return { career, headline: 'Линия не найдена', detail: 'Выбери один из доступных вариантов.', severity: 'WARNING' };
+  if (option.requiresGearId && (career.expeditionPlan.gear[option.requiresGearId] ?? 0) <= 0) {
+    return { career, headline: 'Не хватает снаряжения', detail: 'Эта линия недоступна с текущим комплектом.', severity: 'DANGER' };
+  }
+  if (option.requiresRopeMeters && climb.ropeMetersRemaining < option.requiresRopeMeters) {
+    return { career, headline: 'Не хватает верёвки', detail: `Нужно ${option.requiresRopeMeters} м, осталось ${climb.ropeMetersRemaining} м.`, severity: 'DANGER' };
+  }
+  const duration = option.requiresRopeMeters ? 45 : 15;
+  const segment = climb.route[climb.segmentIndex]!;
+  const elapsedMinutes = climb.elapsedMinutes + duration;
+  const usesFixedLine = Boolean(option.requiresRopeMeters);
+  const nextClimb: QualificationClimb = {
+    ...climb,
+    elapsedMinutes,
+    hoursAwake: climb.hoursAwake + duration / 60,
+    segmentChoices: { ...climb.segmentChoices, [decision.id]: option.id },
+    routeChoices: [...climb.routeChoices, { decisionId: decision.id, optionId: option.id, title: option.title, note: option.resultNote, elapsedMinutes }],
+    fixedRopeSegmentIds: usesFixedLine ? [...new Set([...climb.fixedRopeSegmentIds, segment.id])] : climb.fixedRopeSegmentIds,
+    ropeMetersRemaining: climb.ropeMetersRemaining - (option.requiresRopeMeters ?? 0),
+    log: [...climb.log, `${clock(elapsedMinutes)} — ${decision.title}: ${option.resultNote}`],
+  };
+  return { career: { ...career, activeClimb: nextClimb }, headline: option.title, detail: option.resultNote, severity: option.tone === 'BOLD' ? 'WARNING' : option.tone === 'SAFE' ? 'SUCCESS' : 'CALM' };
+}
+
+export function fixRope(career: CareerState): ClimbStepResult {
+  const climb = career.activeClimb;
+  if (!climb || climb.phase !== 'ASCENT') return { career, headline: 'Верёвка недоступна', detail: 'Стационарную линию можно оставить только на подъёме.', severity: 'WARNING' };
+  const segment = climb.route[climb.segmentIndex]!;
+  if (climb.fixedRopeSegmentIds.includes(segment.id)) return { career, headline: 'Линия уже закреплена', detail: 'Этот участок уже подготовлен для обратного пути.', severity: 'CALM' };
+  if (segment.exposure < 38 && segment.difficulty < 48) return { career, headline: 'Закрепление не требуется', detail: 'На этом участке верёвка даст мало пользы и только увеличит время.', severity: 'WARNING' };
+  if (climb.ropeMetersRemaining < 20) return { career, headline: 'Не хватает верёвки', detail: `Нужно 20 м, осталось ${climb.ropeMetersRemaining} м.`, severity: 'DANGER' };
+  const duration = 50;
+  const weather = evolveWeather(career, climb, duration);
+  const elapsedMinutes = climb.elapsedMinutes + duration;
+  const nextClimb: QualificationClimb = {
+    ...climb,
+    ...weather,
+    elapsedMinutes,
+    hoursAwake: climb.hoursAwake + duration / 60,
+    energy: clamp(climb.energy - 3),
+    ropeMetersRemaining: climb.ropeMetersRemaining - 20,
+    fixedRopeSegmentIds: [...climb.fixedRopeSegmentIds, segment.id],
+    log: [...climb.log, `${clock(elapsedMinutes)} — на участке «${segment.name}» оставлено 20 м стационарной верёвки.`],
+  };
+  return { career: { ...career, activeClimb: nextClimb }, headline: 'Линия закреплена', detail: 'Потрачено 20 м верёвки и 50 минут. Риск на этом участке при спуске снижен.', severity: 'SUCCESS' };
+}
+
+export function leaveCache(career: CareerState): ClimbStepResult {
+  const climb = career.activeClimb;
+  if (!climb || climb.phase !== 'ASCENT') return { career, headline: 'Закладка недоступна', detail: 'Запас оставляют на подъёме и забирают при возвращении.', severity: 'WARNING' };
+  const segment = climb.route[climb.segmentIndex]!;
+  if (!segment.campPossible) return { career, headline: 'Нет безопасного места', detail: 'На текущем участке закладку может сорвать или потерять.', severity: 'WARNING' };
+  if (climb.caches.some(item => item.segmentId === segment.id && !item.recovered)) return { career, headline: 'Закладка уже есть', detail: 'На этой высоте уже оставлен запас.', severity: 'CALM' };
+  if (climb.supplies.foodUnits < 6 || climb.supplies.waterUnits < 5 || climb.supplies.fuelUnits < 2) {
+    return { career, headline: 'Запас слишком мал', detail: 'Для закладки нужно оставить 4 еды, 3 воды и 1 топливо, сохранив рабочий резерв наверх.', severity: 'DANGER' };
+  }
+  const duration = 30;
+  const elapsedMinutes = climb.elapsedMinutes + duration;
+  const cache = { id: `cache-${climb.id}-${climb.caches.length + 1}`, segmentId: segment.id, elevation: climb.currentElevation, foodUnits: 4, waterUnits: 3, fuelUnits: 1, recovered: false };
+  const nextClimb: QualificationClimb = {
+    ...climb,
+    elapsedMinutes,
+    hoursAwake: climb.hoursAwake + .5,
+    packWeightKg: Math.max(4, Math.round((climb.packWeightKg - 1.2) * 10) / 10),
+    supplies: { foodUnits: climb.supplies.foodUnits - 4, waterUnits: climb.supplies.waterUnits - 3, fuelUnits: climb.supplies.fuelUnits - 1 },
+    caches: [...climb.caches, cache],
+    log: [...climb.log, `${clock(elapsedMinutes)} — на ${climb.currentElevation} м оставлена закладка для спуска.`],
+  };
+  return { career: { ...career, activeClimb: nextClimb }, headline: 'Закладка оставлена', detail: 'Рюкзаки стали легче. Запас автоматически будет найден на спуске, если группа вернётся этой высотой.', severity: 'SUCCESS' };
+}
+
 function calculateClimbAction(career: CareerState, pace: ClimbPace) {
   const climb = career.activeClimb;
   if (!climb || !['ASCENT', 'DESCENT'].includes(climb.phase)) return null;
   const route = career.routes.find(item => item.id === climb.routeId) ?? getSelectedRoute(career);
   const segment = climb.route[climb.segmentIndex]!;
+  if (segment.decisionId && !climb.segmentChoices[segment.decisionId]) return null;
   const paceMod = paceData(pace);
   const skill = career.hero.skills[segment.skill];
   const descentPenalty = climb.phase === 'DESCENT' ? 7 : 0;
@@ -881,16 +1123,21 @@ function calculateClimbAction(career: CareerState, pace: ClimbPace) {
   const ability = skill * 10 + career.hero.form * .28 + climb.energy * .16 + teamSupport - fatiguePenalty - weatherPenalty - packPenalty;
   const target = segment.difficulty + descentPenalty + segment.exposure * .08;
   const mountain = mountainActionMultipliers(route, climb.phase);
-  let incidentChance = clamp(.02 + Math.max(0, target - ability) * .011 + paceMod.risk + mountain.risk, .01, .78);
+  const decision = segment.decisionId ? route.decisions?.find(item => item.id === segment.decisionId) : null;
+  const optionId = segment.decisionId ? climb.segmentChoices[segment.decisionId] : null;
+  const choice = decision?.options.find(item => item.id === optionId);
+  const fixedAscentId = segment.linkedAscentSegmentId ?? segment.id;
+  const fixedProtection = climb.fixedRopeSegmentIds.includes(fixedAscentId);
+  let incidentChance = clamp(.02 + Math.max(0, target - ability) * .011 + paceMod.risk + mountain.risk + (choice?.riskModifier ?? 0) - (fixedProtection ? .085 : 0), .01, .78);
   if (climb.supplies.waterUnits <= 0) incidentChance += .08;
   if (climb.supplies.foodUnits <= 0) incidentChance += .06;
-  const durationMinutes = Math.round(segment.baseDurationMinutes * paceMod.time * (climb.phase === 'DESCENT' ? .84 : 1) * mountain.duration);
-  const energyCost = Math.round((4 + segment.difficulty * .078 + segment.exposure * .018 + climb.hoursAwake * .08) * paceMod.energy * (climb.phase === 'DESCENT' ? .8 : 1) * mountain.energy);
+  const durationMinutes = Math.round(segment.baseDurationMinutes * paceMod.time * mountain.duration * (choice?.durationModifier ?? 1) * (fixedProtection && climb.phase === 'DESCENT' ? .82 : 1));
+  const energyCost = Math.round((4 + segment.difficulty * .078 + segment.exposure * .018 + climb.hoursAwake * .08) * paceMod.energy * (climb.phase === 'DESCENT' ? .8 : 1) * mountain.energy * (choice?.energyModifier ?? 1));
   const teamSize = climb.teamMemberIds.length + 1;
   const hours = durationMinutes / 60;
   const foodCost = Math.max(1, Math.ceil(hours / 5)) * Math.max(1, Math.ceil(teamSize / 2));
   const waterCost = Math.max(1, Math.ceil(hours / 4)) * Math.max(1, Math.ceil(teamSize / 3));
-  return { route, segment, paceMod, incidentChance: clamp(incidentChance, .01, .9), durationMinutes, energyCost, foodCost, waterCost };
+  return { route, segment, paceMod, incidentChance: clamp(incidentChance, .01, .9), durationMinutes, energyCost, foodCost, waterCost, fixedProtection, choice };
 }
 
 export function previewClimbAction(career: CareerState, pace: ClimbPace): ClimbActionPreview | null {
@@ -1033,17 +1280,33 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
   return next;
 }
 
+function descentRouteFor(career: CareerState, climb: QualificationClimb) {
+  const route = career.routes.find(item => item.id === climb.routeId) ?? getSelectedRoute(career);
+  return route.descentSegments ?? defaultDescentSegments(route);
+}
+
+function descentStartIndex(climb: QualificationClimb, descentRoute: RouteSegment[]) {
+  const total = Math.max(1, climb.summitElevation - climb.startElevation);
+  const remainingDrop = Math.max(0, climb.currentElevation - climb.startElevation);
+  const progressFromSummit = 1 - remainingDrop / total;
+  return clamp(Math.floor(progressFromSummit * descentRoute.length), 0, Math.max(0, descentRoute.length - 1));
+}
+
 export function beginDescent(career: CareerState): CareerState {
   const climb = career.activeClimb;
   if (!climb || climb.phase !== 'SUMMIT') return career;
+  const descentRoute = descentRouteFor(career, climb);
   return {
     ...career,
     activeClimb: {
       ...climb,
       phase: 'DESCENT',
       summitReached: true,
-      segmentIndex: climb.route.length - 1,
-      log: [...climb.log, `${clock(climb.elapsedMinutes)} — начат спуск. Вершина больше не считается безопасным местом.`],
+      route: descentRoute,
+      descentRoute,
+      segmentIndex: 0,
+      campEstablished: false,
+      log: [...climb.log, `${clock(climb.elapsedMinutes)} — начат отдельный спусковой маршрут. Вершина больше не считается безопасным местом.`],
     },
   };
 }
@@ -1051,7 +1314,8 @@ export function beginDescent(career: CareerState): CareerState {
 export function retreatClimb(career: CareerState): CareerState {
   const climb = career.activeClimb;
   if (!climb || !['ASCENT', 'SUMMIT'].includes(climb.phase)) return career;
-  const segmentIndex = climb.phase === 'SUMMIT' ? climb.route.length - 1 : Math.max(0, climb.segmentIndex - 1);
+  const descentRoute = descentRouteFor(career, climb);
+  const segmentIndex = climb.phase === 'SUMMIT' ? 0 : descentStartIndex(climb, descentRoute);
   return {
     ...career,
     activeClimb: {
@@ -1059,8 +1323,11 @@ export function retreatClimb(career: CareerState): CareerState {
       phase: 'DESCENT',
       retreating: true,
       summitReached: climb.phase === 'SUMMIT',
+      route: descentRoute,
+      descentRoute,
       segmentIndex,
-      log: [...climb.log, `${clock(climb.elapsedMinutes)} — принято решение об отходе. Группа начинает полноценный спуск.`],
+      campEstablished: false,
+      log: [...climb.log, `${clock(climb.elapsedMinutes)} — принято решение об отходе. Группа переходит на спусковую линию с текущей высоты.`],
     },
   };
 }
@@ -1206,6 +1473,8 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
     return { career, headline: 'Действие недоступно', detail: 'Группа сейчас не движется по маршруту.', severity: 'WARNING' };
   }
 
+  const pendingDecision = getCurrentRouteDecision(career);
+  if (pendingDecision) return { career, headline: 'Сначала выбери линию', detail: pendingDecision.situation, severity: 'WARNING' };
   const forecast = calculateClimbAction(career, pace)!;
   const segment = forecast.segment;
   const direction = climb.phase === 'ASCENT' ? 1 : -1;
@@ -1290,20 +1559,35 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
   const elapsedMinutes = climb.elapsedMinutes + duration;
   const weather = evolveWeather(career, climb, duration);
   const hours = duration / 60;
-  const supplies = consumeSupplies(climb, hours);
+  let supplies = consumeSupplies(climb, hours);
   if (supplies.waterUnits === 0) energyCost += 5;
   if (supplies.foodUnits === 0) energyCost += 4;
   const energy = clamp(climb.energy - energyCost, 0, 100);
   const condition = clamp(climb.condition - conditionLoss - (weather.temperatureC < -20 ? 1 : 0), 0, 100);
   const elevationChange = direction * segment.elevationGain;
   const currentElevation = clamp(climb.currentElevation + elevationChange, climb.startElevation, climb.summitElevation);
+  let caches = climb.caches;
+  let recoveredCacheNote = '';
+  if (climb.phase === 'DESCENT') {
+    const recovered = climb.caches.filter(cache => !cache.recovered && currentElevation <= cache.elevation);
+    if (recovered.length) {
+      supplies = recovered.reduce((state, cache) => ({
+        foodUnits: state.foodUnits + cache.foodUnits,
+        waterUnits: state.waterUnits + cache.waterUnits,
+        fuelUnits: state.fuelUnits + cache.fuelUnits,
+      }), supplies);
+      const recoveredIds = new Set(recovered.map(cache => cache.id));
+      caches = climb.caches.map(cache => recoveredIds.has(cache.id) ? { ...cache, recovered: true } : cache);
+      recoveredCacheNote = ` Найдена закладка: +${recovered.reduce((sum, cache) => sum + cache.foodUnits, 0)} еды, +${recovered.reduce((sum, cache) => sum + cache.waterUnits, 0)} воды.`;
+    }
+  }
   const teamEvolution = evolveTeamStates(career, climb, duration, pace, weather.temperatureC < -20 ? 1 : 0);
   const adjustedTeamStates = teamEvolution.states.map(state => state.status === 'ACTIVE' ? { ...state, condition: clamp(state.condition - teamLoss * .35, 0, 100) } : state);
   if (teamEvolution.reveal) {
     detail = `${detail} ${teamEvolution.reveal}`;
     severity = severity === 'CALM' ? 'WARNING' : severity;
   }
-  const logLine = `${clock(elapsedMinutes)} — ${segment.name}: ${detail}`;
+  const logLine = `${clock(elapsedMinutes)} — ${segment.name}: ${detail}${recoveredCacheNote}`;
   const injuries = newInjury ? [...climb.injuries, newInjury] : climb.injuries;
 
   let nextClimb: QualificationClimb = {
@@ -1318,6 +1602,7 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
     currentElevation,
     injuries,
     supplies,
+    caches,
     hoursAwake: climb.hoursAwake + hours,
     campEstablished: false,
     log: [...climb.log, logLine],
@@ -1354,11 +1639,11 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
     } else {
       nextClimb.segmentIndex += 1;
     }
-  } else if (climb.segmentIndex <= 0) {
+  } else if (climb.segmentIndex >= climb.route.length - 1) {
     const completedCareer = finishClimb(career, nextClimb);
-    return { career: completedCareer, headline: 'Группа вернулась', detail: nextClimb.summitReached && !nextClimb.retreating ? 'Восхождение засчитано после полного спуска.' : 'Отход завершён. Карьера продолжается.', severity: 'SUCCESS' };
+    return { career: completedCareer, headline: 'Группа вернулась', detail: nextClimb.summitReached && !nextClimb.retreating ? 'Восхождение засчитано после отдельного спуска.' : 'Отход завершён. Карьера продолжается.', severity: 'SUCCESS' };
   } else {
-    nextClimb.segmentIndex -= 1;
+    nextClimb.segmentIndex += 1;
   }
 
   return { career: { ...career, activeClimb: nextClimb }, headline, detail, severity };

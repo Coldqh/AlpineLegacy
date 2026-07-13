@@ -27,6 +27,7 @@ export type WorldAthleteStatus = 'ACTIVE' | 'INJURED' | 'RETIRED' | 'DEAD' | 'MI
 export type WorldEventType = 'EXPEDITION' | 'SUMMIT' | 'RETREAT' | 'RECORD' | 'INJURY' | 'DEATH' | 'RETIREMENT' | 'CLUB' | 'RIVALRY';
 export type WorldExpeditionOutcome = 'SUMMIT' | 'RETREAT' | 'FAILED' | 'TRAGEDY';
 export type MountainCharacterId = 'WEATHER' | 'TECHNICAL' | 'ENDURANCE' | 'ALTITUDE' | 'DESCENT';
+export type RouteChoiceTone = 'SAFE' | 'BALANCED' | 'BOLD';
 
 export interface WorldSeedConfig {
   seed: string;
@@ -158,6 +159,32 @@ export interface RouteSegment {
   note: string;
   campPossible: boolean;
   hazard: string;
+  decisionId?: string;
+  linkedAscentSegmentId?: string;
+  noReturn?: boolean;
+  safeHaven?: boolean;
+  descentNote?: string;
+}
+
+export interface RouteDecisionOption {
+  id: string;
+  title: string;
+  tone: RouteChoiceTone;
+  description: string;
+  durationModifier: number;
+  energyModifier: number;
+  riskModifier: number;
+  requiresGearId?: string;
+  requiresRopeMeters?: number;
+  resultNote: string;
+}
+
+export interface RouteDecisionPoint {
+  id: string;
+  segmentId: string;
+  title: string;
+  situation: string;
+  options: RouteDecisionOption[];
 }
 
 export interface ExpeditionRoute {
@@ -176,6 +203,11 @@ export interface ExpeditionRoute {
   recommendedTeamSize: number;
   requiredGearIds: string[];
   segments: RouteSegment[];
+  descentSegments?: RouteSegment[];
+  decisions?: RouteDecisionPoint[];
+  isSignature?: boolean;
+  routeStory?: string[];
+  descentSummary?: string;
 }
 
 export interface PersonalityProfile {
@@ -308,6 +340,24 @@ export interface TeamDecisionRecord {
   elapsedMinutes: number;
 }
 
+export interface ClimbCache {
+  id: string;
+  segmentId: string;
+  elevation: number;
+  foodUnits: number;
+  waterUnits: number;
+  fuelUnits: number;
+  recovered: boolean;
+}
+
+export interface RouteChoiceRecord {
+  decisionId: string;
+  optionId: string;
+  title: string;
+  note: string;
+  elapsedMinutes: number;
+}
+
 export interface QualificationClimb {
   id: string;
   mountainId: string;
@@ -340,6 +390,13 @@ export interface QualificationClimb {
   hoursAwake: number;
   campEstablished: boolean;
   route: RouteSegment[];
+  ascentRoute: RouteSegment[];
+  descentRoute: RouteSegment[];
+  segmentChoices: Record<string, string>;
+  routeChoices: RouteChoiceRecord[];
+  fixedRopeSegmentIds: string[];
+  ropeMetersRemaining: number;
+  caches: ClimbCache[];
   log: string[];
   injuries: string[];
   casualties: string[];
@@ -372,6 +429,9 @@ export interface ExpeditionReport {
   pressReaction: string;
   reputationDelta: number;
   moneyDelta: number;
+  routeChoices?: RouteChoiceRecord[];
+  fixedRopes?: number;
+  cachesRecovered?: number;
 }
 
 
@@ -491,7 +551,7 @@ export interface LivingWorldState {
 }
 
 export interface CareerState {
-  schemaVersion: 7;
+  schemaVersion: 8;
   id: string;
   worldId: string;
   createdAt: string;

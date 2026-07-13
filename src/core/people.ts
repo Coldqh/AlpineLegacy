@@ -216,5 +216,8 @@ export function buildExpeditionReport(career: CareerState, climb: QualificationC
     pressReaction,
     reputationDelta,
     moneyDelta,
+    routeChoices: climb.routeChoices,
+    fixedRopes: climb.fixedRopeSegmentIds.length,
+    cachesRecovered: climb.caches.filter(item => item.recovered).length,
   };
 }

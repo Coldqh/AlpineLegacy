@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { RouteBlueprint } from '../components/RouteBlueprint';
-import { previewClimbAction, SKILL_LABELS } from '../core/career';
+import { getCurrentRouteDecision, previewClimbAction, SKILL_LABELS } from '../core/career';
 import type { CareerState, ClimbActionPreview, ClimbOrderId, ClimbPace, ClimbStepResult } from '../core/types';
 
 type Props = {
@@ -10,6 +10,9 @@ type Props = {
   onMeltSnow: () => ClimbStepResult;
   onWait: () => ClimbStepResult;
   onOrder: (order: ClimbOrderId) => ClimbStepResult;
+  onChooseDecision: (optionId: string) => ClimbStepResult;
+  onFixRope: () => ClimbStepResult;
+  onLeaveCache: () => ClimbStepResult;
   onBeginDescent: () => void;
   onRetreat: () => void;
   onClose: () => void;
@@ -34,10 +37,14 @@ function resultReview(career: CareerState) {
   if (climb.phase === 'RETREATED') strengths.push('Отход начат до полной потери рабочего состояния.');
   if (climb.rescuedMemberIds.length) strengths.push(`Помощь получили ${climb.rescuedMemberIds.length} участника.`);
   if (climb.energy >= 30) strengths.push(`На возвращении осталось ${Math.round(climb.energy)}% энергии.`);
+  if (climb.routeChoices.length) strengths.push(`На маршруте приняты осознанные решения: ${climb.routeChoices.length}.`);
+  if (climb.fixedRopeSegmentIds.length) strengths.push(`Подготовлено защищённых участков для спуска: ${climb.fixedRopeSegmentIds.length}.`);
+  if (climb.caches.some(item => item.recovered)) strengths.push('Закладка сработала на обратном пути.');
   if (climb.hoursAwake > 16) mistakes.push(`Группа работала без сна ${Math.round(climb.hoursAwake)} часов.`);
   if (climb.energy < 20) mistakes.push('Спуск завершён почти без физического резерва.');
   if (climb.injuries.length) mistakes.push(`Получено травм: ${climb.injuries.length}.`);
   if (climb.casualties.length) mistakes.push(`Потери: ${climb.casualties.length}.`);
+  if (climb.caches.some(item => !item.recovered)) mistakes.push('Часть оставленных запасов не удалось вернуть.');
   if (!strengths.length) strengths.push('Экспедиция дала данные о маршруте и состоянии команды.');
   if (!mistakes.length) mistakes.push('Критических ошибок в итоговом отчёте не выявлено.');
   return { strengths, mistakes };
@@ -54,14 +61,19 @@ function PaceCard({ preview, primary, onClick }: { preview: ClimbActionPreview; 
   );
 }
 
-export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrder, onBeginDescent, onRetreat, onClose }: Props) {
+export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onBeginDescent, onRetreat, onClose }: Props) {
   const climb = career.activeClimb!;
   const [feedback, setFeedback] = useState<Pick<ClimbStepResult, 'headline' | 'detail' | 'severity'> | null>(null);
   const activeSegment = climb.route[Math.max(0, Math.min(climb.route.length - 1, climb.segmentIndex))]!;
   const terminal = ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase);
   const liveTeam = climb.teamStates.map(state => ({ state, member: career.teamRoster.find(member => member.id === state.memberId) })).filter(item => item.member);
+  const currentDecision = getCurrentRouteDecision(career);
   const previews = useMemo(() => (['CAUTIOUS', 'STEADY', 'FAST'] as ClimbPace[]).map(pace => previewClimbAction(career, pace)).filter(Boolean) as ClimbActionPreview[], [career]);
-  const noReturn = climb.phase === 'ASCENT' && (activeSegment.exposure >= 65 || climb.segmentIndex >= Math.ceil(climb.route.length * .6));
+  const noReturn = climb.phase === 'ASCENT' && Boolean(activeSegment.noReturn || activeSegment.exposure >= 65);
+  const clockMinutes = (5 * 60 + 10 + climb.elapsedMinutes) % 1440;
+  const daylightMinutes = Math.max(0, 20 * 60 - clockMinutes);
+  const nextCampIndex = climb.route.findIndex((segment, index) => index >= climb.segmentIndex && segment.campPossible);
+  const nextCampDistance = nextCampIndex < 0 ? null : nextCampIndex - climb.segmentIndex;
   const fieldSignal = climb.supplies.waterUnits <= 3
     ? { tone: 'danger', title: 'Вода почти закончилась', detail: 'Топи снег, если есть топливо. Следующий длинный участок резко ударит по группе.' }
     : climb.hoursAwake >= 12
@@ -96,6 +108,7 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
           <article className="is-good"><small>СИЛЬНЫЕ РЕШЕНИЯ</small>{review.strengths.map(item => <p key={item}>✓ {item}</p>)}</article>
           <article className="is-warning"><small>ЧТО ИЗМЕНИТЬ</small>{review.mistakes.map(item => <p key={item}>— {item}</p>)}</article>
         </section>
+        {climb.routeChoices.length > 0 && <section className="route-choice-debrief"><p className="eyebrow">ROUTE DECISIONS</p>{climb.routeChoices.map(choice => <article key={`${choice.decisionId}-${choice.optionId}`}><strong>{choice.title}</strong><p>{choice.note}</p></article>)}</section>}
         <details className="result-log-disclosure"><summary>Открыть полный журнал экспедиции ({climb.log.length})</summary><div className="result-ledger">{climb.log.map((line, index) => <div key={`${line}-${index}`}><span>{String(index + 1).padStart(2, '0')}</span><p>{line}</p></div>)}</div></details>
         <button className="primary-action result-close" onClick={onClose}><span>Закрыть экспедицию</span><b>→</b></button>
       </section>
@@ -141,7 +154,7 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
           <div className="route-progress-register">
             {climb.route.map((segment, index) => {
               const current = index === climb.segmentIndex;
-              const passed = climb.phase === 'ASCENT' ? index < climb.segmentIndex : index > climb.segmentIndex;
+              const passed = index < climb.segmentIndex;
               return <div key={segment.id} className={`${current ? 'is-current' : ''} ${passed ? 'is-passed' : ''}`}><span>{String(index + 1).padStart(2, '0')}</span><i /><p><strong>{segment.name}</strong><small>{segment.terrain} · {segment.hazard}</small></p></div>;
             })}
           </div>
@@ -156,14 +169,37 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
 
           {feedback && <div className={`climb-feedback is-${feedback.severity.toLowerCase()}`}><span>ПОСЛЕДНЕЕ ДЕЙСТВИЕ</span><h3>{feedback.headline}</h3><p>{feedback.detail}</p></div>}
 
-          <div className="pace-options pace-options--preview">
-            {previews.map(preview => <PaceCard key={preview.pace} preview={preview} primary={preview.pace === 'STEADY'} onClick={() => resolve(() => onStep(preview.pace))} />)}
-          </div>
+          {currentDecision ? (
+            <section className="route-decision-panel">
+              <p className="eyebrow">РЕШЕНИЕ НА МАРШРУТЕ</p>
+              <h2>{currentDecision.title}</h2>
+              <p>{currentDecision.situation}</p>
+              <div>
+                {currentDecision.options.map(option => {
+                  const unavailable = Boolean(option.requiresRopeMeters && climb.ropeMetersRemaining < option.requiresRopeMeters);
+                  return (
+                    <button key={option.id} className={`is-${option.tone.toLowerCase()}`} disabled={unavailable} onClick={() => resolve(() => onChooseDecision(option.id))}>
+                      <header><strong>{option.title}</strong><span>{option.tone === 'SAFE' ? 'БЕЗОПАСНЕЕ' : option.tone === 'BOLD' ? 'РИСКОВАННО' : 'БАЛАНС'}</span></header>
+                      <p>{option.description}</p>
+                      <small>Время ×{option.durationModifier.toFixed(2)} · силы ×{option.energyModifier.toFixed(2)} · риск {option.riskModifier >= 0 ? '+' : ''}{Math.round(option.riskModifier * 100)}%</small>
+                      {option.requiresRopeMeters && <em>{unavailable ? `Нужно ${option.requiresRopeMeters} м верёвки` : `Будет оставлено ${option.requiresRopeMeters} м верёвки`}</em>}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : (
+            <div className="pace-options pace-options--preview">
+              {previews.map(preview => <PaceCard key={preview.pace} preview={preview} primary={preview.pace === 'STEADY'} onClick={() => resolve(() => onStep(preview.pace))} />)}
+            </div>
+          )}
 
           <div className="field-actions field-actions--explained">
             <button disabled={!activeSegment.campPossible} onClick={() => resolve(onCamp)}><span>Лагерь</span><small>+34% сил · 7 часов · еда и топливо</small></button>
             <button disabled={climb.supplies.fuelUnits <= 0} onClick={() => resolve(onMeltSnow)}><span>Топить снег</span><small>50 минут · топливо −1 · вода +5</small></button>
             <button onClick={() => resolve(onWait)}><span>Ждать окно</span><small>3 часа · запасы расходуются · погода меняется</small></button>
+            <button disabled={climb.phase !== 'ASCENT' || climb.ropeMetersRemaining < 20} onClick={() => resolve(onFixRope)}><span>Закрепить линию</span><small>50 минут · верёвка −20 м · безопаснее на спуске</small></button>
+            <button disabled={climb.phase !== 'ASCENT' || !activeSegment.campPossible} onClick={() => resolve(onLeaveCache)}><span>Оставить закладку</span><small>30 минут · рюкзак легче · запас на возвращение</small></button>
           </div>
 
           <details className="team-orders team-orders--disclosure">
@@ -185,6 +221,10 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrde
           <div><span>Вода</span><strong>{climb.supplies.waterUnits}</strong><i style={{ '--value': `${Math.min(100, climb.supplies.waterUnits * 14)}%` } as React.CSSProperties} /></div>
           <div><span>Топливо</span><strong>{climb.supplies.fuelUnits}</strong><i style={{ '--value': `${Math.min(100, climb.supplies.fuelUnits * 25)}%` } as React.CSSProperties} /></div>
           <div><span>Вес</span><strong>{climb.packWeightKg} кг</strong></div>
+          <div><span>Верёвка</span><strong>{climb.ropeMetersRemaining} м</strong></div>
+          <div><span>Закладки</span><strong>{climb.caches.filter(item => !item.recovered).length}</strong></div>
+          <div><span>До темноты</span><strong>{durationLabel(daylightMinutes)}</strong></div>
+          <div><span>Ближайший лагерь</span><strong>{nextCampDistance === null ? 'нет' : nextCampDistance === 0 ? 'здесь' : `через ${nextCampDistance} уч.`}</strong></div>
           <div><span>Без сна</span><strong>{Math.round(climb.hoursAwake)} ч</strong></div>
           <p className="resource-warning">Смотри расходы прямо на карточках темпа. Пустой запас не убивает мгновенно, но делает каждый следующий ход хуже.</p>
           <div className="field-team-register">

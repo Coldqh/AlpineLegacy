@@ -4,9 +4,12 @@ import {
   applyEquipmentPreset,
   beginDescent,
   closeClimb,
+  chooseRouteDecision,
   establishCamp,
   expeditionReadiness,
+  fixRope,
   issueClimbOrder,
+  leaveCache,
   meltSnow,
   resolveClimbStep,
   retreatClimb,
@@ -140,13 +143,16 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
           onMeltSnow={() => persistResult(meltSnow(career))}
           onWait={() => persistResult(waitWeather(career))}
           onOrder={(order: ClimbOrderId) => persistResult(issueClimbOrder(career, order))}
+          onChooseDecision={optionId => persistResult(chooseRouteDecision(career, optionId))}
+          onFixRope={() => persistResult(fixRope(career))}
+          onLeaveCache={() => persistResult(leaveCache(career))}
           onBeginDescent={() => onPersist(beginDescent(career))}
           onRetreat={() => onPersist(retreatClimb(career))}
           onClose={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }}
         />
       );
     }
-    return <JournalScreen career={career} />;
+    return <JournalScreen career={career} world={world} />;
   }
 
   return (

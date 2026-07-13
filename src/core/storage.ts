@@ -1,4 +1,4 @@
-import { migrateCareerV2, migrateCareerV3, migrateCareerV4, migrateCareerV5, migrateCareerV6 } from './career';
+import { migrateCareerV2, migrateCareerV3, migrateCareerV4, migrateCareerV5, migrateCareerV6, migrateCareerV7 } from './career';
 import { hydrateWorld } from './generator';
 import type { CareerState, WorldState } from './types';
 
@@ -8,7 +8,8 @@ const CAREER_KEY_V3 = 'alpine-legacy:career:v3';
 const CAREER_KEY_V4 = 'alpine-legacy:career:v4';
 const CAREER_KEY_V5 = 'alpine-legacy:career:v5';
 const CAREER_KEY_V6 = 'alpine-legacy:career:v6';
-const CAREER_KEY = 'alpine-legacy:career:v7';
+const CAREER_KEY_V7 = 'alpine-legacy:career:v7';
+const CAREER_KEY = 'alpine-legacy:career:v8';
 
 export function saveWorld(world: WorldState) {
   localStorage.setItem(WORLD_KEY, JSON.stringify(world));
@@ -32,16 +33,23 @@ export function saveCareer(career: CareerState) {
 }
 
 export function loadCareer(world?: WorldState): CareerState | null {
-  const raw = localStorage.getItem(CAREER_KEY) ?? localStorage.getItem(CAREER_KEY_V6) ?? localStorage.getItem(CAREER_KEY_V5) ?? localStorage.getItem(CAREER_KEY_V4) ?? localStorage.getItem(CAREER_KEY_V3) ?? localStorage.getItem(CAREER_KEY_V2);
+  const raw = localStorage.getItem(CAREER_KEY) ?? localStorage.getItem(CAREER_KEY_V7) ?? localStorage.getItem(CAREER_KEY_V6) ?? localStorage.getItem(CAREER_KEY_V5) ?? localStorage.getItem(CAREER_KEY_V4) ?? localStorage.getItem(CAREER_KEY_V3) ?? localStorage.getItem(CAREER_KEY_V2);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as any;
     if (!parsed?.hero?.name || !parsed?.club?.id) throw new Error('Invalid career save');
     if (world && parsed.worldId !== world.id) return null;
-    if (parsed.schemaVersion === 7) return parsed as CareerState;
+    if (parsed.schemaVersion === 8) return parsed as CareerState;
+    if (parsed.schemaVersion === 7 && world) {
+      const migrated = migrateCareerV7(parsed, world);
+      saveCareer(migrated);
+      localStorage.removeItem(CAREER_KEY_V7);
+      return migrated;
+    }
     if (parsed.schemaVersion === 6 && world) {
       const migrated = migrateCareerV6(parsed, world);
       saveCareer(migrated);
+      localStorage.removeItem(CAREER_KEY_V7);
       localStorage.removeItem(CAREER_KEY_V6);
       return migrated;
     }
@@ -49,7 +57,7 @@ export function loadCareer(world?: WorldState): CareerState | null {
       const migrated = migrateCareerV5(parsed, world);
       saveCareer(migrated);
       localStorage.removeItem(CAREER_KEY_V6);
-    localStorage.removeItem(CAREER_KEY_V5);
+      localStorage.removeItem(CAREER_KEY_V5);
       return migrated;
     }
     if (parsed.schemaVersion === 4 && world) {
@@ -73,6 +81,7 @@ export function loadCareer(world?: WorldState): CareerState | null {
     throw new Error('Unsupported career save');
   } catch {
     localStorage.removeItem(CAREER_KEY);
+    localStorage.removeItem(CAREER_KEY_V7);
     localStorage.removeItem(CAREER_KEY_V6);
     localStorage.removeItem(CAREER_KEY_V5);
     localStorage.removeItem(CAREER_KEY_V4);
@@ -84,6 +93,7 @@ export function loadCareer(world?: WorldState): CareerState | null {
 
 export function deleteCareer() {
   localStorage.removeItem(CAREER_KEY);
+  localStorage.removeItem(CAREER_KEY_V7);
   localStorage.removeItem(CAREER_KEY_V6);
   localStorage.removeItem(CAREER_KEY_V5);
   localStorage.removeItem(CAREER_KEY_V4);
