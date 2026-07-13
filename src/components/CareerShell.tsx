@@ -34,15 +34,16 @@ function isPrimaryActive(tab: PrimaryTab, activeTab: CareerTabId) {
 }
 
 export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, children }: Props) {
+  const appIcon = `${import.meta.env.BASE_URL}icons/icon-192.png`;
   const initials = career.hero.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
   const current = tabs.find(tab => isPrimaryActive(tab, activeTab)) ?? tabs[0]!;
 
   return (
     <main className="career-shell">
       <aside className="career-sidebar">
-        <button className="career-sidebar__brand" onClick={onExit} aria-label="В главное меню">
-          <span>AL</span>
-          <small>0.5.4</small>
+        <button className="career-sidebar__brand" onClick={onExit} aria-label="Alpine Legacy — в главное меню">
+          <img src={appIcon} alt="" width="192" height="192" draggable={false} />
+          <span className="sr-only">Alpine Legacy</span>
         </button>
 
         <nav className="career-sidebar__nav" aria-label="Главные разделы карьеры">

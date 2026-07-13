@@ -1,9 +1,33 @@
 {
+  "id": "./",
   "name": "Alpine Legacy",
   "short_name": "Alpine Legacy",
-  "start_url": ".",
+  "description": "Карьерная roguelike-RPG про альпинизм: клуб, подготовка и пошаговые восхождения.",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#eae7df",
-  "theme_color": "#1b2224",
-  "description": "Карьерная roguelike-RPG про альпинизм: клуб, подготовка и пошаговые восхождения"
+  "theme_color": "#172025",
+  "categories": ["games", "sports", "simulation"],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
 }

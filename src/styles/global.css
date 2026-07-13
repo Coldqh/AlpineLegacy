@@ -2126,3 +2126,66 @@ button:disabled { cursor: not-allowed; }
   .climb-instruments--workspace { grid-template-columns: 1fr 1fr; }
   .climb-instruments--workspace > div { min-height: 72px; }
 }
+
+/* ─────────────────────────────────────────────
+   PATCH 0.5.5 / APP ICON + PWA BRANDING
+   ───────────────────────────────────────────── */
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.museum-header__left { min-width: 0; }
+.museum-header__brand { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.museum-header__brand img {
+  width: 34px;
+  height: 34px;
+  display: block;
+  border-radius: 10px;
+  object-fit: cover;
+}
+.museum-header__brand b {
+  font-size: 9px;
+  letter-spacing: .16em;
+  white-space: nowrap;
+}
+
+.career-sidebar__brand {
+  padding: 13px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.career-sidebar__brand img {
+  width: 84px;
+  height: 84px;
+  display: block;
+  border-radius: 20px;
+  object-fit: cover;
+  transition: transform .22s ease, filter .22s ease;
+}
+.career-sidebar__brand:hover img { transform: scale(1.025); filter: contrast(1.03); }
+
+@media (max-width: 1250px) {
+  .career-sidebar__brand { padding: 9px; }
+  .career-sidebar__brand img { width: 66px; height: 66px; border-radius: 16px; }
+}
+
+@media (max-width: 800px) {
+  .career-sidebar__brand { padding: 6px; }
+  .career-sidebar__brand img { width: 40px; height: 40px; border-radius: 11px; }
+  .museum-header__brand b { display: none; }
+  .museum-header__brand img { width: 32px; height: 32px; border-radius: 9px; }
+}
+
+@media print {
+  .career-sidebar__brand img,
+  .museum-header__brand img { filter: grayscale(1); }
+}
