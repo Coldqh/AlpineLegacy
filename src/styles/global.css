@@ -2801,3 +2801,637 @@ button {
 @media print {
   .career-topbar__menu { display: none !important; }
 }
+
+/* ─────────────────────────────────────────────
+   PATCH 0.5.7 / COMPACT UI, THEMES, SETTINGS
+   ───────────────────────────────────────────── */
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+html {
+  --surface: rgba(255, 255, 255, .18);
+  --surface-strong: rgba(255, 255, 255, .36);
+  --glass: rgba(234, 231, 223, .94);
+}
+
+html[data-theme='dark'] {
+  --paper: #111719;
+  --paper-deep: #182023;
+  --ink: #ece8df;
+  --muted: #98a2a4;
+  --line: rgba(236, 232, 223, .13);
+  --line-strong: rgba(236, 232, 223, .34);
+  --ice: #78939a;
+  --blue: #9eb7bd;
+  --red: #d27a67;
+  --surface: rgba(255, 255, 255, .035);
+  --surface-strong: rgba(255, 255, 255, .075);
+  --glass: rgba(17, 23, 25, .94);
+  color: var(--ink);
+  background: var(--paper);
+}
+
+html[data-theme='dark'] body::before {
+  opacity: .1;
+  mix-blend-mode: screen;
+}
+
+html[data-theme='dark'] :is(
+  .career-sidebar,
+  .career-topbar,
+  .workspace-subnav,
+  .route-hero-panel__legend,
+  .selected-objective-card,
+  .app-settings-panel
+) {
+  background: var(--glass);
+}
+
+html[data-theme='dark'] :is(
+  .choice-card,
+  .difficulty-card,
+  .mountain-choice-grid > button,
+  .route-choice-grid > button,
+  .team-card,
+  .training-card,
+  .equipment-preset-row button,
+  .weather-window-list button,
+  .readiness-explained-grid button,
+  .final-plan-card,
+  .final-plan-row article,
+  .field-signal,
+  .route-summary-panel,
+  .settings-group,
+  .settings-toggle
+) {
+  background-color: var(--surface);
+}
+
+html[data-theme='dark'] :is(
+  .choice-card.is-active,
+  .difficulty-card.is-active,
+  .mountain-choice-grid > button.is-active,
+  .route-choice-grid > button.is-active,
+  .team-card.is-selected,
+  .weather-window-list button.is-active,
+  .settings-segmented button.is-active
+) {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+html[data-theme='dark'] input {
+  color: var(--ink);
+  background: rgba(255,255,255,.045);
+}
+
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after {
+  scroll-behavior: auto !important;
+  animation: none !important;
+  transition: none !important;
+}
+
+.app-settings-trigger {
+  position: fixed;
+  z-index: 1001;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line-strong);
+  background: var(--glass);
+  color: var(--ink);
+  backdrop-filter: blur(18px);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.app-settings-trigger span { font-size: 16px; line-height: 1; }
+.app-settings-trigger i {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 3px var(--glass);
+}
+
+.app-settings-layer {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  background: rgba(5, 9, 10, .48);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: flex-end;
+}
+.app-settings-panel {
+  width: min(440px, 100%);
+  height: 100%;
+  overflow-y: auto;
+  padding: 22px;
+  background: var(--glass);
+  color: var(--ink);
+  border-left: 1px solid var(--line-strong);
+  box-shadow: -24px 0 80px rgba(0,0,0,.18);
+}
+.app-settings-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.app-settings-panel > header small,
+.settings-update-card > div > small {
+  display: block;
+  font-size: 9px;
+  letter-spacing: .15em;
+  color: var(--muted);
+}
+.app-settings-panel h2 {
+  margin: 5px 0 0;
+  font-family: var(--serif);
+  font-size: 39px;
+  font-weight: 500;
+}
+.app-settings-panel > header button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font-size: 22px;
+  cursor: pointer;
+}
+.settings-group {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  padding: 15px;
+}
+.settings-group__copy strong,
+.settings-group__copy span { display: block; }
+.settings-group__copy strong { font-family: var(--serif); font-size: 21px; font-weight: 500; }
+.settings-group__copy span { margin-top: 3px; font-size: 12px; color: var(--muted); }
+.settings-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 13px;
+  border: 1px solid var(--line-strong);
+}
+.settings-segmented:has(button:nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.settings-segmented button {
+  min-height: 42px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.settings-segmented button:last-child { border-right: 0; }
+.settings-segmented button.is-active { background: var(--ink); color: var(--paper); }
+.settings-toggle {
+  margin-top: 14px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.settings-toggle span,
+.settings-toggle strong,
+.settings-toggle small { display: block; }
+.settings-toggle strong { font-family: var(--serif); font-size: 21px; font-weight: 500; }
+.settings-toggle small { margin-top: 3px; font-size: 12px; color: var(--muted); }
+.settings-toggle input { width: 22px; height: 22px; accent-color: var(--red); }
+.settings-update-card {
+  margin-top: 14px;
+  padding: 17px;
+  background: var(--ink);
+  color: var(--paper);
+}
+.settings-update-card > div > strong {
+  display: block;
+  margin: 4px 0;
+  font-family: var(--serif);
+  font-size: 31px;
+  font-weight: 500;
+}
+.settings-update-card > div > span { font-size: 12px; opacity: .72; }
+.settings-update-actions { display: grid; grid-template-columns: .8fr 1.2fr; gap: 8px; margin-top: 15px; }
+.settings-update-actions button {
+  min-height: 42px;
+  border: 1px solid rgba(255,255,255,.22);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.settings-update-actions button.is-primary { background: var(--paper); color: var(--ink); border-color: var(--paper); }
+.settings-update-actions button:disabled { opacity: .5; }
+.settings-update-card p { margin: 13px 0 0; font-size: 11px; line-height: 1.45; opacity: .64; }
+
+/* Compact is the default density. It reduces the whole game, not only font sizes. */
+html[data-density='compact'] .workspace-page {
+  max-width: 1360px;
+  padding: clamp(18px, 2.5vw, 34px);
+}
+html[data-density='compact'] .workspace-title { margin-bottom: 20px; }
+html[data-density='compact'] .workspace-title h1,
+html[data-density='compact'] .workspace-title--compact h1 {
+  font-size: clamp(45px, 5vw, 76px);
+  margin-bottom: 8px;
+}
+html[data-density='compact'] .workspace-title > div:first-child > p:last-child { font-size: 16px; }
+html[data-density='compact'] .workspace-title__mark span { font-size: 44px; }
+html[data-density='compact'] .panel-heading { margin-bottom: 16px; padding-bottom: 10px; }
+html[data-density='compact'] .panel-heading h2 { font-size: 31px; }
+html[data-density='compact'] .workspace-metrics > div,
+html[data-density='compact'] .workspace-metrics--clear > div { min-height: 78px; padding: 13px; }
+html[data-density='compact'] .workspace-metrics strong,
+html[data-density='compact'] .workspace-metrics--clear strong { font-size: 24px; }
+html[data-density='compact'] :is(.overview-columns, .overview-columns--clear, .route-detail-grid, .career-main-grid) { margin-block: 38px; gap: 38px; }
+html[data-density='compact'] .overview-poster { min-height: 250px; }
+html[data-density='compact'] .overview-poster .mountain-art--hero svg { height: 255px; }
+html[data-density='compact'] .route-hero-panel { margin-bottom: 36px; }
+html[data-density='compact'] .route-hero-panel .mountain-art--hero svg { height: 245px; }
+html[data-density='compact'] .route-choice-grid > button,
+html[data-density='compact'] .route-choice-grid--clear > button { min-height: 220px; padding: 16px; }
+html[data-density='compact'] .route-choice-grid h3 { font-size: 30px; }
+html[data-density='compact'] .mountain-choice-grid > button { min-height: 132px; padding: 14px; }
+html[data-density='compact'] .team-grid--clear .team-card,
+html[data-density='compact'] .team-card { min-height: 270px; padding: 16px; }
+html[data-density='compact'] .team-card__portrait { width: 50px; height: 58px; margin-bottom: 17px; }
+html[data-density='compact'] .training-card,
+html[data-density='compact'] .training-card--clear { min-height: 220px; padding: 15px; }
+html[data-density='compact'] .training-card h3,
+html[data-density='compact'] .training-card--clear h3 { margin: 22px 0 8px; font-size: 26px; }
+html[data-density='compact'] .weather-window-list--clear button { min-height: 185px; }
+html[data-density='compact'] .readiness-explained-grid button { min-height: 120px; padding: 14px; }
+html[data-density='compact'] .final-plan-row article { min-height: 125px; padding: 15px; }
+html[data-density='compact'] .career-flow-guide { padding-top: 12px; }
+html[data-density='compact'] .career-flow-guide__steps button { min-height: 62px; }
+
+/* Desktop */
+@media (min-width: 1440px) {
+  html[data-density='compact'] .career-shell { grid-template-columns: 210px minmax(0, 1fr); }
+  html[data-density='compact'] .career-sidebar__nav button { min-height: 60px; }
+  html[data-density='compact'] .career-topbar { height: 54px; min-height: 54px; }
+}
+
+/* Laptop */
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .career-shell { grid-template-columns: 74px minmax(0, 1fr); }
+  .career-sidebar__nav button { min-height: 56px; }
+  .career-sidebar__short { display: block; }
+  .career-sidebar__copy { display: none; }
+  .career-topbar { height: 50px; min-height: 50px; }
+  .career-workspace__content { min-height: calc(100vh - 50px); }
+  .workspace-subnav { top: 50px; }
+  .workspace-title h1,
+  .workspace-title--compact h1 { font-size: clamp(43px, 5.2vw, 66px); }
+  .training-grid--clear,
+  .team-grid--clear { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Tablet */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .career-shell { grid-template-columns: 64px minmax(0, 1fr); }
+  .career-sidebar { grid-template-rows: 1fr 72px; }
+  .career-sidebar__nav { padding: 4px 0; }
+  .career-sidebar__nav button { min-height: 52px; }
+  .career-topbar { height: 48px; min-height: 48px; padding-inline: 12px 52px; }
+  .workspace-subnav { top: 48px; min-height: 44px; }
+  .workspace-subnav button { min-height: 43px; padding-block: 6px; }
+  .workspace-page { padding: 18px; }
+  .workspace-title h1,
+  .workspace-title--compact h1 { font-size: 49px; }
+  .training-grid--clear,
+  .team-grid--clear,
+  .mountain-choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-settings-trigger { width: 32px; height: 32px; top: 8px; right: 8px; }
+}
+
+/* Phone — intentionally much denser than previous patches. */
+@media (max-width: 767px) {
+  body { min-width: 0; }
+  .app-settings-trigger {
+    top: max(6px, env(safe-area-inset-top));
+    right: max(6px, env(safe-area-inset-right));
+    width: 32px;
+    height: 32px;
+  }
+  .app-settings-panel {
+    width: 100%;
+    height: min(88vh, 720px);
+    margin-top: auto;
+    padding: 16px 13px calc(16px + env(safe-area-inset-bottom));
+    border-left: 0;
+    border-top: 1px solid var(--line-strong);
+  }
+  .app-settings-layer { align-items: flex-end; }
+  .app-settings-panel h2 { font-size: 31px; }
+  .settings-group, .settings-toggle { padding: 12px; }
+  .settings-segmented button { min-height: 38px; font-size: 11px; }
+  .settings-update-actions { grid-template-columns: 1fr; }
+
+  .career-shell { padding-bottom: calc(50px + env(safe-area-inset-bottom)); }
+  .career-sidebar { height: calc(50px + env(safe-area-inset-bottom)); }
+  .career-sidebar__nav { height: 50px; }
+  .career-sidebar__nav button,
+  .career-sidebar__nav button:first-child {
+    min-height: 50px;
+    height: 50px;
+    grid-template-rows: 21px 11px;
+    padding: 3px 0 2px;
+  }
+  .career-sidebar__short { font-size: 16px; }
+  .career-sidebar__mobile-label { font-size: 7px; }
+
+  .career-topbar {
+    height: 44px;
+    min-height: 44px;
+    padding: 0 44px 0 7px;
+    gap: 6px;
+  }
+  .career-topbar__menu {
+    width: 45px !important;
+    min-width: 45px;
+    height: 27px !important;
+    font-size: 7px;
+  }
+  .career-topbar__place small { font-size: 7px; }
+  .career-topbar__place strong { font-size: 12px; }
+  .career-workspace__content { min-height: calc(100vh - 94px); }
+
+  .workspace-subnav {
+    top: 44px;
+    min-height: 40px;
+    height: 40px;
+    padding: 0 6px;
+  }
+  .workspace-subnav button {
+    min-width: 88px;
+    min-height: 39px;
+    padding: 5px 8px;
+  }
+  .workspace-subnav strong { font-size: 12px; }
+
+  .workspace-page,
+  html[data-density='compact'] .workspace-page {
+    padding: 10px 9px 17px;
+    font-size: 13px;
+  }
+  .workspace-title,
+  html[data-density='compact'] .workspace-title { margin-bottom: 11px; }
+  .workspace-title h1,
+  .workspace-title--compact h1,
+  html[data-density='compact'] .workspace-title h1,
+  html[data-density='compact'] .workspace-title--compact h1 {
+    font-size: clamp(32px, 10.5vw, 42px);
+    line-height: .92;
+    margin-bottom: 5px;
+  }
+  .workspace-title > div:first-child > p:last-child,
+  html[data-density='compact'] .workspace-title > div:first-child > p:last-child {
+    font-size: 12px;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .workspace-page .eyebrow { margin-bottom: 5px; font-size: 8px; }
+  .panel-heading { margin-bottom: 9px; padding-bottom: 7px; }
+  .panel-heading h2 { font-size: 24px; }
+  .section-explainer { margin-bottom: 12px; font-size: 12px; }
+
+  .career-flow-guide {
+    padding: 6px 7px 0;
+  }
+  .career-flow-guide__intro { display: none; }
+  .career-flow-guide__steps { margin: 0; }
+  .career-flow-guide__steps button {
+    min-height: 39px;
+    padding: 4px 2px;
+  }
+  .career-flow-guide__steps strong { font-size: 11px; }
+
+  .workspace-metrics > div,
+  .workspace-metrics--clear > div,
+  .career-metrics > div,
+  html[data-density='compact'] .workspace-metrics > div,
+  html[data-density='compact'] .workspace-metrics--clear > div {
+    min-height: 58px;
+    padding: 8px;
+    gap: 2px;
+  }
+  .workspace-metrics span,
+  .workspace-metrics--clear span,
+  .career-metrics span { font-size: 7px; }
+  .workspace-metrics strong,
+  .workspace-metrics--clear strong,
+  .career-metrics strong,
+  html[data-density='compact'] .workspace-metrics strong,
+  html[data-density='compact'] .workspace-metrics--clear strong { font-size: 18px; margin-top: 2px; }
+
+  .overview-poster,
+  html[data-density='compact'] .overview-poster { min-height: 175px; }
+  .overview-poster .mountain-art--hero svg,
+  html[data-density='compact'] .overview-poster .mountain-art--hero svg { height: 175px; }
+  .overview-poster__plate { padding: 9px 10px; }
+  .overview-poster__plate strong { font-size: 20px; }
+
+  :is(.overview-columns, .overview-columns--clear, .route-detail-grid, .equipment-layout, .equipment-layout--clear, .expedition-board, .expedition-board--clear, .conditions-board, .climb-layout, .career-main-grid, .origin-detail),
+  html[data-density='compact'] :is(.overview-columns, .overview-columns--clear, .route-detail-grid, .career-main-grid) {
+    gap: 16px;
+    margin-block: 19px;
+  }
+
+  .training-card,
+  .training-card--clear,
+  html[data-density='compact'] .training-card,
+  html[data-density='compact'] .training-card--clear {
+    min-height: 132px;
+    padding: 10px;
+  }
+  .training-card__index,
+  .training-card--clear header span { font-size: 19px; }
+  .training-card h3,
+  .training-card--clear h3,
+  html[data-density='compact'] .training-card h3,
+  html[data-density='compact'] .training-card--clear h3 {
+    margin: 10px 0 5px;
+    font-size: 21px;
+  }
+  .training-card p,
+  .training-card--clear > p {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .training-card > div,
+  .training-card--clear footer { margin-top: 9px; font-size: 8px; }
+
+  .team-grid--clear .team-card,
+  .team-card,
+  html[data-density='compact'] .team-grid--clear .team-card,
+  html[data-density='compact'] .team-card {
+    min-height: 0;
+    padding: 10px;
+  }
+  .team-card__portrait { width: 38px; height: 44px; margin-bottom: 8px; font-size: 19px; }
+  .team-card h2,
+  .team-grid--clear .team-card h2 { margin: 4px 0 6px; font-size: 21px; }
+  .team-card p,
+  .team-grid--clear .team-card p {
+    font-size: 11px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .team-card__specialty,
+  .team-card__stats { margin-top: 10px; padding-top: 7px; }
+
+  .mountain-choice-grid > button,
+  html[data-density='compact'] .mountain-choice-grid > button {
+    min-height: 98px;
+    padding: 9px;
+    gap: 5px 8px;
+  }
+  .mountain-choice-grid h3 { font-size: 20px; }
+  .mountain-choice-grid p { font-size: 10px; }
+  .mountain-choice-grid > button > strong { font-size: 19px; }
+  .mountain-choice-grid footer { padding-top: 5px; font-size: 8px; }
+
+  .route-hero-panel,
+  html[data-density='compact'] .route-hero-panel { margin-bottom: 16px; }
+  .route-hero-panel .mountain-art--hero svg,
+  html[data-density='compact'] .route-hero-panel .mountain-art--hero svg { height: 155px; }
+  .route-hero-panel__legend { padding: 10px; }
+  .route-hero-panel__legend strong { font-size: 23px; }
+  .route-choice-grid > button,
+  .route-choice-grid--clear > button,
+  html[data-density='compact'] .route-choice-grid > button,
+  html[data-density='compact'] .route-choice-grid--clear > button {
+    min-height: 0;
+    padding: 10px;
+  }
+  .route-choice-grid h3 { font-size: 22px; }
+  .route-choice-grid p {
+    font-size: 11px;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .route-choice-grid dl { margin-top: 9px; }
+  .route-choice-grid dd { font-size: 16px; }
+  .route-summary-panel { margin-top: 14px; padding: 10px; }
+  .route-summary-panel h2 { font-size: 25px; }
+
+  .equipment-preset-row { gap: 6px; margin-bottom: 14px; }
+  .equipment-preset-row button { min-height: 67px; padding: 10px; }
+  .equipment-preset-row strong { font-size: 18px; }
+  .equipment-preset-row small { font-size: 10px; }
+  .equipment-list--clear article { padding: 9px 0; }
+  .equipment-list--clear h3 { font-size: 17px; }
+  .equipment-list--clear p { display: none; }
+  .supply-manifest--clear label { padding: 10px 0; }
+
+  .weather-window-list--clear button,
+  html[data-density='compact'] .weather-window-list--clear button {
+    min-height: 112px;
+    padding: 10px;
+  }
+  .weather-window-list--clear strong { font-size: 20px; }
+  .weather-window-list--clear p {
+    font-size: 10px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .acclimatization-card > strong { font-size: 48px; }
+  .readiness-explained-grid button,
+  html[data-density='compact'] .readiness-explained-grid button { min-height: 88px; padding: 9px; }
+  .readiness-explained-grid strong { font-size: 27px; }
+  .readiness-explained-grid p { margin: 5px 0; font-size: 10px; }
+  .final-plan-card { padding: 10px; }
+  .final-plan-card h2 { font-size: 25px; }
+  .final-plan-row article,
+  html[data-density='compact'] .final-plan-row article { min-height: 90px; padding: 10px; }
+  .launch-panel--clear { padding: 13px; }
+
+  .climb-instruments--workspace > div { min-height: 50px; padding: 7px; }
+  .climb-instruments--workspace span { font-size: 8px; }
+  .climb-instruments--workspace strong { font-size: 16px; }
+  .field-signal { margin-top: 9px; padding: 9px 10px; }
+  .field-signal strong { font-size: 18px; }
+  .field-signal p { font-size: 10px; }
+  .current-segment-card h2 { font-size: 24px; }
+  .current-segment-card > p { font-size: 11px; }
+  .pace-options--preview > button,
+  .pace-options--workspace button { min-height: 98px; padding: 9px; }
+  .pace-options--workspace button strong { font-size: 18px; }
+  .field-actions button { min-height: 48px; padding: 8px; }
+  .field-actions button span { font-size: 14px; }
+
+  .museum-header { height: 42px; padding: 0 44px 0 9px; }
+  .menu-page { min-height: calc(100vh - 42px); padding: 14px 10px; gap: 10px; }
+  .menu-hero-copy { padding-top: 3px; }
+  .menu-hero-copy h1 { font-size: 49px; line-height: .78; }
+  .menu-thesis { margin-top: 12px; font-size: 16px; }
+  .hero-composition { min-height: 155px; }
+  .mountain-art--hero svg { height: 165px; }
+  .menu-action { min-height: 45px; }
+  .menu-action span { font-size: 19px; }
+  .menu-footer { padding-top: 8px; font-size: 7px; }
+
+  .setup-grid { padding: 15px 10px; gap: 18px; }
+  .setup-intro h1 { font-size: 43px; margin-bottom: 12px; }
+  .setup-intro .lead { font-size: 18px; }
+  .form-section { grid-template-columns: 25px 1fr; padding: 13px 0; }
+  .choice-card { padding: 10px; }
+  .choice-card strong { font-size: 19px; }
+  .difficulty-card { min-height: 70px; padding: 10px; }
+  .primary-action { min-height: 53px; font-size: 20px; }
+
+  .region-page,
+  .mountain-detail,
+  .character-page { padding: 16px 10px; }
+  .region-title-block h1,
+  .detail-title h1 { font-size: 43px; }
+  .region-subtitle,
+  .detail-title p { font-size: 17px; margin-top: 8px; }
+  .region-metrics div,
+  .region-metrics div + div { padding: 9px 0; }
+  .large-copy { font-size: 21px; }
+  .mountain-card,
+  .mountain-card:nth-child(3n) { min-height: 230px; padding: 12px; }
+  .mountain-art--card svg { height: 100px; }
+  .character-intro h1 { font-size: 43px; }
+  .identity-poster { min-height: 165px; margin-top: 18px; }
+  .origin-section { margin-top: 25px; }
+  .origin-card { min-height: 92px; padding: 10px; }
+  .origin-card div { left: 10px; right: 10px; bottom: 10px; }
+  .origin-card strong { font-size: 19px; }
+}
