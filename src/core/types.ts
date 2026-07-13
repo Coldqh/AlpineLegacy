@@ -11,7 +11,7 @@ export type ScreenId =
   | 'ARCHIVE'
   | 'SETTINGS';
 
-export type CareerTabId = 'OVERVIEW' | 'ROUTE' | 'TEAM' | 'EQUIPMENT' | 'EXPEDITION' | 'CLIMB' | 'JOURNAL';
+export type CareerTabId = 'OVERVIEW' | 'ROUTE' | 'TEAM' | 'PEOPLE' | 'EQUIPMENT' | 'EXPEDITION' | 'CLIMB' | 'JOURNAL';
 export type OriginId = 'CLUB_SCHOOL' | 'HIGHLAND_LOCAL' | 'ROCK_SECTION';
 export type SkillId = 'ENDURANCE' | 'ROCK' | 'ICE' | 'NAVIGATION' | 'MEDICINE' | 'LEADERSHIP';
 export type TrainingId = 'CONDITIONING' | 'ROCK_PRACTICE' | 'ICE_PRACTICE' | 'MAP_ROOM' | 'FIRST_AID' | 'CLUB_DUTY' | 'RECOVERY';
@@ -19,6 +19,10 @@ export type ClimbPace = 'CAUTIOUS' | 'STEADY' | 'FAST';
 export type ClimbPhase = 'READY' | 'ASCENT' | 'SUMMIT' | 'DESCENT' | 'COMPLETE' | 'FAILED' | 'RETREATED';
 export type GearCategory = 'PROTECTION' | 'SHELTER' | 'SURVIVAL' | 'COMMUNICATION';
 export type TeamRole = 'LEADER' | 'ROPE_LEAD' | 'MEDIC' | 'NAVIGATOR' | 'SUPPORT';
+export type MemberStatus = 'ACTIVE' | 'INJURED' | 'LEFT' | 'RETIRED' | 'DEAD';
+export type ClimbMemberStatus = 'ACTIVE' | 'TURNED_BACK' | 'INCAPACITATED' | 'DEAD';
+export type MemoryType = 'FIRST_MEETING' | 'ORDER' | 'REFUSAL' | 'SUMMIT' | 'RETREAT' | 'RESCUE' | 'INJURY' | 'CONFLICT' | 'LOYALTY' | 'LOSS';
+export type ClimbOrderId = 'SLOW_DOWN' | 'PRESS_ON' | 'TURN_BACK_WEAKEST' | 'ASSIGN_HELPER';
 
 export interface WorldSeedConfig {
   seed: string;
@@ -122,7 +126,7 @@ export interface CareerLogEntry {
   id: string;
   year: number;
   seasonDay: number;
-  type: 'CAREER' | 'TRAINING' | 'CLIMB' | 'INJURY' | 'CLUB' | 'EXPEDITION';
+  type: 'CAREER' | 'TRAINING' | 'CLIMB' | 'INJURY' | 'CLUB' | 'EXPEDITION' | 'RELATIONSHIP' | 'PRESS';
   title: string;
   description: string;
 }
@@ -166,6 +170,36 @@ export interface ExpeditionRoute {
   segments: RouteSegment[];
 }
 
+export interface PersonalityProfile {
+  caution: number;
+  ambition: number;
+  discipline: number;
+  loyalty: number;
+  empathy: number;
+  ego: number;
+}
+
+export interface RelationshipProfile {
+  trust: number;
+  respect: number;
+  bond: number;
+  rivalry: number;
+  resentment: number;
+  debt: number;
+}
+
+export interface PersonMemory {
+  id: string;
+  year: number;
+  seasonDay: number;
+  type: MemoryType;
+  title: string;
+  description: string;
+  trustDelta: number;
+  respectDelta: number;
+  resentmentDelta: number;
+}
+
 export interface TeamMember {
   id: string;
   name: string;
@@ -179,6 +213,19 @@ export interface TeamMember {
   temperament: string;
   note: string;
   required?: boolean;
+  morale: number;
+  status: MemberStatus;
+  injuries: string[];
+  hiddenIssue: string | null;
+  personalGoal: string;
+  personality: PersonalityProfile;
+  relationship: RelationshipProfile;
+  memories: PersonMemory[];
+  sharedClimbs: number;
+  summits: number;
+  rescues: number;
+  refusals: number;
+  availability: number;
 }
 
 export interface GearDefinition {
@@ -231,6 +278,28 @@ export interface ClimbSupplies {
   fuelUnits: number;
 }
 
+export interface ClimbMemberState {
+  memberId: string;
+  condition: number;
+  fatigue: number;
+  morale: number;
+  status: ClimbMemberStatus;
+  visibleInjury: string | null;
+  hiddenInjury: string | null;
+  summitReached: boolean;
+  refusedOrders: number;
+  helperForMemberId: string | null;
+}
+
+export interface TeamDecisionRecord {
+  id: string;
+  order: ClimbOrderId;
+  memberId: string | null;
+  accepted: boolean;
+  description: string;
+  elapsedMinutes: number;
+}
+
 export interface QualificationClimb {
   id: string;
   mountainId: string;
@@ -257,18 +326,48 @@ export interface QualificationClimb {
   packWeightKg: number;
   teamMemberIds: string[];
   teamCondition: number;
+  teamStates: ClimbMemberState[];
+  decisions: TeamDecisionRecord[];
   supplies: ClimbSupplies;
   hoursAwake: number;
   campEstablished: boolean;
   route: RouteSegment[];
   log: string[];
   injuries: string[];
+  casualties: string[];
+  rescuedMemberIds: string[];
   earnedReputation: number;
   earnedMoney: number;
 }
 
+export interface ReputationProfile {
+  leadership: number;
+  reliability: number;
+  care: number;
+  ambition: number;
+}
+
+export interface ExpeditionReport {
+  id: string;
+  year: number;
+  seasonDay: number;
+  mountainName: string;
+  routeName: string;
+  outcome: 'SUMMIT' | 'RETREAT' | 'FAILED';
+  highestElevation: number;
+  elapsedMinutes: number;
+  teamMemberIds: string[];
+  casualties: string[];
+  injuries: string[];
+  decisions: TeamDecisionRecord[];
+  clubReaction: string;
+  pressReaction: string;
+  reputationDelta: number;
+  moneyDelta: number;
+}
+
 export interface CareerState {
-  schemaVersion: 3;
+  schemaVersion: 4;
   id: string;
   worldId: string;
   createdAt: string;
@@ -286,6 +385,8 @@ export interface CareerState {
   teamRoster: TeamMember[];
   weatherWindows: WeatherWindow[];
   expeditionPlan: ExpeditionPlan;
+  reports: ExpeditionReport[];
+  reputationProfile: ReputationProfile;
 }
 
 export interface CareerDraft {

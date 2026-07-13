@@ -1142,3 +1142,121 @@ button:disabled { cursor: not-allowed; }
   .career-shell { display: block; }
   .workspace-page { max-width: none; padding: 12mm; }
 }
+
+/* v0.4 — people, memory and consequence layer */
+.people-layout { display: grid; grid-template-columns: minmax(290px, .78fr) minmax(0, 1.65fr); gap: 30px; align-items: start; }
+.people-index { position: sticky; top: 100px; overflow: hidden; }
+.people-list { border-top: 1px solid var(--line-strong); }
+.people-list button { width: 100%; display: grid; grid-template-columns: 46px 1fr 34px; gap: 13px; align-items: center; padding: 14px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer; transition: .18s ease; }
+.people-list button:hover, .people-list button.is-active { padding-left: 10px; background: rgba(25, 31, 30, .035); }
+.people-list button.is-active { box-shadow: inset 3px 0 0 var(--red); }
+.people-list__portrait { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--line-strong); font-family: var(--serif); font-size: 18px; }
+.people-list button > span:nth-child(2) { min-width: 0; }
+.people-list small, .people-list em { display: block; font-size: 7px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-style: normal; }
+.people-list strong { display: block; margin: 4px 0 5px; font-family: var(--serif); font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.people-list b { font-family: var(--serif); font-size: 24px; font-weight: 500; text-align: right; }
+.person-file { overflow: hidden; }
+.person-file__hero { display: grid; grid-template-columns: 92px 1fr auto; gap: 22px; align-items: center; padding-bottom: 28px; border-bottom: 1px solid var(--line-strong); }
+.person-file__portrait { width: 92px; height: 112px; display: grid; place-items: center; background: var(--ink); color: var(--paper); font-family: var(--serif); font-size: 40px; }
+.person-file__hero h2 { margin: 2px 0 6px; font-family: var(--serif); font-size: 48px; line-height: .95; }
+.person-file__hero p:last-child { margin: 0; color: var(--muted); }
+.person-status { padding: 9px 11px; border: 1px solid var(--line-strong); font-size: 7px; letter-spacing: .14em; }
+.person-status.is-dead { color: var(--red); border-color: var(--red); }
+.person-core-grid { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line-strong); }
+.person-core-grid > div { min-height: 150px; padding: 22px 20px 20px 0; border-bottom: 1px solid var(--line); }
+.person-core-grid > div:nth-child(odd) { border-right: 1px solid var(--line); }
+.person-core-grid > div:nth-child(even) { padding-left: 20px; }
+.person-core-grid > div:nth-last-child(-n+2) { border-bottom: 0; }
+.person-core-grid small { font-size: 7px; letter-spacing: .12em; color: var(--muted); }
+.person-core-grid strong { display: block; margin: 12px 0 8px; font-family: var(--serif); font-size: 25px; font-weight: 500; }
+.person-core-grid p { margin: 0; color: var(--muted); line-height: 1.5; font-size: 10px; }
+.person-section-title { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin: 34px 0 14px; }
+.person-section-title h3 { margin: 0; font-family: var(--serif); font-size: 30px; font-weight: 500; }
+.relationship-grid, .personality-grid { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line-strong); }
+.person-meter { min-height: 94px; padding: 14px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; align-content: center; gap: 9px; }
+.person-meter:nth-child(3n) { border-right: 0; }
+.person-meter:nth-last-child(-n+3) { border-bottom: 0; }
+.person-meter span { font-size: 7px; letter-spacing: .1em; text-transform: uppercase; }
+.person-meter strong { font-family: var(--serif); font-size: 25px; font-weight: 500; }
+.person-meter i { grid-column: 1 / -1; height: 2px; background: var(--line); position: relative; }
+.person-meter i::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--value); background: var(--ink); }
+.memory-ledger { border-top: 1px solid var(--line-strong); }
+.memory-ledger article { display: grid; grid-template-columns: 35px 8px 1fr; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.memory-ledger article > span { font-family: var(--serif); font-size: 22px; }
+.memory-ledger article > i { width: 5px; height: 5px; margin-top: 7px; border-radius: 50%; background: var(--red); }
+.memory-ledger small, .memory-ledger em { display: block; font-size: 7px; letter-spacing: .08em; color: var(--muted); font-style: normal; text-transform: uppercase; }
+.memory-ledger h4 { margin: 5px 0; font-family: var(--serif); font-size: 23px; font-weight: 500; }
+.memory-ledger p { margin: 0 0 9px; color: var(--muted); line-height: 1.45; }
+
+.team-orders { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line-strong); }
+.team-orders > div { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line-strong); margin-top: 12px; }
+.team-orders button { min-height: 106px; padding: 15px; background: transparent; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; cursor: pointer; }
+.team-orders button:nth-child(2n) { border-right: 0; }
+.team-orders button:nth-last-child(-n+2) { border-bottom: 0; }
+.team-orders button:hover { background: rgba(25, 31, 30, .04); }
+.team-orders strong { display: block; font-family: var(--serif); font-size: 20px; font-weight: 500; }
+.team-orders small { display: block; margin-top: 7px; color: var(--muted); line-height: 1.4; }
+.field-team-register { grid-column: 1 / -1; margin-top: 24px; border-top: 1px solid var(--line-strong); padding-top: 16px; }
+.field-team-register article { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.field-team-register article > span { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line-strong); font-family: var(--serif); }
+.field-team-register article strong, .field-team-register article small { display: block; }
+.field-team-register article small { margin-top: 3px; color: var(--muted); font-size: 7px; text-transform: uppercase; }
+.field-team-register article > b { font-family: var(--serif); font-size: 22px; }
+.field-team-register article > i { grid-column: 2 / -1; height: 2px; background: var(--line); position: relative; }
+.field-team-register article > i::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--value); background: var(--ink); }
+.field-team-register article.is-turned_back, .field-team-register article.is-incapacitated { opacity: .48; }
+.field-team-register article.is-dead { color: var(--red); }
+
+.expedition-reports { margin-bottom: 70px; }
+.expedition-reports > article { display: grid; grid-template-columns: 120px minmax(0, 1fr) 90px; gap: 24px; padding: 24px 0; border-bottom: 1px solid var(--line-strong); }
+.report-outcome { min-height: 112px; padding: 14px; border: 1px solid var(--line-strong); display: flex; flex-direction: column; justify-content: space-between; }
+.report-outcome small { font-size: 7px; letter-spacing: .12em; }
+.report-outcome strong { font-family: var(--serif); font-size: 28px; font-weight: 500; }
+.report-outcome.is-failed { color: var(--red); border-color: var(--red); }
+.report-body > small { font-size: 7px; color: var(--muted); letter-spacing: .1em; }
+.report-body h3 { margin: 5px 0 0; font-family: var(--serif); font-size: 31px; font-weight: 500; }
+.report-body > p { margin: 2px 0 17px; color: var(--muted); }
+.report-reactions { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.report-reactions span { color: var(--muted); line-height: 1.45; font-size: 10px; }
+.report-reactions b { display: block; color: var(--ink); font-size: 7px; text-transform: uppercase; margin-bottom: 5px; }
+.report-decisions { display: grid; gap: 6px; margin-top: 14px; }
+.report-decisions span { padding: 7px 9px; background: rgba(25, 31, 30, .045); font-size: 8px; line-height: 1.35; }
+.report-decisions .is-refused { color: var(--red); }
+.report-numbers { display: flex; flex-direction: column; gap: 10px; text-align: right; }
+.report-numbers span { font-size: 7px; }
+.report-numbers b { display: block; margin-top: 3px; font-family: var(--serif); font-size: 24px; font-weight: 500; }
+
+@media (max-width: 1050px) {
+  .people-layout { grid-template-columns: 1fr; }
+  .people-index { position: static; }
+  .people-list { display: grid; grid-template-columns: 1fr 1fr; }
+  .people-list button:nth-child(odd) { border-right: 1px solid var(--line); }
+}
+
+@media (max-width: 680px) {
+  .person-file__hero { grid-template-columns: 66px 1fr; }
+  .person-file__portrait { width: 66px; height: 82px; font-size: 30px; }
+  .person-file__hero h2 { font-size: 36px; }
+  .person-status { grid-column: 1 / -1; width: fit-content; }
+  .people-list { grid-template-columns: 1fr; }
+  .people-list button:nth-child(odd) { border-right: 0; }
+  .person-core-grid, .relationship-grid, .personality-grid { grid-template-columns: 1fr 1fr; }
+  .person-meter:nth-child(3n) { border-right: 1px solid var(--line); }
+  .person-meter:nth-child(2n) { border-right: 0; }
+  .person-meter:nth-last-child(-n+3) { border-bottom: 1px solid var(--line); }
+  .person-meter:nth-last-child(-n+2) { border-bottom: 0; }
+  .team-orders > div { grid-template-columns: 1fr; }
+  .team-orders button { border-right: 0; }
+  .team-orders button:nth-last-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .team-orders button:last-child { border-bottom: 0; }
+  .expedition-reports > article { grid-template-columns: 1fr; }
+  .report-outcome { min-height: 74px; }
+  .report-reactions { grid-template-columns: 1fr; }
+  .report-numbers { flex-direction: row; text-align: left; }
+}
+
+@media print {
+  .team-orders { display: none !important; }
+}
+.team-card.is-unavailable { opacity: .42; filter: grayscale(.8); }
+.team-card__goal { display: block; margin-top: 14px; color: var(--muted); line-height: 1.4; }

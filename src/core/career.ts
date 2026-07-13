@@ -1,9 +1,11 @@
 import { createRng } from './rng';
+import { buildExpeditionReport, createClimbTeamStates, enrichRoster, finalizeRosterAfterClimb, memory, teamAverage } from './people';
 import type {
   CalendarEntry,
   CareerDraft,
   CareerLogEntry,
   CareerState,
+  ClimbOrderId,
   ClimbPace,
   ClimbStepResult,
   ClubData,
@@ -185,7 +187,7 @@ const mentorLast = ['Райн', 'Морель', 'Келлер', 'Штольц', 
 const memberFirst = ['Мира', 'Йонас', 'Ада', 'Павел', 'Симон', 'Лина', 'Клара', 'Маттео', 'Нора', 'Оскар'];
 const memberLast = ['Харт', 'Вейл', 'Краус', 'Роше', 'Берн', 'Соль', 'Дорн', 'Фальк', 'Мерц', 'Восс'];
 
-function clamp(value: number, min: number, max: number) {
+function clamp(value: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, value));
 }
 
@@ -349,7 +351,7 @@ function makeTeam(world: WorldState, club: ClubData): TeamMember[] {
     used.add(value);
     return value;
   };
-  return [
+  const raw = [
     {
       id: 'mentor', name: club.mentorName, age: rng.int(38, 57), role: 'LEADER', specialty: 'LEADERSHIP', skill: rng.int(7, 9), endurance: rng.int(6, 8), trust: 64, condition: 91,
       temperament: 'Сдержанный', note: 'Не ведёт группу к вершине после появления признаков развала.', required: true,
@@ -370,7 +372,8 @@ function makeTeam(world: WorldState, club: ClubData): TeamMember[] {
       id: 'medic', name: nextName(), age: rng.int(28, 43), role: 'MEDIC', specialty: 'MEDICINE', skill: rng.int(5, 8), endurance: rng.int(4, 6), trust: rng.int(48, 70), condition: rng.int(79, 93),
       temperament: 'Холодный', note: 'Ставит состояние группы выше спортивной цели.',
     },
-  ];
+  ] as unknown as TeamMember[];
+  return enrichRoster(raw, world.config.seed, world.config.startYear, 1);
 }
 
 function makeWeatherWindows(world: WorldState): WeatherWindow[] {
@@ -460,7 +463,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = makeTeam(world, club);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     createdAt: new Date().toISOString(),
@@ -494,6 +497,8 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     teamRoster,
     weatherWindows,
     expeditionPlan: defaultPlan(routes, teamRoster, weatherWindows),
+    reports: [],
+    reputationProfile: { leadership: 8, reliability: 12, care: 10, ambition: 14 },
   };
 
   career.log.push(careerLog(career, 'CAREER', 'Начало карьеры', `${career.hero.name}, ${career.hero.age} лет. Принят в «${club.name}», ${club.town}.`));
@@ -501,18 +506,39 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   return career;
 }
 
-export function migrateCareerV2(career: Omit<CareerState, 'schemaVersion' | 'routes' | 'teamRoster' | 'weatherWindows' | 'expeditionPlan'> & { schemaVersion: 2 }, world: WorldState): CareerState {
+export function migrateCareerV2(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   const teamRoster = makeTeam(world, career.club);
   const weatherWindows = makeWeatherWindows(world);
   return {
     ...career,
-    schemaVersion: 3,
+    schemaVersion: 4,
     activeClimb: null,
     routes,
     teamRoster,
     weatherWindows,
     expeditionPlan: defaultPlan(routes, teamRoster, weatherWindows),
+    reports: [],
+    reputationProfile: { leadership: 8, reliability: 12, care: 10, ambition: 14 },
+  } as CareerState;
+}
+
+export function migrateCareerV3(career: any, world: WorldState): CareerState {
+  const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
+  const activeClimb = career.activeClimb ? {
+    ...career.activeClimb,
+    teamStates: career.activeClimb.teamStates ?? createClimbTeamStates(teamRoster.filter(member => career.activeClimb.teamMemberIds.includes(member.id))),
+    decisions: career.activeClimb.decisions ?? [],
+    casualties: career.activeClimb.casualties ?? [],
+    rescuedMemberIds: career.activeClimb.rescuedMemberIds ?? [],
+  } : null;
+  return {
+    ...career,
+    schemaVersion: 4,
+    teamRoster,
+    activeClimb,
+    reports: career.reports ?? [],
+    reputationProfile: career.reputationProfile ?? { leadership: 8, reliability: 12, care: 10, ambition: 14 },
   } as CareerState;
 }
 
@@ -571,7 +597,7 @@ export function selectWeatherWindow(career: CareerState, weatherWindowId: string
 
 export function toggleTeamMember(career: CareerState, memberId: string): CareerState {
   const member = career.teamRoster.find(item => item.id === memberId);
-  if (!member || member.required) return career;
+  if (!member || member.required || member.status !== 'ACTIVE' || member.availability < 45) return career;
   const selected = career.expeditionPlan.teamMemberIds.includes(memberId);
   const nextIds = selected
     ? career.expeditionPlan.teamMemberIds.filter(id => id !== memberId)
@@ -596,7 +622,7 @@ export function getSelectedWeather(career: CareerState) {
 }
 
 export function selectedTeam(career: CareerState) {
-  return career.teamRoster.filter(member => career.expeditionPlan.teamMemberIds.includes(member.id));
+  return career.teamRoster.filter(member => career.expeditionPlan.teamMemberIds.includes(member.id) && member.status === 'ACTIVE' && member.availability >= 45);
 }
 
 export function expeditionWeight(career: CareerState) {
@@ -677,6 +703,10 @@ export function startPlannedClimb(career: CareerState): CareerState {
     weatherStep: 0,
     packWeightKg: packWeight(career),
     teamMemberIds: team.map(member => member.id),
+    teamStates: createClimbTeamStates(team),
+    decisions: [],
+    casualties: [],
+    rescuedMemberIds: [],
     teamCondition: Math.round(team.reduce((sum, member) => sum + member.condition, 0) / Math.max(1, team.length)),
     supplies: {
       foodUnits: career.expeditionPlan.foodDays * (team.length + 1) * 3,
@@ -750,6 +780,34 @@ function consumeSupplies(climb: QualificationClimb, hours: number) {
   };
 }
 
+function evolveTeamStates(career: CareerState, climb: QualificationClimb, duration: number, pace: ClimbPace, coldPenalty: number) {
+  const rng = createRng(`${career.id}:${climb.id}:people:${climb.moveCount}:${pace}`);
+  let reveal: string | null = null;
+  const paceFatigue = pace === 'FAST' ? 1.35 : pace === 'CAUTIOUS' ? .78 : 1;
+  const states = climb.teamStates.map(state => {
+    if (state.status !== 'ACTIVE') return state;
+    const member = career.teamRoster.find(item => item.id === state.memberId);
+    if (!member) return state;
+    const hours = duration / 60;
+    const fatigueGain = Math.max(1, hours * (5.2 - member.endurance * .38) * paceFatigue);
+    const fatigue = clamp(state.fatigue + fatigueGain, 0, 100);
+    const strain = Math.max(0, fatigue - 62) * .045 + coldPenalty + rng.int(0, 2);
+    const condition = clamp(state.condition - strain, 0, 100);
+    let moraleDelta = 0;
+    if (pace === 'FAST') moraleDelta += member.personality.ambition > 65 ? 2 : member.personality.caution > 70 ? -3 : 0;
+    if (pace === 'CAUTIOUS') moraleDelta += member.personality.caution > 65 ? 2 : member.personality.ambition > 75 ? -2 : 0;
+    let visibleInjury = state.visibleInjury;
+    let hiddenInjury = state.hiddenInjury;
+    if (!visibleInjury && hiddenInjury && (condition < 70 || fatigue > 64) && rng.chance(.42)) {
+      visibleInjury = hiddenInjury;
+      reveal = `${member.name} признался: ${hiddenInjury.toLowerCase()}.`;
+    }
+    const status = condition < 18 ? 'INCAPACITATED' as const : state.status;
+    return { ...state, fatigue, condition, morale: clamp(state.morale + moraleDelta), visibleInjury, hiddenInjury, status };
+  });
+  return { states, teamCondition: teamAverage(states), reveal };
+}
+
 function finishClimb(career: CareerState, climb: QualificationClimb): CareerState {
   const successful = climb.summitReached && !climb.retreating;
   let skills = { ...career.hero.skills };
@@ -762,24 +820,38 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     skills = progressed.skills;
     skillXp = progressed.skillXp;
   }
-  const reward = successful ? 150 + Math.round(getSelectedRoute(career).objectiveRisk * 1.2) : 0;
-  const reputation = successful ? 8 + Math.round(getSelectedRoute(career).technicality / 12) : 1;
+  const casualtyPenalty = climb.casualties.length * 18;
+  const reward = successful ? Math.max(0, 150 + Math.round(getSelectedRoute(career).objectiveRisk * 1.2) - casualtyPenalty * 3) : 0;
+  const reputation = successful ? Math.max(-12, 8 + Math.round(getSelectedRoute(career).technicality / 12) - casualtyPenalty) : climb.retreating ? 1 : -4;
   const completed: QualificationClimb = {
     ...climb,
-    phase: successful ? 'COMPLETE' : 'RETREATED',
+    phase: successful ? 'COMPLETE' : climb.phase === 'FAILED' ? 'FAILED' : 'RETREATED',
     earnedMoney: reward,
     earnedReputation: reputation,
     currentElevation: climb.startElevation,
-    log: [...climb.log, `${clock(climb.elapsedMinutes)} — группа вернулась к исходной точке. ${successful ? 'Восхождение засчитано.' : 'Отказ закрыт без вершины.'}`],
+    log: [...climb.log, `${clock(climb.elapsedMinutes)} — группа вернулась к исходной точке. ${successful ? 'Восхождение засчитано.' : 'Выход закрыт без вершины.'}`],
   };
+  const roster = finalizeRosterAfterClimb(career, completed, successful);
+  const report = buildExpeditionReport(career, completed, reputation, reward);
+  const careDelta = completed.rescuedMemberIds.length * 7 + (completed.retreating ? 3 : 0) - completed.casualties.length * 12;
+  const reliabilityDelta = successful ? 5 : completed.retreating ? 2 : -5;
+  const leadershipDelta = Math.round(completed.decisions.filter(item => item.accepted).length * 1.5) - completed.decisions.filter(item => !item.accepted).length * 2;
   const next: CareerState = {
     ...career,
     completedClimbs: career.completedClimbs + (successful ? 1 : 0),
     highestElevation: Math.max(career.highestElevation, climb.summitReached ? climb.summitElevation : climb.currentElevation),
     activeClimb: completed,
+    teamRoster: roster,
+    reports: [...career.reports, report],
+    reputationProfile: {
+      leadership: clamp(career.reputationProfile.leadership + leadershipDelta),
+      reliability: clamp(career.reputationProfile.reliability + reliabilityDelta),
+      care: clamp(career.reputationProfile.care + careDelta),
+      ambition: clamp(career.reputationProfile.ambition + (successful ? 6 : completed.retreating ? -1 : 0)),
+    },
     hero: {
       ...career.hero,
-      reputation: career.hero.reputation + reputation,
+      reputation: Math.max(0, career.hero.reputation + reputation),
       money: career.hero.money + reward,
       form: clamp(career.hero.form - 5, 0, 100),
       fatigue: clamp(career.hero.fatigue + 25 + Math.round(climb.elapsedMinutes / 400), 0, 100),
@@ -789,7 +861,11 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
       skillXp,
     },
   };
-  next.log = [...career.log, careerLog(next, 'CLIMB', successful ? `Восхождение на ${climb.mountainName}` : `Отказ на ${climb.mountainName}`, successful ? `Маршрут «${climb.routeName}» пройден. Группа полностью вернулась.` : 'Группа спустилась без вершины.')];
+  next.log = [
+    ...career.log,
+    careerLog(next, 'CLIMB', successful ? `Восхождение на ${climb.mountainName}` : `Выход на ${climb.mountainName}`, successful ? `Маршрут «${climb.routeName}» пройден. Группа полностью вернулась.` : 'Группа спустилась без засчитанной вершины.'),
+    careerLog(next, 'PRESS', 'Реакция после экспедиции', `${report.clubReaction} ${report.pressReaction}`),
+  ];
   return next;
 }
 
@@ -823,6 +899,141 @@ export function retreatClimb(career: CareerState): CareerState {
       log: [...climb.log, `${clock(climb.elapsedMinutes)} — принято решение об отходе. Группа начинает полноценный спуск.`],
     },
   };
+}
+
+export function issueClimbOrder(career: CareerState, order: ClimbOrderId): ClimbStepResult {
+  const climb = career.activeClimb;
+  if (!climb || !['ASCENT', 'DESCENT'].includes(climb.phase)) {
+    return { career, headline: 'Приказ недоступен', detail: 'Группа сейчас не движется по маршруту.', severity: 'WARNING' };
+  }
+  const active = climb.teamStates.filter(state => state.status === 'ACTIVE');
+  if (!active.length) return { career, headline: 'Некому выполнять приказ', detail: 'В рабочем состоянии не осталось участников.', severity: 'DANGER' };
+  const rng = createRng(`${career.id}:${climb.id}:order:${climb.decisions.length}:${order}`);
+  const weakest = [...active].sort((a, b) => a.condition - b.condition)[0]!;
+  const member = career.teamRoster.find(item => item.id === weakest.memberId)!;
+  let accepted = true;
+  let duration = 35;
+  let headline = 'Приказ принят';
+  let detail = '';
+  let severity: ClimbStepResult['severity'] = 'CALM';
+  let teamStates: QualificationClimb['teamStates'] = climb.teamStates.map(state => ({ ...state, helperForMemberId: null }));
+  let teamRoster = career.teamRoster;
+  let targetId: string | null = weakest.memberId;
+
+  if (order === 'SLOW_DOWN') {
+    duration = 45;
+    teamStates = teamStates.map(state => {
+      if (state.status !== 'ACTIVE') return state;
+      const person = career.teamRoster.find(item => item.id === state.memberId)!;
+      return {
+        ...state,
+        condition: clamp(state.condition + 2, 0, 100),
+        morale: clamp(state.morale + (person.personality.caution > 60 ? 3 : person.personality.ambition > 75 ? -2 : 1), 0, 100),
+      };
+    });
+    teamRoster = teamRoster.map(person => climb.teamMemberIds.includes(person.id)
+      ? memory(person, career, 'ORDER', 'Темп снижен', 'Ты остановил гонку и приказал группе двигаться плотнее.', person.personality.caution > 60 ? 2 : 0, 1, person.personality.ambition > 78 ? 1 : 0)
+      : person);
+    targetId = null;
+    detail = 'Связки собрались плотнее. Группа потеряла время, но получила небольшой запас состояния.';
+  }
+
+  if (order === 'PRESS_ON') {
+    const score = member.relationship.trust + member.personality.discipline * .35 + member.personality.ambition * .3 - member.personality.caution * .35 - (100 - weakest.condition) * .38 - member.relationship.resentment * .25 + rng.int(-8, 8);
+    accepted = score >= 35;
+    duration = 20;
+    if (accepted) {
+      teamStates = teamStates.map(state => state.status === 'ACTIVE' ? {
+        ...state,
+        fatigue: clamp(state.fatigue + 5, 0, 100),
+        morale: clamp(state.morale + (career.teamRoster.find(item => item.id === state.memberId)!.personality.ambition > 60 ? 3 : -2), 0, 100),
+      } : state);
+      teamRoster = teamRoster.map(person => person.id === member.id ? memory(person, career, 'ORDER', 'Приказ продолжать', 'Ты потребовал не терять темп, несмотря на состояние группы.', -1, 2, person.personality.caution > 65 ? 3 : 0) : person);
+      detail = `${member.name} подчинился. Темп сохранён, усталость группы выросла.`;
+      severity = 'WARNING';
+    } else {
+      teamStates = teamStates.map(state => state.memberId === member.id ? { ...state, morale: clamp(state.morale - 5), refusedOrders: state.refusedOrders + 1 } : state);
+      teamRoster = teamRoster.map(person => person.id === member.id ? {
+        ...memory(person, career, 'REFUSAL', 'Отказ продолжать', `${person.name} отказался выполнять приказ о продолжении движения.`, -5, -1, 5),
+        refusals: person.refusals + 1,
+      } : person);
+      headline = `${member.name} отказался`;
+      detail = 'Состояние и отношение к риску оказались сильнее твоего авторитета.';
+      severity = 'DANGER';
+    }
+  }
+
+  if (order === 'TURN_BACK_WEAKEST') {
+    const score = member.personality.caution * .42 + member.relationship.trust * .25 + (100 - weakest.condition) * .5 - member.personality.ambition * .42 - member.personality.ego * .18 + rng.int(-7, 7);
+    accepted = score >= 34;
+    duration = 35;
+    if (accepted) {
+      teamStates = teamStates.map(state => state.memberId === member.id ? { ...state, status: 'TURNED_BACK', morale: clamp(state.morale + (member.personality.caution > 60 ? 2 : -7)) } : state);
+      teamRoster = teamRoster.map(person => person.id === member.id ? memory(person, career, 'RETREAT', 'Приказ спускаться', 'Ты снял его с маршрута до того, как состояние стало аварийным.', person.personality.caution > 60 ? 4 : -4, 3, person.personality.ambition > 65 ? 7 : 0) : person);
+      detail = `${member.name} прекратил подъём. Группа продолжает без него.`;
+      severity = 'WARNING';
+    } else {
+      teamStates = teamStates.map(state => state.memberId === member.id ? { ...state, refusedOrders: state.refusedOrders + 1, morale: clamp(state.morale - 4) } : state);
+      teamRoster = teamRoster.map(person => person.id === member.id ? {
+        ...memory(person, career, 'REFUSAL', 'Отказ спускаться', `${person.name} отказался покинуть маршрут и потребовал продолжения.`, -6, -2, 8),
+        refusals: person.refusals + 1,
+      } : person);
+      headline = `${member.name} не уходит`;
+      detail = 'Приказ расколол группу. Он считает, что ещё способен идти вверх.';
+      severity = 'DANGER';
+    }
+  }
+
+  if (order === 'ASSIGN_HELPER') {
+    const target = climb.teamStates.filter(state => ['ACTIVE', 'INCAPACITATED'].includes(state.status) && (state.visibleInjury || state.condition < 67)).sort((a, b) => a.condition - b.condition)[0];
+    if (!target) return { career, headline: 'Помощь не требуется', detail: 'У группы нет выявленного участника, которому нужна поддержка.', severity: 'CALM' };
+    const helperState = [...active].filter(state => state.memberId !== target.memberId).sort((a, b) => {
+      const am = career.teamRoster.find(item => item.id === a.memberId)!;
+      const bm = career.teamRoster.find(item => item.id === b.memberId)!;
+      return (bm.personality.empathy + b.condition) - (am.personality.empathy + a.condition);
+    })[0];
+    if (!helperState) return { career, headline: 'Нет свободного напарника', detail: 'Оставшийся состав не позволяет выделить сопровождающего.', severity: 'DANGER' };
+    const targetMember = career.teamRoster.find(item => item.id === target.memberId)!;
+    const helper = career.teamRoster.find(item => item.id === helperState.memberId)!;
+    targetId = target.memberId;
+    duration = 60;
+    teamStates = teamStates.map(state => state.memberId === target.memberId
+      ? { ...state, condition: clamp(state.condition + 7), morale: clamp(state.morale + 6), status: 'ACTIVE' }
+      : state.memberId === helper.id
+        ? { ...state, fatigue: clamp(state.fatigue + 8), helperForMemberId: target.memberId }
+        : state);
+    teamRoster = teamRoster.map(person => {
+      if (person.id === targetMember.id) {
+        const remembered = memory(person, career, 'RESCUE', 'Получил помощь', `${helper.name} снял часть груза и помог удержать движение.`, 5, 4, -2);
+        return { ...remembered, relationship: { ...remembered.relationship, debt: clamp(remembered.relationship.debt + 8) } };
+      }
+      if (person.id === helper.id) return { ...memory(person, career, 'LOYALTY', 'Остался рядом', `Ты назначил его помогать ${targetMember.name}.`, 3, 4, 0), rescues: person.rescues + 1 };
+      return person;
+    });
+    detail = `${helper.name} помогает ${targetMember.name}. Темп снизился, но состояние стабилизировано.`;
+    severity = 'SUCCESS';
+  }
+
+  const elapsedMinutes = climb.elapsedMinutes + duration;
+  const decision = {
+    id: `decision-${climb.id}-${climb.decisions.length + 1}`,
+    order,
+    memberId: targetId,
+    accepted,
+    description: detail,
+    elapsedMinutes,
+  };
+  const nextClimb = {
+    ...climb,
+    elapsedMinutes,
+    hoursAwake: climb.hoursAwake + duration / 60,
+    teamStates,
+    teamCondition: teamAverage(teamStates),
+    decisions: [...climb.decisions, decision],
+    rescuedMemberIds: order === 'ASSIGN_HELPER' && accepted && targetId ? [...new Set([...climb.rescuedMemberIds, targetId])] : climb.rescuedMemberIds,
+    log: [...climb.log, `${clock(elapsedMinutes)} — ${detail}`],
+  };
+  return { career: { ...career, activeClimb: nextClimb, teamRoster }, headline, detail, severity };
 }
 
 export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbStepResult {
@@ -882,6 +1093,16 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
       severity = 'DANGER';
     } else {
       const weather = evolveWeather(career, climb, duration + 90);
+      const activeVictims = climb.teamStates.filter(state => state.status === 'ACTIVE').sort((a, b) => a.condition - b.condition);
+      const victim = activeVictims[0];
+      const fatal = Boolean(victim && segment.exposure >= 55 && rng.chance(.2));
+      const victimName = victim ? career.teamRoster.find(item => item.id === victim.memberId)?.name ?? victim.memberId : null;
+      const failedStates = climb.teamStates.map(state => state.memberId === victim?.memberId ? {
+        ...state,
+        status: fatal ? 'DEAD' as const : 'INCAPACITATED' as const,
+        condition: fatal ? 0 : Math.max(8, state.condition - 35),
+        visibleInjury: fatal ? 'Смертельная травма при срыве' : 'Тяжёлая травма при срыве',
+      } : state);
       const failed: QualificationClimb = {
         ...climb,
         ...weather,
@@ -890,9 +1111,11 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
         elapsedMinutes: climb.elapsedMinutes + duration + 90,
         energy: clamp(climb.energy - energyCost - 12, 0, 100),
         condition: clamp(climb.condition - 16, 0, 100),
-        teamCondition: clamp(climb.teamCondition - 14, 0, 100),
+        teamCondition: teamAverage(failedStates),
+        teamStates: failedStates,
+        casualties: fatal && victim ? [...climb.casualties, victim.memberId] : climb.casualties,
         injuries: [...climb.injuries, 'Травма при срыве'],
-        log: [...climb.log, `${clock(climb.elapsedMinutes + duration)} — тяжёлый инцидент. Экспедиция прекратила движение и вызвала помощь.`],
+        log: [...climb.log, `${clock(climb.elapsedMinutes + duration)} — тяжёлый инцидент. ${fatal && victimName ? `${victimName} погиб.` : 'Пострадавший обездвижен.'} Экспедиция прекратила движение и вызвала помощь.`],
       };
       const failedCareer: CareerState = {
         ...career,
@@ -919,6 +1142,12 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
   const condition = clamp(climb.condition - conditionLoss - (weather.temperatureC < -20 ? 1 : 0), 0, 100);
   const elevationChange = direction * segment.elevationGain;
   const currentElevation = clamp(climb.currentElevation + elevationChange, climb.startElevation, climb.summitElevation);
+  const teamEvolution = evolveTeamStates(career, climb, duration, pace, weather.temperatureC < -20 ? 1 : 0);
+  const adjustedTeamStates = teamEvolution.states.map(state => state.status === 'ACTIVE' ? { ...state, condition: clamp(state.condition - teamLoss * .35, 0, 100) } : state);
+  if (teamEvolution.reveal) {
+    detail = `${detail} ${teamEvolution.reveal}`;
+    severity = severity === 'CALM' ? 'WARNING' : severity;
+  }
   const logLine = `${clock(elapsedMinutes)} — ${segment.name}: ${detail}`;
   const injuries = newInjury ? [...climb.injuries, newInjury] : climb.injuries;
 
@@ -929,7 +1158,8 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
     elapsedMinutes,
     energy,
     condition,
-    teamCondition: clamp(climb.teamCondition - teamLoss, 0, 100),
+    teamCondition: teamAverage(adjustedTeamStates),
+    teamStates: adjustedTeamStates,
     currentElevation,
     injuries,
     supplies,
@@ -960,6 +1190,7 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
         phase: 'SUMMIT',
         summitReached: true,
         currentElevation: climb.summitElevation,
+        teamStates: nextClimb.teamStates.map(state => state.status === 'ACTIVE' ? { ...state, summitReached: true } : state),
         log: [...nextClimb.log, `${clock(elapsedMinutes)} — вершина ${climb.mountainName}, ${climb.summitElevation} м.`],
       };
       headline = 'Вершина достигнута';
@@ -993,7 +1224,13 @@ export function establishCamp(career: CareerState): ClimbStepResult {
     elapsedMinutes: climb.elapsedMinutes + duration,
     energy: clamp(climb.energy + 34, 0, 100),
     condition: clamp(climb.condition + 5, 0, 100),
-    teamCondition: clamp(climb.teamCondition + 21, 0, 100),
+    teamStates: climb.teamStates.map(state => state.status === 'ACTIVE' ? {
+      ...state,
+      condition: clamp(state.condition + 13),
+      fatigue: clamp(state.fatigue - 36),
+      morale: clamp(state.morale + 3),
+    } : state),
+    teamCondition: teamAverage(climb.teamStates.map(state => state.status === 'ACTIVE' ? { ...state, condition: clamp(state.condition + 13) } : state)),
     supplies: {
       foodUnits: Math.max(0, climb.supplies.foodUnits - teamSize),
       waterUnits: Math.max(0, climb.supplies.waterUnits - Math.ceil(teamSize / 2)),
@@ -1045,13 +1282,15 @@ export function waitWeather(career: CareerState): ClimbStepResult {
 
 export function closeClimb(career: CareerState): CareerState {
   if (!career.activeClimb || !['COMPLETE', 'FAILED', 'RETREATED'].includes(career.activeClimb.phase)) return career;
-  const timeline = advanceDays(career, 3);
+  const alreadyReported = career.reports.some(report => report.id === `report-${career.activeClimb!.id}`);
+  const finalized = alreadyReported ? career : finishClimb(career, career.activeClimb);
+  const timeline = advanceDays(finalized, 3);
   return {
-    ...career,
+    ...finalized,
     year: timeline.year,
     seasonDay: timeline.seasonDay,
     week: timeline.week,
-    hero: { ...career.hero, age: career.hero.age + timeline.ageDelta },
+    hero: { ...finalized.hero, age: finalized.hero.age + timeline.ageDelta },
     activeClimb: null,
   };
 }

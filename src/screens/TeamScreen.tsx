@@ -29,13 +29,14 @@ export function TeamScreen({ career, onToggle }: Props) {
         </article>
         {career.teamRoster.map(member => {
           const active = career.expeditionPlan.teamMemberIds.includes(member.id);
+          const unavailable = member.status !== 'ACTIVE' || member.availability < 45;
           return (
-            <button key={member.id} className={`team-card ${active ? 'is-selected' : ''}`} onClick={() => onToggle(member.id)} disabled={member.required}>
+            <button key={member.id} className={`team-card ${active ? 'is-selected' : ''} ${unavailable ? 'is-unavailable' : ''}`} onClick={() => onToggle(member.id)} disabled={member.required || unavailable}>
               <div className="team-card__portrait">{member.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2)}</div>
-              <small>{roleLabel[member.role]} · {member.required ? 'ОБЯЗАТЕЛЕН' : active ? 'В СОСТАВЕ' : 'РЕЗЕРВ'}</small>
+              <small>{roleLabel[member.role]} · {unavailable ? member.status : member.required ? 'ОБЯЗАТЕЛЕН' : active ? 'В СОСТАВЕ' : 'РЕЗЕРВ'}</small>
               <h2>{member.name}</h2><p>{member.note}</p>
               <div className="team-card__specialty"><span>{SKILL_LABELS[member.specialty]}</span><strong>{member.skill}/10</strong></div>
-              <div className="team-card__stats"><span>ДОВЕРИЕ <b>{member.trust}</b></span><span>СОСТОЯНИЕ <b>{member.condition}</b></span></div>
+              <div className="team-card__stats"><span>ДОВЕРИЕ <b>{member.relationship.trust}</b></span><span>СОСТОЯНИЕ <b>{member.condition}</b></span></div><small className="team-card__goal">ЦЕЛЬ · {member.personalGoal}</small>
               <i>{member.temperament}</i>
             </button>
           );

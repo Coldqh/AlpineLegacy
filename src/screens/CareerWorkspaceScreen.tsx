@@ -4,6 +4,7 @@ import {
   closeClimb,
   establishCamp,
   expeditionReadiness,
+  issueClimbOrder,
   meltSnow,
   resolveClimbStep,
   retreatClimb,
@@ -15,12 +16,13 @@ import {
   updateExpeditionPlan,
   waitWeather,
 } from '../core/career';
-import type { CareerState, CareerTabId, ClimbPace, ClimbStepResult, ExpeditionPlan, TrainingId, WorldState } from '../core/types';
+import type { CareerState, CareerTabId, ClimbOrderId, ClimbPace, ClimbStepResult, ExpeditionPlan, TrainingId, WorldState } from '../core/types';
 import { CareerOverviewScreen } from './CareerOverviewScreen';
 import { ClimbScreen } from './ClimbScreen';
 import { EquipmentScreen } from './EquipmentScreen';
 import { ExpeditionScreen } from './ExpeditionScreen';
 import { JournalScreen } from './JournalScreen';
+import { PeopleScreen } from './PeopleScreen';
 import { RoutePlanningScreen } from './RoutePlanningScreen';
 import { TeamScreen } from './TeamScreen';
 
@@ -59,6 +61,9 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     if (activeTab === 'TEAM') {
       return <TeamScreen career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} />;
     }
+    if (activeTab === 'PEOPLE') {
+      return <PeopleScreen career={career} />;
+    }
     if (activeTab === 'EQUIPMENT') {
       return (
         <EquipmentScreen
@@ -90,6 +95,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
           onCamp={() => persistResult(establishCamp(career))}
           onMeltSnow={() => persistResult(meltSnow(career))}
           onWait={() => persistResult(waitWeather(career))}
+          onOrder={(order: ClimbOrderId) => persistResult(issueClimbOrder(career, order))}
           onBeginDescent={() => onPersist(beginDescent(career))}
           onRetreat={() => onPersist(retreatClimb(career))}
           onClose={() => {

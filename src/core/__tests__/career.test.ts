@@ -4,6 +4,7 @@ import {
   createCareer,
   establishCamp,
   expeditionReadiness,
+  issueClimbOrder,
   meltSnow,
   resolveClimbStep,
   startPlannedClimb,
@@ -41,7 +42,7 @@ describe('career and expedition module', () => {
     const world = generateWorld(config);
     const career = createCareer(world, draft);
     expect(career.worldId).toBe(world.id);
-    expect(career.schemaVersion).toBe(3);
+    expect(career.schemaVersion).toBe(4);
     expect(career.routes).toHaveLength(3);
     expect(career.teamRoster.length).toBeGreaterThanOrEqual(5);
     expect(career.weatherWindows).toHaveLength(3);
@@ -82,4 +83,23 @@ describe('career and expedition module', () => {
     expect(career.activeClimb?.phase).toBe('COMPLETE');
     expect(career.completedClimbs).toBe(1);
   });
+
+  it('creates people with personality, relationships and memory', () => {
+    const world = generateWorld(config);
+    const career = createCareer(world, draft);
+    const member = career.teamRoster[0]!;
+    expect(member.personality.discipline).toBeGreaterThan(0);
+    expect(member.relationship.trust).toBe(member.trust);
+    expect(member.memories[0]?.type).toBe('FIRST_MEETING');
+  });
+
+  it('records team orders and their consequences during a climb', () => {
+    const world = generateWorld(config);
+    const career = startPlannedClimb(createCareer(world, draft));
+    const result = issueClimbOrder(career, 'SLOW_DOWN');
+    expect(result.career.activeClimb?.decisions).toHaveLength(1);
+    expect(result.career.activeClimb?.elapsedMinutes).toBeGreaterThan(0);
+    expect(result.career.teamRoster.some(member => member.memories.length > 1)).toBe(true);
+  });
+
 });

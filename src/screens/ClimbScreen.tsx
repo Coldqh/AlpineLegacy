@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { RouteBlueprint } from '../components/RouteBlueprint';
 import { SKILL_LABELS } from '../core/career';
-import type { CareerState, ClimbPace, ClimbStepResult } from '../core/types';
+import type { CareerState, ClimbOrderId, ClimbPace, ClimbStepResult } from '../core/types';
 
 type Props = {
   career: CareerState;
@@ -9,6 +9,7 @@ type Props = {
   onCamp: () => ClimbStepResult;
   onMeltSnow: () => ClimbStepResult;
   onWait: () => ClimbStepResult;
+  onOrder: (order: ClimbOrderId) => ClimbStepResult;
   onBeginDescent: () => void;
   onRetreat: () => void;
   onClose: () => void;
@@ -21,11 +22,12 @@ function durationLabel(minutes: number) {
   return `${days ? `${days}д ` : ''}${hours}ч ${String(rest).padStart(2, '0')}м`;
 }
 
-export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onBeginDescent, onRetreat, onClose }: Props) {
+export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onOrder, onBeginDescent, onRetreat, onClose }: Props) {
   const climb = career.activeClimb!;
   const [feedback, setFeedback] = useState<Pick<ClimbStepResult, 'headline' | 'detail' | 'severity'> | null>(null);
   const activeSegment = climb.route[Math.max(0, Math.min(climb.route.length - 1, climb.segmentIndex))]!;
   const terminal = ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase);
+  const liveTeam = climb.teamStates.map(state => ({ state, member: career.teamRoster.find(member => member.id === state.memberId) })).filter(item => item.member);
 
   function resolve(action: () => ClimbStepResult) {
     const result = action();
@@ -116,7 +118,17 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onBegi
             <button onClick={() => resolve(onWait)}><span>Ждать окно</span><small>3 часа · погода меняется</small></button>
           </div>
 
-          {climb.phase === 'ASCENT' && <button className="retreat-button" onClick={onRetreat}>Развернуть группу и начать спуск</button>}
+          <div className="team-orders">
+            <p className="eyebrow">TEAM ORDERS / AUTHORITY IS NOT CONTROL</p>
+            <div>
+              <button onClick={() => resolve(() => onOrder('SLOW_DOWN'))}><strong>Снизить темп</strong><small>Собрать связки и стабилизировать состояние.</small></button>
+              <button onClick={() => resolve(() => onOrder('PRESS_ON'))}><strong>Давить вверх</strong><small>Сохранить темп. Участник может отказаться.</small></button>
+              <button onClick={() => resolve(() => onOrder('TURN_BACK_WEAKEST'))}><strong>Развернуть слабого</strong><small>Снять худшего участника с маршрута.</small></button>
+              <button onClick={() => resolve(() => onOrder('ASSIGN_HELPER'))}><strong>Назначить помощь</strong><small>Один участник отдаёт силы другому.</small></button>
+            </div>
+          </div>
+
+          {climb.phase === 'ASCENT' && <button className="retreat-button" onClick={onRetreat}>Развернуть всю группу и начать спуск</button>}
         </section>
 
         <aside className="climb-resource-panel">
@@ -127,6 +139,17 @@ export function ClimbScreen({ career, onStep, onCamp, onMeltSnow, onWait, onBegi
           <div><span>Вес</span><strong>{climb.packWeightKg} кг</strong></div>
           <div><span>Без сна</span><strong>{Math.round(climb.hoursAwake)} ч</strong></div>
           <p className="resource-warning">Пустой запас не заканчивает игру мгновенно. Он резко ухудшает каждое следующее действие.</p>
+          <div className="field-team-register">
+            <p className="eyebrow">PEOPLE ON ROUTE</p>
+            {liveTeam.map(({ state, member }) => (
+              <article key={state.memberId} className={`is-${state.status.toLowerCase()}`}>
+                <span>{member!.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2)}</span>
+                <div><strong>{member!.name}</strong><small>{state.status} · {state.visibleInjury ?? 'без выявленной травмы'}</small></div>
+                <b>{Math.round(state.condition)}</b>
+                <i style={{ '--value': `${state.condition}%` } as React.CSSProperties} />
+              </article>
+            ))}
+          </div>
         </aside>
       </div>
     </section>
