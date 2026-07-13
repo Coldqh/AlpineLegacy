@@ -15,18 +15,19 @@ type Props = {
 type PrimaryTab = {
   id: CareerTabId;
   label: string;
+  mobileLabel: string;
   short: string;
   description: string;
   children?: CareerTabId[];
 };
 
 const tabs: PrimaryTab[] = [
-  { id: 'OVERVIEW', label: 'Штаб', short: 'Ш', description: 'Состояние и действия' },
-  { id: 'ROUTE', label: 'Цель', short: 'Ц', description: 'Гора и маршрут' },
-  { id: 'EXPEDITION', label: 'Подготовка', short: 'П', description: 'Люди, груз, выход', children: ['TEAM', 'PEOPLE', 'EQUIPMENT', 'EXPEDITION'] },
-  { id: 'CLIMB', label: 'Восхождение', short: 'В', description: 'Маршрут в реальном времени' },
-  { id: 'WORLD', label: 'Мир', short: 'М', description: 'Новости и соперники', children: ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'] },
-  { id: 'JOURNAL', label: 'Архив', short: 'А', description: 'История карьеры' },
+  { id: 'OVERVIEW', label: 'Штаб', mobileLabel: 'Штаб', short: 'Ш', description: 'Состояние и действия' },
+  { id: 'ROUTE', label: 'Цель', mobileLabel: 'Цель', short: 'Ц', description: 'Гора и маршрут' },
+  { id: 'EXPEDITION', label: 'Подготовка', mobileLabel: 'Сбор', short: 'П', description: 'Люди, груз, выход', children: ['TEAM', 'PEOPLE', 'EQUIPMENT', 'EXPEDITION'] },
+  { id: 'CLIMB', label: 'Восхождение', mobileLabel: 'Путь', short: 'В', description: 'Маршрут в реальном времени' },
+  { id: 'WORLD', label: 'Мир', mobileLabel: 'Мир', short: 'М', description: 'Новости и соперники', children: ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'] },
+  { id: 'JOURNAL', label: 'Архив', mobileLabel: 'Архив', short: 'А', description: 'История карьеры' },
 ];
 
 function isPrimaryActive(tab: PrimaryTab, activeTab: CareerTabId) {
@@ -34,18 +35,12 @@ function isPrimaryActive(tab: PrimaryTab, activeTab: CareerTabId) {
 }
 
 export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, children }: Props) {
-  const appIcon = `${import.meta.env.BASE_URL}icons/icon-192.png`;
   const initials = career.hero.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
   const current = tabs.find(tab => isPrimaryActive(tab, activeTab)) ?? tabs[0]!;
 
   return (
     <main className="career-shell">
       <aside className="career-sidebar">
-        <button className="career-sidebar__brand" onClick={onExit} aria-label="Alpine Legacy — в главное меню">
-          <img src={appIcon} alt="" width="192" height="192" draggable={false} />
-          <span className="sr-only">Alpine Legacy</span>
-        </button>
-
         <nav className="career-sidebar__nav" aria-label="Главные разделы карьеры">
           {tabs.map((tab, index) => {
             const disabled = tab.id === 'CLIMB' && !career.activeClimb;
@@ -61,6 +56,7 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
                 <span className="career-sidebar__short">{tab.short}</span>
                 <span className="career-sidebar__index">{String(index + 1).padStart(2, '0')}</span>
                 <span className="career-sidebar__copy"><strong>{tab.label}</strong><small>{tab.description}</small></span>
+                <span className="career-sidebar__mobile-label">{tab.mobileLabel}</span>
                 {tab.id === 'CLIMB' && career.activeClimb && <i />}
               </button>
             );
@@ -68,13 +64,14 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
         </nav>
 
         <div className="career-sidebar__footer">
-          <button onClick={onAtlas} title="Горный атлас">△</button>
+          <button onClick={onAtlas} title="Горный атлас" aria-label="Открыть горный атлас">△</button>
           <div><span>{initials}</span><small>{career.hero.reputation} REP</small></div>
         </div>
       </aside>
 
       <section className="career-workspace">
         <header className="career-topbar">
+          <button className="career-topbar__menu" onClick={onExit}>← Меню</button>
           <div className="career-topbar__place">
             <small>{current.label} · {world.region.name}</small>
             <strong>{formatSeasonDate(career.year, career.seasonDay)}</strong>
@@ -84,7 +81,7 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
             <span>Усталость <b>{Math.round(career.hero.fatigue)}</b></span>
             <span>Средства <b>{career.hero.money} кр.</b></span>
           </div>
-          <button onClick={() => window.print()} aria-label="Печать">⎙</button>
+          <button className="career-topbar__print" onClick={() => window.print()} aria-label="Печать">⎙</button>
         </header>
         <div className="career-workspace__content page-enter">{children}</div>
       </section>
