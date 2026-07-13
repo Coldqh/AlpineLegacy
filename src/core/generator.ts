@@ -31,7 +31,7 @@ function mountainName(rng: ReturnType<typeof createRng>) {
   return `${rng.pick(mountainPrefix)}${rng.pick(mountainSuffix)}`;
 }
 
-function generateMountain(seed: string, index: number, min: number, max: number): MountainData {
+function generateMountain(seed: string, index: number, min: number, max: number, startYear: number): MountainData {
   const rng = createRng(`${seed}:mountain:${index}`);
   const elevation = rng.int(min, max);
   const technicality = rng.int(35, 96);
@@ -55,35 +55,48 @@ function generateMountain(seed: string, index: number, min: number, max: number)
     status: index === 0 ? 'Главная вершина региона' : rng.pick(['Малоизученная', 'Непокорённая', 'Известная клубная цель', 'Опасная зимняя цель']),
     summary: `${name} — ${rng.pick(massifTypes)} с выраженной высотной нагрузкой. Основные угрозы: ${rng.pick(dangers)}. Успех потребует точного выбора окна, сильной связки и безопасного спуска.`,
     profilePoints: generateProfile(`${seed}:${name}`, elevation),
-    history: [
-      `${rng.int(1910, 1948)} — первая документированная разведка массива.`,
-      `${rng.int(1949, 1977)} — экспедиция достигла высоты ${rng.int(Math.round(elevation * .62), Math.round(elevation * .88))} м и повернула назад.`,
-      `${rng.int(1978, 2008)} — маршрут по ${rng.pick(['северному гребню', 'западной стене', 'южному леднику'])} вошёл в историю региона.`,
-    ],
+    history: (() => {
+      const firstYear = startYear - rng.int(52, 88);
+      const secondYear = firstYear + rng.int(16, 31);
+      const thirdYear = Math.min(startYear - 2, secondYear + rng.int(9, 24));
+      return [
+        `${firstYear} — первая документированная разведка массива.`,
+        `${secondYear} — экспедиция достигла высоты ${rng.int(Math.round(elevation * .62), Math.round(elevation * .88))} м и повернула назад.`,
+        `${thirdYear} — маршрут по ${rng.pick(['северному гребню', 'западной стене', 'южному леднику'])} вошёл в историю региона.`,
+      ];
+    })(),
   };
 }
 
 export function generateWorld(config: WorldSeedConfig): WorldState {
   const rng = createRng(config.seed);
-  const baseMin = config.eraId === 'PIONEER' ? 3100 : config.eraId === 'EXPEDITION' ? 4200 : 4800;
-  const baseMax = config.eraId === 'PIONEER' ? 6400 : config.eraId === 'EXPEDITION' ? 7600 : 8200;
-  const mountainCount = rng.int(5, 7);
+  const geographyRng = createRng(`${config.seed}:geography`);
+  const scale = geographyRng.pick(['ALPINE', 'HIGH', 'EXTREME'] as const);
+  const bands = scale === 'ALPINE'
+    ? [[4300, 5200], [3500, 4600], [3100, 4200], [2600, 3600], [2200, 3100], [1900, 2800]]
+    : scale === 'HIGH'
+      ? [[6500, 7800], [5400, 6800], [4700, 6100], [3900, 5200], [3200, 4500], [2600, 3800]]
+      : [[7600, 8400], [6500, 7800], [5700, 7100], [4700, 6200], [3600, 5000], [2800, 4200]];
+  const mountainCount = rng.int(6, 8);
   const regionName = `${rng.pick(regionPrefix)}${rng.pick(regionSuffix)}`;
-  const mountains = Array.from({ length: mountainCount }, (_, index) =>
-    generateMountain(config.seed, index, baseMin + index * 90, baseMax - index * 25),
-  ).sort((a, b) => b.elevation - a.elevation);
+  const mountains = Array.from({ length: mountainCount }, (_, index) => {
+    const band = bands[Math.min(index, bands.length - 1)]!;
+    const extraOffset = index >= bands.length ? -(index - bands.length + 1) * 120 : 0;
+    return generateMountain(config.seed, index, band[0] + extraOffset, band[1] + extraOffset, config.startYear);
+  }).sort((a, b) => b.elevation - a.elevation);
   mountains.forEach((mountain, index) => {
     if (index === 0) mountain.status = 'Главная вершина региона';
     else if (mountain.status === 'Главная вершина региона') mountain.status = 'Малоизученная';
   });
 
+  const elevationFloor = scale === 'ALPINE' ? rng.int(620, 1250) : scale === 'HIGH' ? rng.int(1100, 1900) : rng.int(1500, 2400);
   const region: RegionData = {
     id: `region-${config.seed.replace(/\W/g, '').slice(0, 10) || 'alpine'}`,
     name: regionName,
     subtitle: rng.pick(['Край ледяных стен', 'Высотная граница', 'Архипелаг камня и снега', 'Северная дуга']),
     climate: rng.pick(climates),
     prestige: rng.int(55, 96),
-    elevationMin: rng.int(1200, 2300),
+    elevationMin: elevationFloor,
     elevationMax: mountains[0]!.elevation,
     coordinates: `${rng.int(28, 67)}°${rng.pick(['N', 'S'])} · ${rng.int(12, 142)}°${rng.pick(['E', 'W'])}`,
     summary: `Удалённый горный регион с климатом типа «${rng.pick(climates)}». Здесь формировались отдельные школы восхождений, а главные вершины до сих пор определяют статус целого поколения альпинистов.`,
@@ -97,7 +110,7 @@ export function generateWorld(config: WorldSeedConfig): WorldState {
   };
 
   return {
-    id: `world-${Date.now()}`,
+    id: `world-${config.seed.replace(/\W/g, '').slice(0, 18) || 'alpine'}-${config.eraId.toLowerCase()}-${config.startYear}`,
     config,
     createdAt: new Date().toISOString(),
     worldAge: rng.int(52, 96),

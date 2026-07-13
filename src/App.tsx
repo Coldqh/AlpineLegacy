@@ -1,9 +1,34 @@
 import { useMemo, useState } from 'react';
 import { MountainArt } from './components/MountainArt';
 import { ScreenShell } from './components/ScreenShell';
+import {
+  applyTraining,
+  beginDescent,
+  closeClimb,
+  createCareer,
+  formatSeasonDate,
+  resolveClimbStep,
+  retreatClimb,
+  startQualificationClimb,
+} from './core/career';
 import { generateWorld } from './core/generator';
-import { deleteWorld, loadWorld, saveWorld } from './core/storage';
-import type { DifficultyId, EraId, MountainData, ScreenId, WorldSeedConfig, WorldState } from './core/types';
+import { deleteCareer, deleteWorld, loadCareer, loadWorld, saveCareer, saveWorld } from './core/storage';
+import type {
+  CareerDraft,
+  CareerState,
+  ClimbPace,
+  ClimbStepResult,
+  DifficultyId,
+  EraId,
+  MountainData,
+  ScreenId,
+  TrainingId,
+  WorldSeedConfig,
+  WorldState,
+} from './core/types';
+import { CareerHubScreen } from './screens/CareerHubScreen';
+import { CharacterCreationScreen } from './screens/CharacterCreationScreen';
+import { ClimbScreen } from './screens/ClimbScreen';
 
 const ERA_YEARS: Record<EraId, [number, number]> = {
   PIONEER: [1860, 1935],
@@ -29,9 +54,14 @@ function randomSeed() {
 }
 
 function App() {
-  const initialWorld = useMemo(() => loadWorld(), []);
+  const initial = useMemo(() => {
+    const loadedWorld = loadWorld();
+    return { world: loadedWorld, career: loadedWorld ? loadCareer(loadedWorld.id) : null };
+  }, []);
+
   const [screen, setScreen] = useState<ScreenId>('MENU');
-  const [world, setWorld] = useState<WorldState | null>(initialWorld);
+  const [world, setWorld] = useState<WorldState | null>(initial.world);
+  const [career, setCareer] = useState<CareerState | null>(initial.career);
   const [selectedMountain, setSelectedMountain] = useState<MountainData | null>(null);
   const [config, setConfig] = useState<WorldSeedConfig>({
     seed: randomSeed(),
@@ -50,7 +80,9 @@ function App() {
     window.setTimeout(() => {
       const created = generateWorld(config);
       saveWorld(created);
+      deleteCareer();
       setWorld(created);
+      setCareer(null);
       setScreen('REGION');
     }, 900);
   }
@@ -58,6 +90,102 @@ function App() {
   function openMountain(mountain: MountainData) {
     setSelectedMountain(mountain);
     setScreen('MOUNTAIN');
+  }
+
+  function persistCareer(next: CareerState) {
+    saveCareer(next);
+    setCareer(next);
+  }
+
+  function startCharacterCreation() {
+    if (!world) {
+      setScreen('SETUP');
+      return;
+    }
+    setScreen(career ? 'CAREER' : 'CHARACTER');
+  }
+
+  function createHero(draft: CareerDraft) {
+    if (!world) return;
+    const created = createCareer(world, draft);
+    persistCareer(created);
+    setScreen('CAREER');
+  }
+
+  function train(trainingId: TrainingId) {
+    if (!career) return;
+    persistCareer(applyTraining(career, trainingId));
+  }
+
+  function launchQualification() {
+    if (!career || !world) return;
+    const next = startQualificationClimb(career, world);
+    persistCareer(next);
+    setScreen('CLIMB');
+  }
+
+  function takeClimbStep(pace: ClimbPace): ClimbStepResult {
+    if (!career) {
+      return { career: career as never, headline: 'Нет активной карьеры', detail: '', severity: 'WARNING' };
+    }
+    const result = resolveClimbStep(career, pace);
+    persistCareer(result.career);
+    return result;
+  }
+
+  function startDescent() {
+    if (!career) return;
+    persistCareer(beginDescent(career));
+  }
+
+  function retreat() {
+    if (!career) return;
+    persistCareer(retreatClimb(career));
+  }
+
+  function finishClimbView() {
+    if (!career) return;
+    persistCareer(closeClimb(career));
+    setScreen('CAREER');
+  }
+
+  function continueCareer() {
+    if (career?.activeClimb) {
+      setScreen('CLIMB');
+    } else if (career) {
+      setScreen('CAREER');
+    } else if (world) {
+      setScreen('REGION');
+    }
+  }
+
+  if (screen === 'CHARACTER' && world) {
+    return <CharacterCreationScreen world={world} onBack={() => setScreen('REGION')} onCreate={createHero} />;
+  }
+
+  if (screen === 'CAREER' && world && career) {
+    return (
+      <CareerHubScreen
+        world={world}
+        career={career}
+        onBack={() => setScreen('MENU')}
+        onTrain={train}
+        onStartClimb={launchQualification}
+        onOpenAtlas={() => setScreen('REGION')}
+      />
+    );
+  }
+
+  if (screen === 'CLIMB' && career?.activeClimb) {
+    return (
+      <ClimbScreen
+        career={career}
+        onStep={takeClimbStep}
+        onBeginDescent={startDescent}
+        onRetreat={retreat}
+        onClose={finishClimbView}
+      />
+    );
   }
 
   if (screen === 'SETUP') {
@@ -69,7 +197,7 @@ function App() {
             <p className="eyebrow">NEW WORLD / NEW LIFE</p>
             <h1>Создай мир, который переживёт тебя.</h1>
             <p className="lead">Один seed определит географию, историю, вершины и людей. Смерть героя завершит карьеру, но не обязательно уничтожит мир.</p>
-            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.1</small></div>
+            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.2</small></div>
           </div>
 
           <div className="setup-form">
@@ -183,6 +311,18 @@ function App() {
             </div>
           </div>
 
+          <div className="career-entry-banner">
+            <div>
+              <p className="eyebrow">CAREER MODULE / 0.2</p>
+              <h2>{career ? career.hero.name : 'Горы уже существуют. Теперь войди в их историю.'}</h2>
+              <p>{career
+                ? `${career.club.name}. ${career.completedClimbs} засчитанных восхождений. Высшая точка: ${career.highestElevation} м.`
+                : 'Создай одного героя, вступи в региональный клуб и пройди первое квалификационное восхождение.'}
+              </p>
+            </div>
+            <button onClick={startCharacterCreation}><span>{career ? 'Открыть карьеру' : 'Создать альпиниста'}</span><b>→</b></button>
+          </div>
+
           <div className="mountain-list-head"><div><p className="eyebrow">MOUNTAIN REGISTER</p><h2>Вершины региона</h2></div><span>{region.mountains.length.toString().padStart(2, '0')} OBJECTS</span></div>
           <div className="mountain-grid">
             {region.mountains.map((mountain, index) => (
@@ -200,14 +340,14 @@ function App() {
     );
   }
 
-  if (screen === 'MOUNTAIN' && selectedMountain && world) {
+  if (screen === 'MOUNTAIN' && selectedMountain) {
     const mountain = selectedMountain;
     return (
-      <ScreenShell onBack={() => setScreen('REGION')} rightLabel={`MOUNTAIN FILE / ${mountain.id.toUpperCase()}`} onPrint={() => window.print()}>
+      <ScreenShell onBack={() => setScreen('REGION')} rightLabel={`${mountain.name} / OBJECT`} onPrint={() => window.print()}>
         <section className="mountain-detail page-enter">
           <div className="detail-title">
-            <div><p className="eyebrow">{world.region.name} · {mountain.status}</p><h1>{mountain.name}</h1><p>{mountain.epithet}</p></div>
-            <div className="detail-elevation"><strong>{mountain.elevation}</strong><span>METRES</span></div>
+            <div><p className="eyebrow">MOUNTAIN OBJECT / {mountain.status}</p><h1>{mountain.name}</h1><p>{mountain.epithet}</p></div>
+            <div className="detail-elevation"><strong>{mountain.elevation}</strong><span>METRES ABOVE SEA LEVEL</span></div>
           </div>
 
           <MountainArt points={mountain.profilePoints} variant="detail" label={mountain.name} elevation={mountain.elevation} />
@@ -225,7 +365,15 @@ function App() {
 
           <div className="history-panel"><p className="eyebrow">ARCHIVE / KNOWN HISTORY</p>{mountain.history.map((item, index) => <div key={item}><span>{String(index + 1).padStart(2, '0')}</span><p>{item}</p></div>)}</div>
 
-          <div className="locked-action"><span>CAREER MODULE / LOCKED</span><h2>Эта гора ждёт первого героя.</h2><p>Создание альпиниста, клубы и экспедиции появятся в следующем патче.</p></div>
+          <div className="locked-action career-mountain-action">
+            <span>CAREER MODULE / ACTIVE</span>
+            <h2>{career ? 'Любая большая гора начинается с допуска.' : 'Гора уже ждёт человека.'}</h2>
+            <p>{career
+              ? 'Вернись в клуб, подготовься и докажи, что можешь подняться и спуститься без помощи симуляции.'
+              : 'Создай героя. Его имя сможет появиться в архиве этой вершины.'}
+            </p>
+            <button onClick={startCharacterCreation}>{career ? 'Вернуться в карьеру' : 'Создать альпиниста'} →</button>
+          </div>
         </section>
       </ScreenShell>
     );
@@ -233,8 +381,30 @@ function App() {
 
   if (screen === 'ARCHIVE') {
     return (
-      <ScreenShell onBack={() => setScreen('MENU')} rightLabel="WORLD ARCHIVE / 00">
-        <section className="empty-page page-enter"><p className="eyebrow">ARCHIVE</p><h1>Здесь останутся погибшие.</h1><p>Карьерные записи, маршруты, спасения, тела и незавершённые цели появятся вместе с системой персонажей.</p></section>
+      <ScreenShell onBack={() => setScreen('MENU')} rightLabel={`WORLD ARCHIVE / ${career?.log.length ?? 0}`}>
+        <section className="archive-page page-enter">
+          <div className="archive-page__title">
+            <p className="eyebrow">STRUCTURED WORLD MEMORY</p>
+            <h1>{career ? 'Карьера уже оставляет след.' : 'Здесь останутся погибшие.'}</h1>
+            <p>{career ? `${career.hero.name}. Начало карьеры: ${career.hero.startYear}. Все решения хранятся как записи мира.` : 'Создай мир и первого альпиниста. Архив запомнит восхождения, отказы, травмы и людей.'}</p>
+          </div>
+          {career && (
+            <div className="archive-ledger">
+              <div className="archive-ledger__hero">
+                <span>{career.hero.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2)}</span>
+                <div><small>ACTIVE MOUNTAINEER</small><h2>{career.hero.name}</h2><p>{career.club.name} · {career.hero.originTitle}</p></div>
+                <strong>{career.highestElevation} M</strong>
+              </div>
+              {[...career.log].reverse().map((entry) => (
+                <article key={entry.id}>
+                  <span>{entry.year}<small>DAY {entry.seasonDay}</small></span>
+                  <i />
+                  <div><small>{entry.type}</small><h3>{entry.title}</h3><p>{entry.description}</p></div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
       </ScreenShell>
     );
   }
@@ -242,13 +412,19 @@ function App() {
   if (screen === 'SETTINGS') {
     return (
       <ScreenShell onBack={() => setScreen('MENU')} rightLabel="SYSTEM / SETTINGS">
-        <section className="empty-page page-enter"><p className="eyebrow">SETTINGS</p><h1>Тихий интерфейс. Жёсткая гора.</h1><button className="secondary-action" onClick={() => { deleteWorld(); setWorld(null); }}>Удалить локальный мир</button></section>
+        <section className="empty-page page-enter">
+          <p className="eyebrow">SETTINGS</p>
+          <h1>Тихий интерфейс. Жёсткая гора.</h1>
+          {career && <p>Активная карьера: {career.hero.name}. {formatSeasonDate(career.year, career.seasonDay)}.</p>}
+          <button className="secondary-action" onClick={() => { deleteWorld(); setWorld(null); setCareer(null); }}>Удалить локальный мир и карьеру</button>
+        </section>
       </ScreenShell>
     );
   }
 
+  const archiveCount = career?.log.length ?? 0;
   return (
-    <ScreenShell rightLabel="EDITION 0.1 / MOUNTAIN ATLAS">
+    <ScreenShell rightLabel="EDITION 0.2 / FIRST ASCENT">
       <section className="menu-page page-enter">
         <div className="menu-hero-copy">
           <p className="eyebrow">A MOUNTAINEERING CAREER ROGUELIKE</p>
@@ -264,12 +440,12 @@ function App() {
 
         <div className="menu-actions">
           <button className="menu-action menu-action--primary" onClick={() => setScreen('SETUP')}><span><small>01</small>Новая карьера</span><b>→</b></button>
-          <button className="menu-action" disabled={!world} onClick={() => world && setScreen('REGION')}><span><small>02</small>Продолжить</span><b>{world ? world.region.name : 'Нет сохранения'}</b></button>
-          <button className="menu-action" onClick={() => setScreen('ARCHIVE')}><span><small>03</small>Архив мира</span><b>0 записей</b></button>
+          <button className="menu-action" disabled={!world} onClick={continueCareer}><span><small>02</small>Продолжить</span><b>{career ? career.hero.name : world ? world.region.name : 'Нет сохранения'}</b></button>
+          <button className="menu-action" onClick={() => setScreen('ARCHIVE')}><span><small>03</small>Архив мира</span><b>{archiveCount} записей</b></button>
           <button className="menu-action" onClick={() => setScreen('SETTINGS')}><span><small>04</small>Настройки</span><b>◌</b></button>
         </div>
 
-        <footer className="menu-footer"><span>PROCEDURAL MOUNTAINEERING WORLD</span><span>REACT / TYPESCRIPT / SEED ENGINE</span><span>© ALPINE LEGACY</span></footer>
+        <footer className="menu-footer"><span>PROCEDURAL MOUNTAINEERING WORLD</span><span>CAREER / CLUB / FIRST CLIMB</span><span>© ALPINE LEGACY</span></footer>
       </section>
     </ScreenShell>
   );

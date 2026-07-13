@@ -1,4 +1,4 @@
-﻿name: Deploy Alpine Legacy
+name: Deploy Alpine Legacy
 
 on:
   push:

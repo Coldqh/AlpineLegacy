@@ -24,4 +24,26 @@ describe('world generator', () => {
     expect(world.region.mountains.every((mountain) => mountain.profilePoints.length >= 10)).toBe(true);
     expect(world.region.elevationMax).toBe(Math.max(...world.region.mountains.map((mountain) => mountain.elevation)));
   });
+
+  it('keeps geography stable when only the starting era changes', () => {
+    const pioneer = generateWorld({ ...config, eraId: 'PIONEER', startYear: 1900 });
+    const modern = generateWorld({ ...config, eraId: 'MODERN', startYear: 2020 });
+
+    const geography = (world: ReturnType<typeof generateWorld>) => world.region.mountains.map(mountain => ({
+      id: mountain.id,
+      name: mountain.name,
+      elevation: mountain.elevation,
+      profilePoints: mountain.profilePoints,
+    }));
+
+    expect(geography(pioneer)).toEqual(geography(modern));
+  });
+
+  it('does not generate mountain history after the career start year', () => {
+    const world = generateWorld({ ...config, eraId: 'PIONEER', startYear: 1888 });
+    const years = world.region.mountains.flatMap(mountain => mountain.history.map(line => Number(line.slice(0, 4))));
+
+    expect(years.every(year => year < 1888)).toBe(true);
+  });
+
 });
