@@ -1,10 +1,12 @@
 import { MountainArt } from '../components/MountainArt';
-import { expeditionReadiness, getSelectedRoute, routesForMountain } from '../core/career';
-import type { CareerState, WorldState } from '../core/types';
+import { EXPEDITION_RANK_LABELS, expeditionReadiness, getSelectedRoute, routesForMountain } from '../core/career';
+import type { CareerState, ExpeditionOffer, WorldState } from '../core/types';
 
 type Props = {
   world: WorldState;
   career: CareerState;
+  offers: ExpeditionOffer[];
+  onAcceptOffer: (offerId: string) => void;
   onSelectMountain: (mountainId: string) => void;
   onSelectRoute: (routeId: string) => void;
   onContinue: () => void;
@@ -21,12 +23,23 @@ function mountainScore(mountain: WorldState['region']['mountains'][number]) {
   return mountain.elevation * .01 + mountain.technicality * .72 + mountain.altitudeSeverity * .55 + mountain.remoteness * .32;
 }
 
-export function RoutePlanningScreen({ world, career, onSelectMountain, onSelectRoute, onContinue }: Props) {
+export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSelectMountain, onSelectRoute, onContinue }: Props) {
   const route = getSelectedRoute(career);
   const mountain = world.region.mountains.find(item => item.id === route.mountainId) ?? world.region.mountains[0]!;
   const routes = routesForMountain(career, mountain.id);
   const readiness = expeditionReadiness(career);
   const mountains = [...world.region.mountains].sort((a, b) => mountainScore(a) - mountainScore(b));
+
+  if (!career.membership.permissions.canChooseRoute) {
+    return (
+      <section className="workspace-page route-planning-page">
+        <header className="workspace-title workspace-title--compact"><div><p className="eyebrow">ШАГ 1 ИЗ 4 · ЧУЖИЕ ЭКСПЕДИЦИИ</p><h1>Получи место в группе.</h1><p>Пока ты новичок, маршрут, состав и общую стратегию определяет руководитель. Ты выбираешь, к какой экспедиции подать заявку.</p></div><div className="workspace-title__mark"><span>{EXPEDITION_RANK_LABELS[career.membership.rank]}</span><small>ТВОЙ РАНГ</small></div></header>
+        <section className="workspace-panel"><div className="panel-heading"><div><p className="eyebrow">OPEN EXPEDITIONS</p><h2>Доступные заявки</h2></div><span>{offers.length}</span></div><div className="route-choice-grid route-choice-grid--clear expedition-offer-grid">{offers.map((offer, index) => { const offerRoute = world.ecosystem.content.routes.byId[offer.routeId]; const offerMountain = offerRoute ? world.ecosystem.content.mountains.byId[offerRoute.mountainId] : null; const active = career.selectedOfferId === offer.id; return <button key={offer.id} className={active ? 'is-active' : ''} onClick={() => onAcceptOffer(offer.id)}><div><span>{String(index + 1).padStart(2, '0')}</span><i /></div><small>{offer.playerRole} · ПОД РУКОВОДСТВОМ NPC</small><h3>{offerMountain?.name ?? offerRoute?.mountainName}</h3><p>{offerRoute?.name}. Ты отвечаешь за личные решения и свою роль, но не формируешь всю группу.</p><dl><div><dt>Роль</dt><dd>{offer.playerRole}</dd></div><div><dt>Состав</dt><dd>{offer.memberNpcIds.length + (offer.leaderNpcId ? 1 : 0)} NPC</dd></div><div><dt>Игра</dt><dd>≈ {offerRoute?.expectedPlayMinutes ?? 20} мин</dd></div><div><dt>Ранг</dt><dd>{offer.requiredRank}</dd></div></dl><footer>{active ? 'МЕСТО ПОДТВЕРЖДЕНО' : 'ПРИНЯТЬ МЕСТО'}</footer></button>; })}</div>{!offers.length && <p>Сейчас нет открытых заявок. Продвинь время тренировками.</p>}</section>
+        {career.selectedOfferId && <section className="route-summary-panel"><div><p className="eyebrow">ASSIGNED ROUTE</p><h2>{route.mountainName} · {route.name}</h2><p>Руководитель назначил тебе роль {career.expeditionPlan.playerRole}. Общие приказы недоступны до повышения ранга.</p></div><div className="route-summary-panel__metrics"><span><small>ВЕРШИНА</small><strong>{route.summitElevation} м</strong></span><span><small>ИГРОВОЕ ВРЕМЯ</small><strong>≈ {route.expectedPlayMinutes ?? 20} мин</strong></span><span><small>УЗЛЫ</small><strong>{route.graph?.nodes.length ?? route.segments.length}</strong></span><span><small>РОЛЬ</small><strong>{career.expeditionPlan.playerRole}</strong></span></div></section>}
+        <button className="flow-next-action" disabled={!career.selectedOfferId} onClick={onContinue}><span><small>СЛЕДУЮЩИЙ ШАГ</small><strong>{career.selectedOfferId ? 'Посмотреть состав' : 'Выбери экспедицию'}</strong></span><b>→</b></button>
+      </section>
+    );
+  }
 
   return (
     <section className="workspace-page route-planning-page">
@@ -41,8 +54,10 @@ export function RoutePlanningScreen({ world, career, onSelectMountain, onSelectR
 
       <section className="decision-guide">
         <strong>Что делать сейчас</strong>
-        <p>Выбери вершину, сравни три маршрута и нажми «Команда». Число соответствия показывает, насколько твои текущие навыки подходят выбранной линии.</p>
+        <p>{career.membership.mode === 'INDEPENDENT' ? 'Выбери собственный маршрут или получи место в чужой экспедиции. В чужой группе общие приказы остаются у её руководителя.' : 'Выбери вершину, сравни три маршрута и нажми «Команда». Число соответствия показывает, насколько твои текущие навыки подходят выбранной линии.'}</p>
       </section>
+
+      {career.membership.mode === 'INDEPENDENT' && offers.some(offer => !offer.solo) && <section className="workspace-panel independent-offers-panel"><div className="panel-heading"><div><p className="eyebrow">JOIN AN EXPEDITION</p><h2>Чужие походы</h2></div><span>{offers.filter(offer => !offer.solo).length}</span></div><div className="expedition-offer-list">{offers.filter(offer => !offer.solo).map(offer => { const offerRoute = world.ecosystem.content.routes.byId[offer.routeId]; const offerMountain = offerRoute ? world.ecosystem.content.mountains.byId[offerRoute.mountainId] : null; const active = career.selectedOfferId === offer.id; return <button key={offer.id} className={active ? 'is-active' : ''} onClick={() => onAcceptOffer(offer.id)}><div><small>{offer.playerRole} · ПОД РУКОВОДСТВОМ NPC</small><strong>{offerMountain?.name ?? offerRoute?.mountainName}</strong><span>{offerRoute?.name} · ≈ {offerRoute?.expectedPlayMinutes ?? 20} мин</span></div><b>{active ? 'МЕСТО ПРИНЯТО' : 'ПРИСОЕДИНИТЬСЯ'}</b></button>; })}</div></section>}
 
       <section className="workspace-panel objective-selector">
         <div className="panel-heading"><div><p className="eyebrow">MOUNTAIN REGISTER</p><h2>Доступные вершины</h2></div><span>{mountains.length} ЦЕЛЕЙ</span></div>

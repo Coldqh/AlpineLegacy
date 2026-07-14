@@ -1,4 +1,5 @@
 import { createRng } from './rng';
+import { getOrganizations, materializeNpc, tableValues } from './ecosystem';
 import type {
   CareerState,
   ClubData,
@@ -52,24 +53,23 @@ function clubFromCareer(club: ClubData): WorldClub {
 }
 
 function createClubs(world: WorldState, club: ClubData): WorldClub[] {
-  const rng = createRng(`${world.config.seed}:world-clubs`);
-  const clubs: WorldClub[] = [clubFromCareer(club)];
-  for (let index = 1; index < 6; index += 1) {
-    const country = rng.pick(countries);
-    clubs.push({
-      id: `world-club-${index}-${world.id}`,
-      name: `${rng.pick(clubRoots)} «${country.slice(0, 6)}»`,
-      country,
-      foundedYear: world.config.startYear - rng.int(8, 67),
-      prestige: rng.int(28, 84),
-      doctrine: rng.pick(doctrines),
-      members: rng.int(12, 44),
-      expeditions: rng.int(4, 36),
-      summits: rng.int(2, 22),
-      losses: rng.int(0, 5),
-    });
-  }
-  return clubs;
+  const organizations = getOrganizations(world).map(organization => {
+    const runtime = world.ecosystem.runtime.organizations.byId[organization.id];
+    return {
+      id: organization.id,
+      name: organization.name,
+      country: organization.headquarters,
+      foundedYear: organization.foundedYear,
+      prestige: runtime?.prestige ?? organization.prestige,
+      doctrine: organization.doctrine,
+      members: organization.memberNpcIds.length,
+      expeditions: runtime?.expeditions ?? 0,
+      summits: runtime?.summits ?? 0,
+      losses: runtime?.losses ?? 0,
+    } satisfies WorldClub;
+  });
+  if (!organizations.some(item => item.id === club.id)) organizations.unshift(clubFromCareer(club));
+  return organizations;
 }
 
 function athleteFromTeam(member: TeamMember, club: WorldClub): WorldAthlete {
@@ -200,10 +200,12 @@ function baseRecords(athletes: WorldAthlete[], world: WorldState): WorldRecord[]
 
 export function createLivingWorld(world: WorldState, roster: TeamMember[], club: ClubData): LivingWorldState {
   const clubs = createClubs(world, club);
-  const heroClub = clubs[0]!;
-  const rosterAthletes = roster.map(member => athleteFromTeam(member, heroClub));
-  const generated = Array.from({ length: 30 }, (_, index) => generatedAthlete(world, clubs, index));
-  const athletes = [...rosterAthletes, ...generated];
+  const knownIds = new Set(roster.map(member => member.id));
+  const athletes = tableValues(world.ecosystem.content.npcs).map(definition => {
+    const member = materializeNpc(world, definition.id)!;
+    const organizationClub = clubs.find(item => item.id === definition.organizationId) ?? clubs[0]!;
+    return { ...athleteFromTeam(member, organizationClub), knownToHero: knownIds.has(member.id) };
+  });
   return {
     version: 1,
     lastSimulatedYear: world.config.startYear,
@@ -212,7 +214,7 @@ export function createLivingWorld(world: WorldState, roster: TeamMember[], club:
     athletes,
     clubs,
     mountainHistory: world.region.mountains.map((mountain, index) => initialMountainHistory(mountain, world.config.startYear, index)),
-    news: [{ id: `news-opening-${world.id}`, year: world.config.startYear, seasonDay: 1, type: 'CLUB', headline: 'Новый сезон открыт', summary: `${world.region.name} входит в новый сезон. Клубы публикуют планы, а несколько больших вершин остаются без подтверждённого восхождения.`, athleteIds: [], clubIds: clubs.map(item => item.id), mountainId: null, importance: 55, isBreaking: false }],
+    news: [{ id: `news-opening-${world.id}`, year: world.config.startYear, seasonDay: 1, type: 'CLUB', headline: 'Новый сезон открыт', summary: `${world.region.name} входит в новый сезон. Организации публикуют составы и экспедиционные заявки.`, athleteIds: [], clubIds: clubs.map(item => item.id), mountainId: null, importance: 55, isBreaking: false }],
     expeditions: [],
     records: baseRecords(athletes, world),
   };

@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
 import { SkillBars } from '../components/SkillBars';
 import { ORIGINS } from '../core/career';
-import type { CareerDraft, OriginId, WorldState } from '../core/types';
+import { getEntryOrganizations } from '../core/ecosystem';
+import type { CareerDraft, CareerEntryMode, OrganizationId, OriginId, WorldState } from '../core/types';
 
 type Props = {
   world: WorldState;
@@ -16,6 +17,9 @@ export function CharacterCreationScreen({ world, onBack, onCreate }: Props) {
   const [name, setName] = useState('Алексей Ветров');
   const [age, setAge] = useState(20);
   const [originId, setOriginId] = useState<OriginId>('CLUB_SCHOOL');
+  const organizations = useMemo(() => getEntryOrganizations(world), [world]);
+  const [entryMode, setEntryMode] = useState<CareerEntryMode>('ORGANIZATION');
+  const [organizationId, setOrganizationId] = useState<OrganizationId | null>(organizations[0]?.id ?? null);
   const origin = ORIGINS[originId];
   const initials = useMemo(() => name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'AL', [name]);
 
@@ -94,12 +98,21 @@ export function CharacterCreationScreen({ world, onBack, onCreate }: Props) {
             <SkillBars skills={origin.skills} />
           </div>
 
+          <div className="origin-section career-entry-section">
+            <div className="origin-section__head"><div><p className="eyebrow">AFFILIATION / STARTING POSITION</p><h2>Где начнётся карьера</h2></div><span>НОВИЧОК</span></div>
+            <div className="origin-grid">
+              {organizations.map((item, index) => <button key={item.id} className={`origin-card ${entryMode === 'ORGANIZATION' && organizationId === item.id ? 'is-active' : ''}`} onClick={() => { setEntryMode('ORGANIZATION'); setOrganizationId(item.id); }}><span className="origin-card__index">{String(index + 1).padStart(2, '0')}</span><div><strong>{item.name}</strong><small>{item.headquarters} · {item.specialty}</small></div><i /></button>)}
+              <button className={`origin-card ${entryMode === 'INDEPENDENT' ? 'is-active' : ''}`} onClick={() => { setEntryMode('INDEPENDENT'); setOrganizationId(null); }}><span className="origin-card__index">—</span><div><strong>Независимый путь</strong><small>Без клуба, команды и гарантированных мест в экспедициях</small></div><i /></button>
+            </div>
+            <p className="lead career-entry-note">{entryMode === 'INDEPENDENT' ? 'Доступны одиночные выходы. Все расходы и решения лежат на тебе.' : 'Ты начинаешь обычным участником. Маршрут, состав и общие приказы определяет руководитель экспедиции.'}</p>
+          </div>
+
           <button
             className="primary-action character-submit"
             disabled={!name.trim()}
-            onClick={() => onCreate({ name: name.trim(), age, originId })}
+            onClick={() => onCreate({ name: name.trim(), age, originId, entryMode, organizationId: entryMode === 'ORGANIZATION' ? organizationId : null })}
           >
-            <span>Вступить в клуб</span><b>→</b>
+            <span>Начать карьеру</span><b>→</b>
           </button>
         </div>
       </section>

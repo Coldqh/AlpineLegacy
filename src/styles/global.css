@@ -3816,3 +3816,22 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
   .training-grid--clear,
   .mountain-choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
+
+/* 0.6.1 foundation: organization and offer layouts. */
+.career-entry-section { margin-top: 22px; }
+.career-entry-note { max-width: 920px; margin-top: 12px; }
+.expedition-offer-grid > button { min-height: 250px; }
+.expedition-offer-grid > button p { display: block; }
+
+/* Alpine Legacy 0.6.1 — independent climbers can join NPC-led expeditions. */
+.independent-offers-panel { margin-bottom: 22px; }
+.expedition-offer-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.expedition-offer-list button { min-height: 118px; padding: 16px; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: transparent; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; text-align: left; }
+.expedition-offer-list button.is-active { background: var(--ink); color: var(--paper); }
+.expedition-offer-list small, .expedition-offer-list strong, .expedition-offer-list span { display: block; }
+.expedition-offer-list small { color: var(--muted); font-size: 10px; letter-spacing: .1em; }
+.expedition-offer-list strong { margin-top: 6px; font: 600 25px/1 var(--serif); }
+.expedition-offer-list span { margin-top: 6px; color: var(--muted); }
+.expedition-offer-list button > b { font-size: 10px; letter-spacing: .08em; white-space: nowrap; }
+.expedition-offer-list button.is-active :is(small, span) { color: rgba(244,240,232,.68); }
+@media (max-width: 900px) { .expedition-offer-list { grid-template-columns: 1fr; } }

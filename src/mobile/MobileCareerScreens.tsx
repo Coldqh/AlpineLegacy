@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { MountainArt } from '../components/MountainArt';
 import {
+  EXPEDITION_RANK_LABELS,
   GEAR_CATALOG,
   SKILL_LABELS,
   TRAINING_ACTIONS,
@@ -17,6 +18,7 @@ import type {
   CareerState,
   CareerTabId,
   DifficultyId,
+  ExpeditionOffer,
   ExpeditionPlan,
   GearCategory,
   MountainData,
@@ -72,10 +74,11 @@ export function MobileOverview({ world, career, onTrain, onOpenExpedition }: { w
   </section>;
 }
 
-export function MobileRoute({ world, career, onSelectMountain, onSelectRoute, onContinue }: { world: WorldState; career: CareerState; onSelectMountain: (id: string) => void; onSelectRoute: (id: string) => void; onContinue: () => void }) {
+export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMountain, onSelectRoute, onContinue }: { world: WorldState; career: CareerState; offers: ExpeditionOffer[]; onAcceptOffer: (id: string) => void; onSelectMountain: (id: string) => void; onSelectRoute: (id: string) => void; onContinue: () => void }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const route = getSelectedRoute(career);
   const mountain = world.region.mountains.find(item => item.id === route.mountainId) ?? world.region.mountains[0]!;
+  const canPlan = career.membership.permissions.canChooseRoute;
   const mountains = [...world.region.mountains].sort((a, b) => mountainScore(a) - mountainScore(b));
   const routes = routesForMountain(career, mountain.id);
 
@@ -84,13 +87,37 @@ export function MobileRoute({ world, career, onSelectMountain, onSelectRoute, on
     setPickerOpen(false);
   };
 
+  if (!canPlan) {
+    return <section className="m-screen m-screen--with-action">
+      <StepLine step="1/4" title="Экспедиции" value={EXPEDITION_RANK_LABELS[career.membership.rank]} />
+      <div className="m-status-line"><strong>{career.selectedOfferId ? 'Место подтверждено' : 'Выбери чужой поход'}</strong><span>роль участника</span></div>
+      <div className="m-offer-list">{offers.map(offer => {
+        const offerRoute = world.ecosystem.content.routes.byId[offer.routeId];
+        const offerMountain = offerRoute ? world.ecosystem.content.mountains.byId[offerRoute.mountainId] : null;
+        const active = career.selectedOfferId === offer.id;
+        return <button key={offer.id} className={active ? 'is-active' : ''} onClick={() => onAcceptOffer(offer.id)}><div><small>{roleLabel[offer.playerRole]} · {offer.memberNpcIds.length + (offer.leaderNpcId ? 1 : 0)} участников</small><strong>{offerMountain?.name ?? offerRoute?.mountainName ?? 'Неизвестная гора'}</strong><span>{offerRoute?.name ?? 'Маршрут'} · ≈ {offerRoute?.expectedPlayMinutes ?? 20} мин игры</span></div><b>{active ? '✓' : '›'}</b></button>;
+      })}</div>
+      {!offers.length && <div className="m-note">Сейчас нет доступных заявок. Продвигай время тренировками или начни независимую карьеру.</div>}
+      {career.selectedOfferId && <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>НАЗНАЧЕННАЯ ЦЕЛЬ</small><strong>{mountain.name}</strong><span>{route.name} · твоя роль: {roleLabel[career.expeditionPlan.playerRole]}</span></div><b>{mountain.elevation} м</b></footer></section>}
+      <button className="m-sticky-action" disabled={!career.selectedOfferId} onClick={onContinue}><span>{career.selectedOfferId ? 'Состав экспедиции' : 'Сначала выбери поход'}</span><b>→</b></button>
+    </section>;
+  }
+
+  const foreignOffers = offers.filter(offer => !offer.solo);
+
   return <section className="m-screen m-screen--with-action">
-    <StepLine step="1/4" title="Цель" />
-    <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>{mountain.characterTitle}</small><strong>{mountain.name}</strong><span>{mountain.dangerProfile}</span></div><b>{mountain.elevation} м</b></footer></section>
+    <StepLine step="1/4" title={career.selectedOfferId ? 'Чужая экспедиция' : career.membership.mode === 'INDEPENDENT' ? 'Одиночный выход' : 'Цель'} />
+    {career.membership.mode === 'INDEPENDENT' && foreignOffers.length > 0 && <details className="m-details m-details--flat m-foreign-offers"><summary>Присоединиться к чужому походу · {foreignOffers.length}</summary><div className="m-offer-list">{foreignOffers.map(offer => {
+      const offerRoute = world.ecosystem.content.routes.byId[offer.routeId];
+      const offerMountain = offerRoute ? world.ecosystem.content.mountains.byId[offerRoute.mountainId] : null;
+      const active = career.selectedOfferId === offer.id;
+      return <button key={offer.id} className={active ? 'is-active' : ''} onClick={() => onAcceptOffer(offer.id)}><div><small>{roleLabel[offer.playerRole]} · руководитель NPC</small><strong>{offerMountain?.name ?? offerRoute?.mountainName ?? 'Неизвестная гора'}</strong><span>{offerRoute?.name ?? 'Маршрут'} · ≈ {offerRoute?.expectedPlayMinutes ?? 20} мин</span></div><b>{active ? '✓' : '›'}</b></button>;
+    })}</div></details>}
+    <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>{career.selectedOfferId ? 'НАЗНАЧЕННАЯ ЦЕЛЬ' : mountain.characterTitle}</small><strong>{mountain.name}</strong><span>{career.selectedOfferId ? `${route.name} · роль: ${roleLabel[career.expeditionPlan.playerRole]}` : mountain.dangerProfile}</span></div><b>{mountain.elevation} м</b></footer></section>
     <button className="m-picker-button" onClick={() => setPickerOpen(true)}><span>Сменить вершину</span><b>{mountains.length} доступно ›</b></button>
     <div className="m-section-head"><h2>Маршрут</h2></div>
-    <div className="m-route-list">{routes.map(item => <button key={item.id} className={item.id === route.id ? 'is-active' : ''} onClick={() => onSelectRoute(item.id)}><div><small>{item.style}</small><strong>{item.name}</strong><span>{item.estimatedHours} ч · риск {level(item.objectiveRisk)} · {item.recommendedTeamSize}+ чел.</span></div><b>{item.id === route.id ? '✓' : '○'}</b></button>)}</div>
-    <button className="m-sticky-action" onClick={onContinue}><span>Команда</span><b>→</b></button>
+    <div className="m-route-list">{routes.map(item => <button key={item.id} className={item.id === route.id ? 'is-active' : ''} onClick={() => onSelectRoute(item.id)}><div><small>{item.style}</small><strong>{item.name}</strong><span>{item.estimatedHours} ч · риск {level(item.objectiveRisk)} · ≈ {item.expectedPlayMinutes ?? 20} мин</span></div><b>{item.id === route.id ? '✓' : '○'}</b></button>)}</div>
+    <button className="m-sticky-action" onClick={onContinue}><span>{career.selectedOfferId ? 'Состав экспедиции' : career.membership.mode === 'INDEPENDENT' ? 'Подготовить соло-выход' : 'Команда'}</span><b>→</b></button>
 
     {pickerOpen && <div className="m-modal-layer" onClick={() => setPickerOpen(false)}><section className="m-picker-sheet" onClick={event => event.stopPropagation()}><header><strong>Вершины</strong><button onClick={() => setPickerOpen(false)}>×</button></header><div className="m-list">{mountains.map((item, index) => <button key={item.id} className={item.id === mountain.id ? 'is-active' : ''} onClick={() => chooseMountain(item.id)}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{item.name}</strong><small>{item.characterTitle} · техника {level(item.technicality)}</small></div><b>{item.elevation} м</b></button>)}</div></section></div>}
   </section>;
@@ -99,11 +126,15 @@ export function MobileRoute({ world, career, onSelectMountain, onSelectRoute, on
 export function MobileTeam({ career, onToggle, onContinue, onPeople }: { career: CareerState; onToggle: (id: string) => void; onContinue: () => void; onPeople: () => void }) {
   const team = selectedTeam(career);
   const route = getSelectedRoute(career);
-  const enough = team.length + 1 >= route.recommendedTeamSize;
+  const canChoose = career.membership.permissions.canChooseTeam;
+  const enough = career.membership.mode === 'INDEPENDENT' ? true : team.length + 1 >= route.recommendedTeamSize;
+  const visibleRoster = canChoose ? career.teamRoster : career.teamRoster.filter(member => career.expeditionPlan.teamMemberIds.includes(member.id));
+  const heroRole = roleLabel[career.expeditionPlan.playerRole];
   return <section className="m-screen m-screen--with-action">
-    <StepLine step="2/4" title="Команда" value={`${team.length + 1}/5`} />
-    <div className={`m-status-line ${enough ? 'is-good' : 'is-warning'}`}><strong>{enough ? 'Состав готов' : `Нужно минимум ${route.recommendedTeamSize}`}</strong><button onClick={onPeople}>Досье</button></div>
-    <div className="m-person-list"><article className="is-active"><span>{initials(career.hero.name)}</span><div><strong>{career.hero.name}</strong><small>Руководитель</small></div><b>✓</b></article>{career.teamRoster.map(member => { const active = career.expeditionPlan.teamMemberIds.includes(member.id); const unavailable = member.status !== 'ACTIVE' || member.availability < 45; return <button key={member.id} disabled={member.required || unavailable} className={active ? 'is-active' : ''} onClick={() => onToggle(member.id)}><span>{initials(member.name)}</span><div><strong>{member.name}</strong><small>{roleLabel[member.role]} · {SKILL_LABELS[member.specialty]} {member.skill}/10</small></div><b>{unavailable ? '—' : active ? '✓' : '+'}</b></button>; })}</div>
+    <StepLine step="2/4" title={canChoose ? 'Команда' : 'Состав экспедиции'} value={career.membership.mode === 'INDEPENDENT' && team.length === 0 ? 'соло' : `${team.length + 1}`} />
+    <div className={`m-status-line ${enough ? 'is-good' : 'is-warning'}`}><strong>{career.membership.mode === 'INDEPENDENT' && team.length === 0 ? 'Одиночный выход' : canChoose ? (enough ? 'Состав готов' : `Нужно минимум ${route.recommendedTeamSize}`) : `Твоя роль: ${heroRole}`}</strong>{career.teamRoster.length > 0 && <button onClick={onPeople}>Досье</button>}</div>
+    <div className="m-person-list"><article className="is-active"><span>{initials(career.hero.name)}</span><div><strong>{career.hero.name}</strong><small>{heroRole}{career.expeditionPlan.authorityMode === 'COMMAND' ? ' · право приказов' : ' · подчиняется руководителю'}</small></div><b>✓</b></article>{visibleRoster.map(member => { const active = career.expeditionPlan.teamMemberIds.includes(member.id); const unavailable = member.status !== 'ACTIVE' || member.availability < 45; const leader = career.expeditionPlan.leaderNpcId === member.id; return <button key={member.id} disabled={!canChoose || member.required || unavailable} className={active ? 'is-active' : ''} onClick={() => onToggle(member.id)}><span>{initials(member.name)}</span><div><strong>{member.name}</strong><small>{leader ? 'Руководитель экспедиции' : roleLabel[member.role]} · {SKILL_LABELS[member.specialty]} {member.skill}/10</small></div><b>{unavailable ? '—' : active ? '✓' : '+'}</b></button>; })}</div>
+    {!canChoose && career.membership.mode === 'ORGANIZATION' && !career.selectedOfferId && <div className="m-note">Состав появится после принятия заявки на чужую экспедицию.</div>}
     <button className="m-sticky-action" onClick={onContinue}><span>Снаряжение</span><b>→</b></button>
   </section>;
 }

@@ -337,3 +337,35 @@
     opacity: 1;
   }
 }
+
+/* Alpine Legacy 0.6.1 — organization intake and fixed expedition offers. */
+@media (max-width: 1024px) {
+  html[data-device='phone'] .m-entry-list > button { min-height: 52px; }
+  html[data-device='phone'] .m-review-card > div { min-height: 44px; }
+  html[data-device='phone'] .m-review-card strong { font-size: 13px; line-height: 1.05; }
+  html[data-device='phone'] .m-offer-list { display: grid; gap: 5px; }
+  html[data-device='phone'] .m-offer-list > button {
+    min-height: 58px;
+    padding: 7px 9px;
+    border: 1px solid var(--m-line);
+    background: var(--m-surface);
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    align-items: center;
+    text-align: left;
+  }
+  html[data-device='phone'] .m-offer-list > button.is-active { background: var(--m-active); color: #f4f0e8; }
+  html[data-device='phone'] .m-offer-list small,
+  html[data-device='phone'] .m-offer-list strong,
+  html[data-device='phone'] .m-offer-list span { display: block; }
+  html[data-device='phone'] .m-offer-list small { font-size: 7px; letter-spacing: .06em; color: var(--m-muted); text-transform: uppercase; }
+  html[data-device='phone'] .m-offer-list strong { margin-top: 2px; font: 15px/1 var(--serif); }
+  html[data-device='phone'] .m-offer-list span { margin-top: 3px; font-size: 8px; color: var(--m-muted); }
+  html[data-device='phone'] .m-offer-list > button.is-active :is(small,span) { color: rgba(244,240,232,.68); }
+}
+
+/* Alpine Legacy 0.6.1 — independent expedition applications. */
+@media (max-width: 1024px) {
+  .m-foreign-offers { margin-bottom: 7px; }
+  .m-foreign-offers summary { font-size: 10px; }
+}

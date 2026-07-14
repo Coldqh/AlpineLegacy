@@ -1,4 +1,6 @@
 import {
+  acceptExpeditionOffer,
+  availableExpeditionOffers,
   beginDescent,
   chooseRouteDecision,
   createCareer,
@@ -8,6 +10,7 @@ import {
   resolveClimbStep,
   startPlannedClimb,
 } from './career';
+import { getEntryOrganizations } from './ecosystem';
 import { generateWorld } from './generator';
 import type { CareerState, DifficultyId, OriginId } from './types';
 
@@ -28,7 +31,10 @@ const origins: OriginId[] = ['CLUB_SCHOOL', 'HIGHLAND_LOCAL', 'ROCK_SECTION'];
 
 function runCareer(seed: string, origin: OriginId, difficulty: DifficultyId) {
   const world = generateWorld({ seed, eraId: 'EXPEDITION', startYear: 1968, difficulty });
-  let career: CareerState = startPlannedClimb(createCareer(world, { name: 'Balance Runner', age: 20, originId: origin }));
+  const organization = getEntryOrganizations(world)[0]!;
+  let career: CareerState = createCareer(world, { name: 'Balance Runner', age: 20, originId: origin, entryMode: 'ORGANIZATION', organizationId: organization.id });
+  const offer = availableExpeditionOffers(world, career)[0]!;
+  career = startPlannedClimb(acceptExpeditionOffer(world, career, offer.id));
   for (let guard = 0; guard < 48; guard += 1) {
     const climb = career.activeClimb;
     if (!climb || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) break;

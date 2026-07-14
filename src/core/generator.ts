@@ -1,4 +1,6 @@
 import { createRng } from './rng';
+import { createWorldEcosystem, hydrateWorldEcosystem } from './ecosystem';
+import { generateRoutesForWorld } from './routeFactory';
 import type { MountainCharacterId, MountainData, RegionData, WorldSeedConfig, WorldState } from './types';
 
 const regionPrefix = ['Аур', 'Валь', 'Кард', 'Сер', 'Норд', 'Иль', 'Тар', 'Элд', 'Орт', 'Мер'];
@@ -53,7 +55,8 @@ export function hydrateWorld(world: WorldState): WorldState {
       characterDescription: character.description,
     };
   });
-  return { ...world, region: { ...world.region, mountains } };
+  const compatible = { ...world, schemaVersion: 2 as const, region: { ...world.region, mountains } } as WorldState;
+  return hydrateWorldEcosystem(compatible);
 }
 
 
@@ -160,11 +163,16 @@ export function generateWorld(config: WorldSeedConfig): WorldState {
     mountains,
   };
 
-  return hydrateWorld({
+  const base = {
+    schemaVersion: 2 as const,
     id: `world-${config.seed.replace(/\W/g, '').slice(0, 18) || 'alpine'}-${config.eraId.toLowerCase()}-${config.startYear}`,
     config,
     createdAt: new Date().toISOString(),
     worldAge: rng.int(52, 96),
     region,
-  });
+  } as Omit<WorldState, 'ecosystem'>;
+  const world = { ...base, ecosystem: null as unknown as WorldState['ecosystem'] } as WorldState;
+  const routes = generateRoutesForWorld(world);
+  world.ecosystem = createWorldEcosystem(world, routes);
+  return hydrateWorld(world);
 }

@@ -29,6 +29,50 @@ export type WorldExpeditionOutcome = 'SUMMIT' | 'RETREAT' | 'FAILED' | 'TRAGEDY'
 export type MountainCharacterId = 'WEATHER' | 'TECHNICAL' | 'ENDURANCE' | 'ALTITUDE' | 'DESCENT';
 export type RouteChoiceTone = 'SAFE' | 'BALANCED' | 'BOLD';
 
+export type RegionId = string;
+export type MountainId = string;
+export type RouteId = string;
+export type NpcId = string;
+export type OrganizationId = string;
+export type ExpeditionOfferId = string;
+
+export interface EntityTable<T extends { id: string }> {
+  byId: Record<string, T>;
+  allIds: string[];
+}
+
+export type OrganizationKind = 'ALPINE_CLUB' | 'EXPEDITION_COMPANY' | 'GUIDE_BUREAU';
+export type CareerEntryMode = 'ORGANIZATION' | 'INDEPENDENT';
+export type ExpeditionRank = 'NOVICE' | 'MEMBER' | 'SPECIALIST' | 'ROPE_LEAD' | 'DEPUTY' | 'LEADER' | 'ORGANIZER';
+export type ExpeditionAuthority = 'PARTICIPANT' | 'SPECIALIST' | 'COMMAND';
+export type ExpeditionPhaseNode = 'APPROACH' | 'BASE_CAMP' | 'ACCLIMATIZATION' | 'CARRY' | 'CAMP' | 'TECHNICAL' | 'HAZARD' | 'DECISION' | 'SUMMIT' | 'DESCENT' | 'EXIT';
+
+export interface RouteGraphNode {
+  id: string;
+  phase: ExpeditionPhaseNode;
+  label: string;
+  segmentId: string | null;
+  campPossible: boolean;
+  estimatedMinutes: number;
+  requiredActionCount: number;
+}
+
+export interface RouteGraphEdge {
+  id: string;
+  from: string;
+  to: string;
+  choiceId: string | null;
+  conditionTag: string | null;
+}
+
+export interface RouteGraph {
+  startNodeId: string;
+  summitNodeId: string;
+  exitNodeId: string;
+  nodes: RouteGraphNode[];
+  edges: RouteGraphEdge[];
+}
+
 export interface WorldSeedConfig {
   seed: string;
   eraId: EraId;
@@ -42,7 +86,9 @@ export interface ProfilePoint {
 }
 
 export interface MountainData {
-  id: string;
+  id: MountainId;
+  regionId?: RegionId;
+  routeIds?: RouteId[];
   name: string;
   epithet: string;
   elevation: number;
@@ -64,7 +110,9 @@ export interface MountainData {
 }
 
 export interface RegionData {
-  id: string;
+  id: RegionId;
+  mountainIds?: MountainId[];
+  organizationIds?: OrganizationId[];
   name: string;
   subtitle: string;
   climate: string;
@@ -77,12 +125,121 @@ export interface RegionData {
   mountains: MountainData[];
 }
 
+export interface OrganizationDefinition {
+  id: OrganizationId;
+  regionId: RegionId;
+  kind: OrganizationKind;
+  name: string;
+  headquarters: string;
+  foundedYear: number;
+  prestige: number;
+  doctrine: string;
+  specialty: string;
+  acceptsNovices: boolean;
+  memberNpcIds: NpcId[];
+}
+
+export interface NpcDefinition {
+  id: NpcId;
+  regionId: RegionId;
+  organizationId: OrganizationId | null;
+  name: string;
+  birthYear: number;
+  role: TeamRole;
+  specialty: SkillId;
+  skill: number;
+  endurance: number;
+  temperament: string;
+  note: string;
+  personality: PersonalityProfile;
+  personalGoal: string;
+}
+
+export interface NpcRuntimeState {
+  id: NpcId;
+  status: MemberStatus;
+  condition: number;
+  morale: number;
+  trust: number;
+  injuries: string[];
+  hiddenIssue: string | null;
+  availability: number;
+  relationship: RelationshipProfile;
+  memories: PersonMemory[];
+  sharedClimbs: number;
+  summits: number;
+  rescues: number;
+  refusals: number;
+}
+
+export interface OrganizationRuntimeState {
+  id: OrganizationId;
+  prestige: number;
+  funds: number;
+  expeditions: number;
+  summits: number;
+  losses: number;
+}
+
+export interface MountainRuntimeState {
+  id: MountainId;
+  attempts: number;
+  summits: number;
+  deaths: number;
+  firstAscentYear: number | null;
+  routeAvailability: Record<RouteId, 'OPEN' | 'CLOSED' | 'UNKNOWN'>;
+}
+
+export interface ExpeditionOffer {
+  id: ExpeditionOfferId;
+  organizationId: OrganizationId | null;
+  routeId: RouteId;
+  leaderNpcId: NpcId | null;
+  memberNpcIds: NpcId[];
+  playerRole: TeamRole;
+  requiredRank: ExpeditionRank;
+  authority: ExpeditionAuthority;
+  solo: boolean;
+  status: 'OPEN' | 'ACCEPTED' | 'EXPIRED' | 'CLOSED';
+  opensOnDay: number;
+  expiresOnDay: number;
+}
+
+export interface WorldContentRegistry {
+  version: 1;
+  primaryRegionId: RegionId;
+  regions: EntityTable<RegionData>;
+  mountains: EntityTable<MountainData>;
+  routes: EntityTable<ExpeditionRoute>;
+  organizations: EntityTable<OrganizationDefinition>;
+  npcs: EntityTable<NpcDefinition>;
+  gear: EntityTable<GearDefinition>;
+}
+
+export interface WorldRuntimeRegistry {
+  version: 1;
+  mountains: EntityTable<MountainRuntimeState>;
+  organizations: EntityTable<OrganizationRuntimeState>;
+  npcs: EntityTable<NpcRuntimeState>;
+  expeditionOffers: EntityTable<ExpeditionOffer>;
+}
+
+export interface WorldEcosystem {
+  schemaVersion: 1;
+  contentFingerprint: string;
+  content: WorldContentRegistry;
+  runtime: WorldRuntimeRegistry;
+}
+
 export interface WorldState {
+  schemaVersion: 2;
   id: string;
   config: WorldSeedConfig;
   createdAt: string;
   worldAge: number;
+  /** Compatibility projection. Ecosystem registries are authoritative. */
   region: RegionData;
+  ecosystem: WorldEcosystem;
 }
 
 export type SkillSet = Record<SkillId, number>;
@@ -188,7 +345,8 @@ export interface RouteDecisionPoint {
 }
 
 export interface ExpeditionRoute {
-  id: string;
+  id: RouteId;
+  regionId?: RegionId;
   mountainId: string;
   mountainName: string;
   mountainCharacterId: MountainCharacterId;
@@ -208,6 +366,9 @@ export interface ExpeditionRoute {
   isSignature?: boolean;
   routeStory?: string[];
   descentSummary?: string;
+  graph?: RouteGraph;
+  expectedPlayMinutes?: number;
+  estimatedDecisionCount?: number;
 }
 
 export interface PersonalityProfile {
@@ -291,7 +452,11 @@ export interface WeatherWindow {
 }
 
 export interface ExpeditionPlan {
-  routeId: string;
+  routeId: RouteId;
+  offerId: ExpeditionOfferId | null;
+  leaderNpcId: NpcId | null;
+  playerRole: TeamRole;
+  authorityMode: ExpeditionAuthority;
   weatherWindowId: string;
   teamMemberIds: string[];
   gear: Record<string, number>;
@@ -360,6 +525,10 @@ export interface RouteChoiceRecord {
 
 export interface QualificationClimb {
   id: string;
+  expeditionOfferId: ExpeditionOfferId | null;
+  leaderNpcId: NpcId | null;
+  playerRole: TeamRole;
+  authorityMode: ExpeditionAuthority;
   mountainId: string;
   mountainName: string;
   routeId: string;
@@ -623,8 +792,25 @@ export interface CareerProgression {
   sponsor: SponsorDeal | null;
 }
 
+export interface CareerPermissions {
+  canChooseRoute: boolean;
+  canChooseTeam: boolean;
+  canIssueOrders: boolean;
+  canOrganize: boolean;
+  canStartSolo: boolean;
+}
+
+export interface CareerMembership {
+  mode: CareerEntryMode;
+  organizationId: OrganizationId | null;
+  rank: ExpeditionRank;
+  authority: ExpeditionAuthority;
+  rankPoints: number;
+  permissions: CareerPermissions;
+}
+
 export interface CareerState {
-  schemaVersion: 10;
+  schemaVersion: 11;
   id: string;
   worldId: string;
   rootSeed: string;
@@ -649,12 +835,17 @@ export interface CareerState {
   onboarding: OnboardingState;
   livingWorld: LivingWorldState;
   progression: CareerProgression;
+  membership: CareerMembership;
+  selectedOfferId: ExpeditionOfferId | null;
+  knownNpcIds: NpcId[];
 }
 
 export interface CareerDraft {
   name: string;
   age: number;
   originId: OriginId;
+  entryMode?: CareerEntryMode;
+  organizationId?: OrganizationId | null;
 }
 
 

@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { beginDescent, chooseRouteDecision, createCareer, establishCamp, getCurrentRouteDecision, meltSnow, resolveClimbStep, startPlannedClimb } from '../career';
+import { acceptExpeditionOffer, availableExpeditionOffers, beginDescent, chooseRouteDecision, createCareer, establishCamp, getCurrentRouteDecision, meltSnow, resolveClimbStep, startPlannedClimb } from '../career';
+import { getEntryOrganizations } from '../ecosystem';
 import { generateWorld } from '../generator';
 import type { CareerState, OriginId } from '../types';
 
 function simulate(seed: string, originId: OriginId) {
   const world = generateWorld({ seed, eraId: 'EXPEDITION', startYear: 1968, difficulty: 'CLIMBER' });
-  let career: CareerState = startPlannedClimb(createCareer(world, { name: 'Balance Test', age: 20, originId }));
+  const organization = getEntryOrganizations(world)[0]!;
+  let career: CareerState = createCareer(world, { name: 'Balance Test', age: 20, originId, entryMode: 'ORGANIZATION', organizationId: organization.id });
+  career = startPlannedClimb(acceptExpeditionOffer(world, career, availableExpeditionOffers(world, career)[0]!.id));
   for (let guard = 0; guard < 40; guard += 1) {
     const climb = career.activeClimb;
     if (!climb || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) return climb?.phase;

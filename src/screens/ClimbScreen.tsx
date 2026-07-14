@@ -227,7 +227,7 @@ export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, on
             <button disabled={climb.phase !== 'ASCENT' || !activeSegment.campPossible} onClick={() => resolve(onLeaveCache)}><span>Оставить закладку</span><small>30 минут · рюкзак легче · запас на возвращение</small></button>
           </div>
 
-          <details className="team-orders team-orders--disclosure">
+          {climb.authorityMode === 'COMMAND' ? <details className="team-orders team-orders--disclosure">
             <summary><span>Приказы группе</span><small>Люди могут отказаться, если не доверяют решению</small></summary>
             <div>
               <button onClick={() => resolve(() => onOrder('SLOW_DOWN'))}><strong>Снизить темп</strong><small>+2 состояния группе · −45 минут.</small></button>
@@ -235,7 +235,7 @@ export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, on
               <button onClick={() => resolve(() => onOrder('TURN_BACK_WEAKEST'))}><strong>Развернуть слабого</strong><small>Снимает худшего участника, но может вызвать отказ и обиду.</small></button>
               <button onClick={() => resolve(() => onOrder('ASSIGN_HELPER'))}><strong>Назначить помощь</strong><small>Стабилизирует пострадавшего ценой сил помощника.</small></button>
             </div>
-          </details>
+          </details> : <section className="decision-guide"><strong>Ты участник, а не руководитель</strong><p>Общий темп и приказы задаёт {climb.leaderNpcId ? career.teamRoster.find(member => member.id === climb.leaderNpcId)?.name ?? 'руководитель экспедиции' : 'руководитель экспедиции'}. Твои решения касаются собственной роли, помощи группе и поведения на каждом участке.</p></section>}
 
           {climb.phase === 'ASCENT' && <button className="retreat-button" onClick={onRetreat}>Развернуть всю группу и начать спуск</button>}
         </section>

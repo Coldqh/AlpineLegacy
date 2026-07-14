@@ -141,9 +141,9 @@ export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSn
         <button disabled={climb.phase !== 'ASCENT' || !segment.campPossible} onClick={() => resolve(onLeaveCache)}><span><strong>Оставить закладку</strong><small>Снизить вес, оставить запас</small></span><b>›</b></button>
       </div>}
 
-      <details className="m-details"><summary>Команда и приказы</summary>
-        <div className="m-team-route-list">{climb.teamStates.map(state => { const member = career.teamRoster.find(item => item.id === state.memberId); return member ? <div key={state.memberId}><span>{member.name}</span><strong>{conditionLabel(state.condition)}</strong></div> : null; })}</div>
-        <div className="m-order-grid"><button onClick={() => resolve(() => onOrder('SLOW_DOWN'))}>Снизить темп</button><button onClick={() => resolve(() => onOrder('PRESS_ON'))}>Давить вверх</button><button onClick={() => resolve(() => onOrder('TURN_BACK_WEAKEST'))}>Развернуть слабого</button><button onClick={() => resolve(() => onOrder('ASSIGN_HELPER'))}>Назначить помощь</button></div>
+      <details className="m-details"><summary>{climb.authorityMode === 'COMMAND' ? 'Команда и приказы' : 'Состав экспедиции'}</summary>
+        <div className="m-team-route-list">{climb.teamStates.map(state => { const member = career.teamRoster.find(item => item.id === state.memberId); return member ? <div key={state.memberId}><span>{member.name}{climb.leaderNpcId === member.id ? ' · руководитель' : ''}</span><strong>{conditionLabel(state.condition)}</strong></div> : null; })}</div>
+        {climb.authorityMode === 'COMMAND' ? <div className="m-order-grid"><button onClick={() => resolve(() => onOrder('SLOW_DOWN'))}>Снизить темп</button><button onClick={() => resolve(() => onOrder('PRESS_ON'))}>Давить вверх</button><button onClick={() => resolve(() => onOrder('TURN_BACK_WEAKEST'))}>Развернуть слабого</button><button onClick={() => resolve(() => onOrder('ASSIGN_HELPER'))}>Назначить помощь</button></div> : <p>Ты не управляешь всей группой. Основной геймплей — личный темп, решения на участке, помощь, отказ и выполнение приказов руководителя.</p>}
       </details>
 
       {climb.phase === 'ASCENT' && <button className="m-retreat-button" onClick={onRetreat}>Развернуть группу и начать спуск</button>}

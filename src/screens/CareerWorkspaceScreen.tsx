@@ -17,7 +17,9 @@ import {
 } from '../mobile/MobileCareerScreens';
 import { CareerFlowGuide } from '../components/CareerFlowGuide';
 import {
+  acceptExpeditionOffer,
   applyEquipmentPreset,
+  availableExpeditionOffers,
   dismissOnboarding,
   beginDescent,
   closeClimb,
@@ -111,7 +113,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     if (activeTab === 'RECORDS') return <MobileRecords career={career} />;
     if (activeTab === 'JOURNAL') return <MobileJournal career={career} />;
     if (activeTab === 'PEOPLE') return <MobilePeople career={career} />;
-    if (activeTab === 'ROUTE') return <MobileRoute world={world} career={career} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} />;
+    if (activeTab === 'ROUTE') return <MobileRoute world={world} career={career} offers={availableExpeditionOffers(world, career)} onAcceptOffer={offerId => onPersist(acceptExpeditionOffer(world, career, offerId))} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} />;
     if (activeTab === 'TEAM') return <MobileTeam career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
     if (activeTab === 'EQUIPMENT') return <MobileEquipment career={career} onSetQuantity={(gearId, quantity) => onPersist(setGearQuantity(career, gearId, quantity))} onSetPlan={(patch: Partial<ExpeditionPlan>) => onPersist(updateExpeditionPlan(career, patch))} onPreset={preset => onPersist(applyEquipmentPreset(career, preset))} onContinue={() => onTab('EXPEDITION')} />;
     if (activeTab === 'EXPEDITION') return <MobileExpedition career={career} difficulty={world.config.difficulty} onOpenTab={onTab} onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))} onSetAcclimatization={days => onPersist(updateExpeditionPlan(career, { acclimatizationDays: days }))} onLaunch={() => { const readiness = expeditionReadiness(career); const next = startPlannedClimb(career); onPersist(next); if (next.activeClimb && readiness.blockers.length === 0) onTab('CLIMB'); }} />;
@@ -132,6 +134,8 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
         <RoutePlanningScreen
           world={world}
           career={career}
+          offers={availableExpeditionOffers(world, career)}
+          onAcceptOffer={offerId => onPersist(acceptExpeditionOffer(world, career, offerId))}
           onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))}
           onSelectRoute={routeId => onPersist(selectRoute(career, routeId))}
           onContinue={() => onTab('TEAM')}
