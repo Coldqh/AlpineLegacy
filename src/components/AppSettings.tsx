@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import packageInfo from '../../package.json';
+import { loadCareer, loadWorld } from '../core/storage';
+import { runBalanceSample } from '../core/playtest';
 
 type ThemeMode = 'system' | 'light' | 'dark';
 type DensityMode = 'compact' | 'comfortable';
@@ -14,6 +16,23 @@ type UpdateState = 'idle' | 'checking' | 'current' | 'available' | 'error' | 'up
 
 const SETTINGS_KEY = 'alpine-legacy:ui-settings:v1';
 const CURRENT_VERSION = packageInfo.version;
+
+function downloadJson(filename: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function diagnosticSnapshot() {
+  const world = loadWorld();
+  const career = world ? loadCareer(world) : null;
+  return { world, career };
+}
+
 const DEFAULT_SETTINGS: UiSettings = {
   theme: 'system',
   density: 'compact',
@@ -206,6 +225,17 @@ export function AppSettings() {
               </div>
               <p>Кнопка удаляет старые кэши приложения, отключает зависший service worker и заново открывает сайт с новым адресом. Сохранение карьеры останется.</p>
             </div>
+
+            <details className="settings-diagnostics">
+              <summary>Диагностика и экспорт</summary>
+              <p>Служебные файлы убраны из игрового архива. Они нужны только для проверки сейва и баланса.</p>
+              <div>
+                <button type="button" onClick={() => { const snapshot = diagnosticSnapshot(); if (snapshot.world) downloadJson('alpine-legacy-save.json', snapshot); }}>Экспортировать сейв</button>
+                <button type="button" onClick={() => { const snapshot = diagnosticSnapshot(); if (snapshot.career) downloadJson('alpine-legacy-replay.json', { seed: snapshot.world?.config.seed, activeClimb: snapshot.career.activeClimb, reports: snapshot.career.reports }); }}>Экспортировать replay</button>
+                <button type="button" onClick={() => { const snapshot = diagnosticSnapshot(); if (snapshot.world) void navigator.clipboard?.writeText(snapshot.world.config.seed); }}>Копировать seed</button>
+                <button type="button" onClick={() => { const snapshot = diagnosticSnapshot(); if (snapshot.world) downloadJson('alpine-legacy-balance-sample.json', runBalanceSample(snapshot.world.config.seed, 8, snapshot.world.config.difficulty)); }}>Balance sample</button>
+              </div>
+            </details>
           </section>
         </div>
       )}

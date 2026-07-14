@@ -1,4 +1,18 @@
 import { CareerShell } from '../components/CareerShell';
+import { useIsMobile, useScrollReset } from '../mobile/useMobile';
+import {
+  MobileEquipment,
+  MobileExpedition,
+  MobileJournal,
+  MobileNews,
+  MobileOverview,
+  MobilePeople,
+  MobileRecords,
+  MobileRivals,
+  MobileRoute,
+  MobileTeam,
+  MobileWorld,
+} from '../mobile/MobileCareerScreens';
 import { CareerFlowGuide } from '../components/CareerFlowGuide';
 import {
   applyEquipmentPreset,
@@ -80,9 +94,27 @@ function WorkspaceSubnav({ activeTab, onTab }: { activeTab: CareerTabId; onTab: 
 }
 
 export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersist, onTrain, onExit, onAtlas }: Props) {
+  const mobile = useIsMobile();
+  useScrollReset(activeTab);
   function persistResult(result: ClimbStepResult) {
     onPersist(result.career);
     return result;
+  }
+
+  function renderMobileTab() {
+    if (activeTab === 'OVERVIEW') return <MobileOverview world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} />;
+    if (activeTab === 'WORLD') return <MobileWorld world={world} career={career} />;
+    if (activeTab === 'NEWS') return <MobileNews career={career} />;
+    if (activeTab === 'RIVALS') return <MobileRivals career={career} />;
+    if (activeTab === 'RECORDS') return <MobileRecords career={career} />;
+    if (activeTab === 'JOURNAL') return <MobileJournal career={career} />;
+    if (activeTab === 'PEOPLE') return <MobilePeople career={career} />;
+    if (activeTab === 'ROUTE') return <MobileRoute world={world} career={career} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} />;
+    if (activeTab === 'TEAM') return <MobileTeam career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
+    if (activeTab === 'EQUIPMENT') return <MobileEquipment career={career} onSetQuantity={(gearId, quantity) => onPersist(setGearQuantity(career, gearId, quantity))} onSetPlan={(patch: Partial<ExpeditionPlan>) => onPersist(updateExpeditionPlan(career, patch))} onPreset={preset => onPersist(applyEquipmentPreset(career, preset))} onContinue={() => onTab('EXPEDITION')} />;
+    if (activeTab === 'EXPEDITION') return <MobileExpedition career={career} difficulty={world.config.difficulty} onOpenTab={onTab} onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))} onSetAcclimatization={days => onPersist(updateExpeditionPlan(career, { acclimatizationDays: days }))} onLaunch={() => { const readiness = expeditionReadiness(career); const next = startPlannedClimb(career); onPersist(next); if (next.activeClimb && readiness.blockers.length === 0) onTab('CLIMB'); }} />;
+    if (activeTab === 'CLIMB' && career.activeClimb) return <ClimbScreen career={career} difficulty={world.config.difficulty} onStep={(pace: ClimbPace) => persistResult(resolveClimbStep(career, pace))} onCamp={() => persistResult(establishCamp(career))} onMeltSnow={() => persistResult(meltSnow(career))} onWait={() => persistResult(waitWeather(career))} onOrder={(order: ClimbOrderId) => persistResult(issueClimbOrder(career, order))} onChooseDecision={optionId => persistResult(chooseRouteDecision(career, optionId))} onFixRope={() => persistResult(fixRope(career))} onLeaveCache={() => persistResult(leaveCache(career))} onBeginDescent={() => onPersist(beginDescent(career))} onRetreat={() => onPersist(retreatClimb(career))} onClose={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }} />;
+    return <MobileJournal career={career} />;
   }
 
   function renderTab() {
@@ -158,11 +190,23 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     return <JournalScreen career={career} world={world} />;
   }
 
+  const mobilePrep = ['TEAM', 'EQUIPMENT', 'EXPEDITION'].includes(activeTab);
+  const mobileWorld = ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'].includes(activeTab);
   return (
     <CareerShell world={world} career={career} activeTab={activeTab} onTab={onTab} onExit={onExit} onAtlas={onAtlas}>
-      <WorkspaceSubnav activeTab={activeTab} onTab={onTab} />
-      <CareerFlowGuide career={career} activeTab={activeTab} onTab={onTab} onDismiss={() => onPersist(dismissOnboarding(career))} />
-      {renderTab()}
+      {mobile ? (
+        <>
+          {mobilePrep && <nav className="m-subnav"><button className={activeTab === 'TEAM' ? 'is-active' : ''} onClick={() => onTab('TEAM')}>Люди</button><button className={activeTab === 'EQUIPMENT' ? 'is-active' : ''} onClick={() => onTab('EQUIPMENT')}>Груз</button><button className={activeTab === 'EXPEDITION' ? 'is-active' : ''} onClick={() => onTab('EXPEDITION')}>Выход</button></nav>}
+          {mobileWorld && <nav className="m-subnav m-subnav--world"><button className={activeTab === 'WORLD' ? 'is-active' : ''} onClick={() => onTab('WORLD')}>Обзор</button><button className={activeTab === 'NEWS' ? 'is-active' : ''} onClick={() => onTab('NEWS')}>Новости</button><button className={activeTab === 'RIVALS' ? 'is-active' : ''} onClick={() => onTab('RIVALS')}>Люди</button><button className={activeTab === 'RECORDS' ? 'is-active' : ''} onClick={() => onTab('RECORDS')}>Рекорды</button></nav>}
+          {renderMobileTab()}
+        </>
+      ) : (
+        <>
+          <WorkspaceSubnav activeTab={activeTab} onTab={onTab} />
+          <CareerFlowGuide career={career} activeTab={activeTab} onTab={onTab} onDismiss={() => onPersist(dismissOnboarding(career))} />
+          {renderTab()}
+        </>
+      )}
     </CareerShell>
   );
 }

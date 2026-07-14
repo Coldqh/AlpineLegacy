@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { MobileCareerShell } from '../mobile/MobileCareerShell';
+import { useIsMobile } from '../mobile/useMobile';
 import { formatSeasonDate } from '../core/career';
 import type { CareerState, CareerTabId, WorldState } from '../core/types';
 
@@ -35,6 +37,9 @@ function isPrimaryActive(tab: PrimaryTab, activeTab: CareerTabId) {
 }
 
 export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, children }: Props) {
+  const mobile = useIsMobile();
+  if (mobile) return <MobileCareerShell world={world} career={career} activeTab={activeTab} onTab={onTab} onExit={onExit} onAtlas={onAtlas}>{children}</MobileCareerShell>;
+
   const initials = career.hero.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
   const current = tabs.find(tab => isPrimaryActive(tab, activeTab)) ?? tabs[0]!;
 

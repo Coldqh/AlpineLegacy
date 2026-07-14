@@ -17,6 +17,9 @@ import type {
   WorldState,
 } from './core/types';
 import { CharacterCreationScreen } from './screens/CharacterCreationScreen';
+import { MobileCharacterCreation } from './mobile/MobileCharacterCreation';
+import { MobileGeneratingScreen, MobileMenu, MobileMountainScreen, MobileRegionScreen, MobileWorldSetup } from './mobile/MobilePublicScreens';
+import { useIsMobile, useScrollReset } from './mobile/useMobile';
 import { CareerWorkspaceScreen } from './screens/CareerWorkspaceScreen';
 
 const ERA_YEARS: Record<EraId, [number, number]> = {
@@ -43,6 +46,7 @@ function randomSeed() {
 }
 
 function App() {
+  const mobile = useIsMobile();
   const initial = useMemo(() => {
     const loadedWorld = loadWorld();
     return { world: loadedWorld, career: loadedWorld ? loadCareer(loadedWorld) : null };
@@ -59,6 +63,8 @@ function App() {
     startYear: 1968,
     difficulty: 'CLIMBER',
   });
+
+  useScrollReset(screen, careerTab, selectedMountain?.id);
 
   function updateEra(eraId: EraId) {
     const [min, max] = ERA_YEARS[eraId];
@@ -119,7 +125,9 @@ function App() {
   }
 
   if (screen === 'CHARACTER' && world) {
-    return <CharacterCreationScreen world={world} onBack={() => setScreen('REGION')} onCreate={createHero} />;
+    return mobile
+      ? <MobileCharacterCreation world={world} onBack={() => setScreen('REGION')} onCreate={createHero} />
+      : <CharacterCreationScreen world={world} onBack={() => setScreen('REGION')} onCreate={createHero} />;
   }
 
   if (screen === 'CAREER' && world && career) {
@@ -138,6 +146,7 @@ function App() {
   }
 
   if (screen === 'SETUP') {
+    if (mobile) return <MobileWorldSetup config={config} onConfig={setConfig} onRandomSeed={() => setConfig(current => ({ ...current, seed: randomSeed() }))} onCreate={createWorld} onBack={() => setScreen('MENU')} />;
     const [minYear, maxYear] = ERA_YEARS[config.eraId];
     return (
       <ScreenShell onBack={() => setScreen('MENU')} rightLabel="WORLD CREATION / 01">
@@ -146,7 +155,7 @@ function App() {
             <p className="eyebrow">NEW WORLD / NEW LIFE</p>
             <h1>Создай мир, который переживёт тебя.</h1>
             <p className="lead">Один seed определит географию, историю, вершины и людей. Смерть героя завершит карьеру, но не обязательно уничтожит мир.</p>
-            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.5.9</small></div>
+            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.5.10</small></div>
           </div>
 
           <div className="setup-form">
@@ -209,6 +218,7 @@ function App() {
   }
 
   if (screen === 'GENERATING') {
+    if (mobile) return <MobileGeneratingScreen seed={config.seed} />;
     return (
       <ScreenShell rightLabel="GENERATIVE ATLAS / RUNNING">
         <section className="generation-screen page-enter">
@@ -228,6 +238,7 @@ function App() {
   }
 
   if (screen === 'REGION' && world) {
+    if (mobile) return <MobileRegionScreen world={world} career={career} onBack={() => setScreen('MENU')} onCareer={startCharacterCreation} onMountain={openMountain} />;
     const { region } = world;
     return (
       <ScreenShell onBack={() => setScreen('MENU')} rightLabel={`${world.config.startYear} / ${world.config.seed}`} onPrint={() => window.print()}>
@@ -262,7 +273,7 @@ function App() {
 
           <div className="career-entry-banner">
             <div>
-              <p className="eyebrow">CAREER MODULE / 0.5.9</p>
+              <p className="eyebrow">CAREER MODULE / 0.5.10</p>
               <h2>{career ? career.hero.name : 'Горы уже существуют. Теперь войди в их историю.'}</h2>
               <p>{career
                 ? `${career.club.name}. ${career.completedClimbs} засчитанных восхождений. Высшая точка: ${career.highestElevation} м.`
@@ -290,6 +301,7 @@ function App() {
   }
 
   if (screen === 'MOUNTAIN' && selectedMountain) {
+    if (mobile) return <MobileMountainScreen mountain={selectedMountain} onBack={() => setScreen('REGION')} onCareer={startCharacterCreation} />;
     const mountain = selectedMountain;
     return (
       <ScreenShell onBack={() => setScreen('REGION')} rightLabel={`${mountain.name} / OBJECT`} onPrint={() => window.print()}>
@@ -372,8 +384,9 @@ function App() {
   }
 
   const archiveCount = career?.log.length ?? 0;
+  if (mobile) return <MobileMenu world={world} career={career} onNew={() => setScreen('SETUP')} onContinue={continueCareer} onAtlas={() => setScreen(world ? 'REGION' : 'SETUP')} onArchive={() => { if (career) { setCareerTab('JOURNAL'); setScreen('CAREER'); } else setScreen('ARCHIVE'); }} />;
   return (
-    <ScreenShell rightLabel="EDITION 0.5.9 / MOBILE REWORK">
+    <ScreenShell rightLabel="EDITION 0.5.10 / MOBILE APP">
       <section className="menu-page page-enter">
         <div className="menu-hero-copy">
           <p className="eyebrow">A MOUNTAINEERING CAREER ROGUELIKE</p>
