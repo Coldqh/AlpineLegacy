@@ -50,6 +50,9 @@ export type CareerEntryMode = 'ORGANIZATION' | 'INDEPENDENT';
 export type ExpeditionRank = 'NOVICE' | 'MEMBER' | 'SPECIALIST' | 'ROPE_LEAD' | 'DEPUTY' | 'LEADER' | 'ORGANIZER';
 export type ExpeditionAuthority = 'PARTICIPANT' | 'SPECIALIST' | 'COMMAND';
 export type ExpeditionPhaseNode = 'APPROACH' | 'BASE_CAMP' | 'ACCLIMATIZATION' | 'CARRY' | 'CAMP' | 'TECHNICAL' | 'HAZARD' | 'DECISION' | 'SUMMIT' | 'DESCENT' | 'EXIT';
+export type ExpeditionScale = 'SMALL' | 'MAJOR' | 'GIANT';
+export type TerrainModuleId = 'APPROACH_TRAIL' | 'MORAINE' | 'GLACIER' | 'CREVASSE_FIELD' | 'ICEFALL' | 'ROCK_WALL' | 'MIXED_FACE' | 'SNOW_SLOPE' | 'RIDGE' | 'ALTITUDE_PLATEAU' | 'CAMP_ZONE' | 'EXIT_TRAIL';
+export type ExpeditionPreparationTag = 'ROUTE_SCOUTED' | 'SURFACE_CHECKED' | 'ANCHOR_PLACED' | 'ROPE_FIXED' | 'TEAM_STABILIZED';
 export type ExpeditionDirection = 'ASCENT' | 'DESCENT';
 export type ExpeditionSimulationStatus = 'ACTIVE' | 'STRANDED' | 'SUMMIT' | 'SAFE' | 'DEAD' | 'EVACUATED';
 export type ExpeditionFieldActionId =
@@ -344,6 +347,7 @@ export interface RouteSegment {
   noReturn?: boolean;
   safeHaven?: boolean;
   descentNote?: string;
+  terrainModuleId?: TerrainModuleId;
 }
 
 export interface RouteDecisionOption {
@@ -392,6 +396,8 @@ export interface ExpeditionRoute {
   graph?: RouteGraph;
   expectedPlayMinutes?: number;
   estimatedDecisionCount?: number;
+  expeditionScale?: ExpeditionScale;
+  contentVersion?: number;
 }
 
 export interface PersonalityProfile {
@@ -616,6 +622,7 @@ export interface ParticipantEvaluation {
 
 export interface ExpeditionSimulationStage {
   id: string;
+  terrainModuleId: TerrainModuleId;
   sourceSegmentId: string | null;
   linkedAscentStageId: string | null;
   phase: ExpeditionPhaseNode;
@@ -636,6 +643,11 @@ export interface ExpeditionSimulationStage {
   ropeFixed: boolean;
   campPossible: boolean;
   critical: boolean;
+  preparationOptions: ExpeditionPreparationTag[][];
+  preparationTags: ExpeditionPreparationTag[];
+  recommendedActions: ExpeditionFieldActionId[];
+  repetitionKey: string;
+  incidentHistory: string[];
   completed: boolean;
 }
 
@@ -657,10 +669,27 @@ export interface ExpeditionActionRecord {
   detail: string;
   elapsedMinutes: number;
   relativeElevation: number;
+  energyAfter: number;
+  conditionAfter: number;
+  stageProgressAfter: number;
+  suppliesAfter: ClimbSupplies;
+}
+
+export interface ExpeditionFailureTrace {
+  id: string;
+  actionNumber: number;
+  stageId: string;
+  cause: string;
+  energy: number;
+  condition: number;
+  food: number;
+  water: number;
+  temperatureC: number;
+  windKmh: number;
 }
 
 export interface ExpeditionSimulationState {
-  version: 1;
+  version: 2;
   direction: ExpeditionDirection;
   status: ExpeditionSimulationStatus;
   ascentStages: ExpeditionSimulationStage[];
@@ -681,6 +710,8 @@ export interface ExpeditionSimulationState {
   loadDroppedKg: number;
   rescueEtaMinutes: number | null;
   actionLog: ExpeditionActionRecord[];
+  failureTrace: ExpeditionFailureTrace[];
+  lastCheckpointAction: number;
 }
 
 export interface ExpeditionActionPreview {
@@ -695,6 +726,41 @@ export interface ExpeditionActionPreview {
   disabled: boolean;
   disabledReason: string | null;
   skill: SkillId | null;
+}
+
+
+export interface TerrainModuleDefinition {
+  id: TerrainModuleId;
+  label: string;
+  terrainKeywords: string[];
+  primarySkill: SkillId;
+  baseDifficulty: number;
+  baseExposure: number;
+  progressMultiplier: number;
+  preparationOptions: ExpeditionPreparationTag[][];
+  recommendedActions: ExpeditionFieldActionId[];
+  campCompatible: boolean;
+  descentDifficultyModifier: number;
+  description: string;
+}
+
+export interface RouteContentReport {
+  routeId: RouteId;
+  scale: ExpeditionScale;
+  ascentStages: number;
+  descentStages: number;
+  estimatedActions: number;
+  expectedPlayMinutes: number;
+  moduleCounts: Record<string, number>;
+  warnings: string[];
+  errors: string[];
+}
+
+export interface ContentValidationReport {
+  valid: boolean;
+  routeReports: RouteContentReport[];
+  warnings: string[];
+  errors: string[];
 }
 
 export interface ParticipantExpeditionState {
@@ -1007,7 +1073,7 @@ export interface CareerMembership {
 }
 
 export interface CareerState {
-  schemaVersion: 13;
+  schemaVersion: 14;
   id: string;
   worldId: string;
   rootSeed: string;

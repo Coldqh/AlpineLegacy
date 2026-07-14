@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import packageInfo from '../../package.json';
-import { loadCareer, loadWorld } from '../core/storage';
+import { careerRecoveryStatus, loadCareer, loadWorld, restoreCareerBackup } from '../core/storage';
+import { createExpeditionReplay } from '../core/replay';
+import { validateWorldContent } from '../core/contentPipeline';
 import { runBalanceSample } from '../core/playtest';
 
 type ThemeMode = 'system' | 'light' | 'dark';
@@ -113,6 +115,7 @@ export function AppSettings() {
   const [settings, setSettings] = useState<UiSettings>(() => loadSettings());
   const [updateState, setUpdateState] = useState<UpdateState>('idle');
   const [remoteVersion, setRemoteVersion] = useState<string | null>(null);
+  const [recovery, setRecovery] = useState(() => careerRecoveryStatus());
 
   useEffect(() => {
     applySettings(settings);
@@ -243,10 +246,13 @@ export function AppSettings() {
               <p>Служебные файлы убраны из игрового архива. Они нужны только для проверки сейва и баланса.</p>
               <div>
                 <button type="button" onClick={() => { const snapshot = diagnosticSnapshot(); if (snapshot.world) downloadJson('alpine-legacy-save.json', snapshot); }}>Экспортировать сейв</button>
-                <button type="button" onClick={() => { const snapshot = diagnosticSnapshot(); if (snapshot.career) downloadJson('alpine-legacy-replay.json', { seed: snapshot.world?.config.seed, activeClimb: snapshot.career.activeClimb, reports: snapshot.career.reports }); }}>Экспортировать replay</button>
+                <button type="button" onClick={() => { const snapshot = diagnosticSnapshot(); if (snapshot.career) downloadJson('alpine-legacy-replay.json', createExpeditionReplay(snapshot.career)); }}>Экспортировать replay</button>
                 <button type="button" onClick={() => { const snapshot = diagnosticSnapshot(); if (snapshot.world) void navigator.clipboard?.writeText(snapshot.world.config.seed); }}>Копировать seed</button>
                 <button type="button" onClick={() => { const snapshot = diagnosticSnapshot(); if (snapshot.world) downloadJson('alpine-legacy-balance-sample.json', runBalanceSample(snapshot.world.config.seed, 8, snapshot.world.config.difficulty)); }}>Balance sample</button>
+                <button type="button" onClick={() => { const snapshot = diagnosticSnapshot(); if (snapshot.world) downloadJson('alpine-legacy-content-audit.json', validateWorldContent(snapshot.world)); }}>Аудит контента</button>
+                <button type="button" disabled={!recovery.backupAvailable} onClick={() => { const world = loadWorld(); if (!world) return; const restored = restoreCareerBackup(world); setRecovery(careerRecoveryStatus()); if (restored) window.location.reload(); }}>Вернуть прошлый ход</button>
               </div>
+              <p>Автосейв: {recovery.primaryValid ? 'основной сейв цел' : 'основной сейв повреждён'} · {recovery.backupAvailable ? 'есть предыдущий ход' : 'резервной копии пока нет'}.</p>
             </details>
           </section>
         </div>

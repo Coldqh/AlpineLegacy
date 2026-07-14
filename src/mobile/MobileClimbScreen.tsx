@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { RouteBlueprint } from '../components/RouteBlueprint';
 import { currentExpeditionStage, getCurrentRouteDecision, previewClimbAction, previewExpeditionActions, SKILL_LABELS } from '../core/career';
 import { getCurrentParticipantScene, nodeProgress, participantLeader } from '../core/expeditionEngine';
+import { isStagePrepared, missingStagePreparation } from '../core/simulationEngine';
+import { terrainModuleById } from '../content/terrainModules';
 import type { CareerState, ClimbOrderId, ClimbPace, ClimbStepResult, DifficultyId, ExpeditionFieldActionId } from '../core/types';
 
 type Props = {
@@ -33,6 +35,15 @@ function paceTitle(pace: ClimbPace) {
   if (pace === 'FAST') return 'Быстро';
   return 'Ровно';
 }
+
+
+const preparationLabel = {
+  ROUTE_SCOUTED: 'разведать линию',
+  SURFACE_CHECKED: 'проверить поверхность',
+  ANCHOR_PLACED: 'поставить точку',
+  ROPE_FIXED: 'закрепить верёвку',
+  TEAM_STABILIZED: 'стабилизировать группу',
+} as const;
 
 function conditionLabel(value: number) {
   if (value >= 75) return 'рабочая';
@@ -91,6 +102,10 @@ export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSn
     const stagePercent = Math.min(100, Math.round(simulationStage.progress / Math.max(1, simulationStage.requiredProgress) * 100));
     const routeStages = simulation.direction === 'ASCENT' ? simulation.ascentStages : simulation.descentStages;
     const routePercent = Math.min(100, Math.round((simulation.stageIndex + stagePercent / 100) / Math.max(1, routeStages.length) * 100));
+    const terrainModule = terrainModuleById(simulationStage.terrainModuleId);
+    const prepared = isStagePrepared(simulationStage);
+    const missingPreparation = missingStagePreparation(simulationStage);
+    const lastFailure = simulation.failureTrace.at(-1);
     const chanceLabel = (chance: number | null, risk: string) => difficulty === 'EXPLORER' && chance !== null ? `${chance}%` : difficulty === 'EXPEDITION' ? 'скрыто' : risk.toLowerCase();
     const actionButton = (action: typeof fieldActions[number]) => <button key={action.id} disabled={action.disabled} className={`m-sim-action ${action.id.startsWith('MOVE_') ? 'is-move' : ''}`} onClick={() => resolve(() => onFieldAction(action.id))}><header><strong>{action.title}</strong><b>{action.successChance !== null ? chanceLabel(action.successChance, action.riskLabel) : 'действие'}</b></header><p>{action.detail}</p><footer><span>{action.durationMinutes} мин</span><span>{action.energyDelta > 0 ? `силы +${action.energyDelta}` : action.energyDelta < 0 ? `силы ${action.energyDelta}` : 'без расхода сил'}</span>{action.progressDelta > 0 && <span>этап +{action.progressDelta}</span>}</footer>{action.disabledReason && <small>{action.disabledReason}</small>}</button>;
     if (simulation.status === 'SUMMIT') {
@@ -102,7 +117,9 @@ export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSn
       <div className="m-climb-vitals"><div><span>Силы</span><strong>{Math.round(climb.energy)}%</strong></div><div><span>Состояние</span><strong>{Math.round(climb.condition)}%</strong></div><div><span>Группа</span><strong>{conditionLabel(climb.teamCondition)}</strong></div><div><span>Запасы</span><strong>{climb.supplies.foodUnits}/{climb.supplies.waterUnits}</strong></div></div>
       {simulation.status === 'STRANDED' && <section className="m-survival-alert"><strong>Движение невозможно</strong><p>Ты всё ещё на горе. Восстанови силы, поставь лагерь, сбрось груз или запроси помощь. Бездействие ухудшает состояние.</p>{simulation.rescueEtaMinutes !== null && <span>Помощь: примерно {Math.ceil(simulation.rescueEtaMinutes / 60)} ч</span>}</section>}
       {simulation.leaderOrder && !simulation.leaderOrder.resolved && <section className="m-live-order"><small>ПРИКАЗ · {leader?.name ?? 'руководитель'}</small><strong>«{simulation.leaderOrder.text}»</strong><span>Ожидаемое действие: {fieldActions.find(action => action.id === simulation.leaderOrder?.preferredAction)?.title ?? simulation.leaderOrder.preferredAction}</span></section>}
-      <section className={`m-sim-stage ${simulationStage.critical ? 'is-critical' : ''}`}><header><div><small>{simulationStage.critical ? 'КЛЮЧЕВОЙ УЧАСТОК' : 'ТЕКУЩИЙ УЧАСТОК'}</small><h2>{simulationStage.hazard}</h2></div><b>{stagePercent}%</b></header><div className="m-stage-progress"><i style={{ width: `${stagePercent}%` }} /></div><dl><div><dt>Навык</dt><dd>{SKILL_LABELS[simulationStage.skill]} {career.hero.skills[simulationStage.skill]}</dd></div><div><dt>Сложность</dt><dd>{Math.round(simulationStage.difficulty)}</dd></div><div><dt>Подготовка</dt><dd>{Math.round(simulationStage.preparation)}</dd></div><div><dt>Верёвка</dt><dd>{climb.ropeMetersRemaining} м</dd></div></dl></section>
+      <section className={`m-sim-stage ${simulationStage.critical ? 'is-critical' : ''}`}><header><div><small>{simulationStage.critical ? 'КЛЮЧЕВОЙ УЧАСТОК' : 'ТЕКУЩИЙ УЧАСТОК'} · {terrainModule.label}</small><h2>{simulationStage.hazard}</h2></div><b>{stagePercent}%</b></header><div className="m-stage-progress"><i style={{ width: `${stagePercent}%` }} /></div><dl><div><dt>Навык</dt><dd>{SKILL_LABELS[simulationStage.skill]} {career.hero.skills[simulationStage.skill]}</dd></div><div><dt>Сложность</dt><dd>{Math.round(simulationStage.difficulty)}</dd></div><div><dt>Подготовка</dt><dd>{prepared ? 'готово' : Math.round(simulationStage.preparation)}</dd></div><div><dt>Верёвка</dt><dd>{climb.ropeMetersRemaining} м</dd></div></dl></section>
+      {simulationStage.critical && <section className={`m-preparation-state ${prepared ? 'is-ready' : 'is-missing'}`}><strong>{prepared ? 'Участок подготовлен' : 'Перед движением нужна работа'}</strong><span>{prepared ? terrainModule.description : missingPreparation.map(tag => preparationLabel[tag]).join(' · ')}</span></section>}
+      {lastFailure && lastFailure.actionNumber >= simulation.totalActions - 3 && <section className="m-failure-trace"><small>ПОСЛЕДНЯЯ ОШИБКА</small><strong>{lastFailure.cause}</strong><span>Силы {Math.round(lastFailure.energy)} · состояние {Math.round(lastFailure.condition)} · ветер {lastFailure.windKmh}</span></section>}
       {feedback && <div className={`m-alert-card is-${feedback.severity.toLowerCase()}`}><strong>{feedback.headline}</strong><span>{feedback.detail}</span></div>}
       {participantScene ? <section className="m-sim-event"><header><small>{participantScene.kind === 'ORDER' ? 'ВНЕЗАПНЫЙ ПРИКАЗ' : 'СОБЫТИЕ НА МАРШРУТЕ'}</small><strong>{participantScene.title}</strong></header>{participantScene.orderText && <blockquote>«{participantScene.orderText}»</blockquote>}<p>{participantScene.situation}</p><div>{participantScene.options.map(option => <button key={option.id} onClick={() => resolve(() => onParticipantAction(option.id))}><strong>{option.title}</strong><span>{option.detail}</span>{option.skill && <small>{SKILL_LABELS[option.skill]}</small>}</button>)}</div></section> : <>
         <div className="m-section-head"><h2>Движение</h2><span>проверка навыка</span></div><div className="m-sim-action-grid m-sim-action-grid--move">{movement.map(actionButton)}</div>

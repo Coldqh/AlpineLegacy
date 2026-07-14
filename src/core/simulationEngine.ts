@@ -1,3 +1,5 @@
+import { detectTerrainModule, terrainModuleById } from '../content/terrainModules';
+import { targetStageBudget } from './contentPipeline';
 import { createParticipantEvent, resolveParticipantSkill } from './expeditionEngine';
 import { createRng } from './rng';
 import type {
@@ -6,6 +8,7 @@ import type {
   ExpeditionActionPreview,
   ExpeditionFieldActionId,
   ExpeditionLeaderOrder,
+  ExpeditionPreparationTag,
   ExpeditionRoute,
   ExpeditionSimulationStage,
   ExpeditionSimulationState,
@@ -47,6 +50,33 @@ function actionSkill(actionId: ExpeditionFieldActionId, stage: ExpeditionSimulat
   return null;
 }
 
+
+function uniqueTags(tags: ExpeditionPreparationTag[]) {
+  return [...new Set(tags)];
+}
+
+export function isStagePrepared(stage: ExpeditionSimulationStage) {
+  return stage.preparationOptions.some(option => option.every(tag => stage.preparationTags.includes(tag)));
+}
+
+export function missingStagePreparation(stage: ExpeditionSimulationStage) {
+  const tagCost: Record<ExpeditionPreparationTag, number> = {
+    ROUTE_SCOUTED: 1,
+    SURFACE_CHECKED: 1,
+    TEAM_STABILIZED: 1,
+    ANCHOR_PLACED: 2,
+    ROPE_FIXED: 6,
+  };
+  const options = stage.preparationOptions
+    .map(option => option.filter(tag => !stage.preparationTags.includes(tag)))
+    .sort((a, b) => a.reduce((sum, tag) => sum + tagCost[tag], 0) - b.reduce((sum, tag) => sum + tagCost[tag], 0));
+  return options[0] ?? [];
+}
+
+function addPreparationTag(stage: ExpeditionSimulationStage, tag: ExpeditionPreparationTag) {
+  return { ...stage, preparationTags: uniqueTags([...stage.preparationTags, tag]) };
+}
+
 function phaseForSegment(segment: RouteSegment) {
   if (segment.campPossible) return 'CAMP' as const;
   if (segment.exposure >= 58) return 'HAZARD' as const;
@@ -70,30 +100,30 @@ function distributeCounts(segments: RouteSegment[], target: number) {
 }
 
 function buildAscentStages(route: ExpeditionRoute): ExpeditionSimulationStage[] {
-  const gain = Math.max(1, route.summitElevation - route.startElevation);
-  const target = Math.round(clamp(gain / 55 + route.estimatedHours / 2 + route.technicality / 14, 16, 46));
-  const counts = distributeCounts(route.segments, target);
+  const budget = targetStageBudget(route);
+  const approachCount = budget.scale === 'GIANT' ? 4 : budget.scale === 'MAJOR' ? 3 : 2;
+  const counts = distributeCounts(route.segments, Math.max(route.segments.length * 2, budget.ascent - approachCount));
   const stages: ExpeditionSimulationStage[] = [];
   let relative = 0;
 
-  // Approach begins at relative height zero and gives the expedition a physical start.
-  const approachCount = Math.max(2, Math.min(5, Math.round(route.estimatedHours / 6)));
   for (let index = 0; index < approachCount; index += 1) {
+    const module = terrainModuleById('APPROACH_TRAIL');
     stages.push({
       id: `${route.id}:approach:${index + 1}`,
+      terrainModuleId: module.id,
       sourceSegmentId: null,
       linkedAscentStageId: null,
       phase: 'APPROACH',
-      label: index === 0 ? 'Выход с точки старта' : 'Подход под маршрут',
-      terrain: 'Тропа и морена',
+      label: index === 0 ? 'Выход с точки старта' : index === approachCount - 1 ? 'Подход под маршрут' : 'Марш к базовому лагерю',
+      terrain: module.label,
       hazard: index === approachCount - 1 ? 'Растянутая колонна и тяжёлый груз' : 'Неверный темп в начале пути',
-      skill: 'ENDURANCE',
-      difficulty: clamp(22 + route.estimatedHours * 1.2),
-      exposure: 10,
+      skill: module.primarySkill,
+      difficulty: clamp(module.baseDifficulty + route.estimatedHours * .7),
+      exposure: module.baseExposure,
       relativeStart: 0,
       relativeEnd: 0,
       progress: 0,
-      requiredProgress: 90,
+      requiredProgress: 65,
       preparation: 0,
       routeKnowledge: 0,
       surfaceKnowledge: 0,
@@ -101,6 +131,11 @@ function buildAscentStages(route: ExpeditionRoute): ExpeditionSimulationStage[] 
       ropeFixed: false,
       campPossible: index === approachCount - 1,
       critical: false,
+      preparationOptions: module.preparationOptions,
+      preparationTags: [],
+      recommendedActions: module.recommendedActions,
+      repetitionKey: `${module.id}:${index}`,
+      incidentHistory: [],
       completed: false,
     });
   }
@@ -108,33 +143,47 @@ function buildAscentStages(route: ExpeditionRoute): ExpeditionSimulationStage[] 
   route.segments.forEach((segment, segmentIndex) => {
     const count = counts[segmentIndex]!;
     const segmentStart = relative;
+    const module = segment.terrainModuleId ? terrainModuleById(segment.terrainModuleId) : detectTerrainModule(segment.terrain);
     for (let index = 0; index < count; index += 1) {
       const start = segmentStart + Math.round(segment.elevationGain * index / count);
       const end = segmentStart + Math.round(segment.elevationGain * (index + 1) / count);
       const finalPart = index === count - 1;
-      const critical = finalPart && (segment.difficulty >= 55 || segment.exposure >= 48 || Boolean(segment.decisionId));
+      const moduleCheckpoint = module.id === 'ICEFALL'
+        ? (index + 1) % 3 === 0
+        : module.id === 'MIXED_FACE'
+          ? (index + 1) % 2 === 0
+          : false;
+      const critical = finalPart && (segment.difficulty >= 52 || segment.exposure >= 45 || Boolean(segment.decisionId))
+        || moduleCheckpoint;
+      const requiredProgress = Math.round((critical ? 108 : segment.difficulty >= 55 ? 88 : 72) / module.progressMultiplier);
       stages.push({
         id: `${route.id}:ascent:${segment.id}:${index + 1}`,
+        terrainModuleId: module.id,
         sourceSegmentId: segment.id,
         linkedAscentStageId: null,
         phase: segment.decisionId && finalPart ? 'DECISION' : phaseForSegment(segment),
         label: count > 2 ? `${segment.name} · ${index + 1}/${count}` : segment.name,
         terrain: segment.terrain,
         hazard: segment.hazard,
-        skill: segment.skill,
-        difficulty: clamp(segment.difficulty + (critical ? 7 : index * 1.2)),
-        exposure: clamp(segment.exposure + (critical ? 8 : 0)),
+        skill: segment.skill ?? module.primarySkill,
+        difficulty: clamp(Math.max(module.baseDifficulty, segment.difficulty) + (critical ? 7 : index * .7)),
+        exposure: clamp(Math.max(module.baseExposure, segment.exposure) + (critical ? 7 : 0)),
         relativeStart: start,
         relativeEnd: end,
         progress: 0,
-        requiredProgress: critical ? 160 : segment.difficulty >= 55 ? 125 : 100,
+        requiredProgress,
         preparation: 0,
         routeKnowledge: 0,
         surfaceKnowledge: 0,
         anchorsPlaced: 0,
         ropeFixed: false,
-        campPossible: finalPart && segment.campPossible,
+        campPossible: finalPart && (segment.campPossible || module.campCompatible),
         critical,
+        preparationOptions: module.preparationOptions,
+        preparationTags: [],
+        recommendedActions: module.recommendedActions,
+        repetitionKey: `${module.id}:${segment.id}`,
+        incidentHistory: [],
         completed: false,
       });
     }
@@ -145,8 +194,8 @@ function buildAscentStages(route: ExpeditionRoute): ExpeditionSimulationStage[] 
 
 function buildFullDescentStages(route: ExpeditionRoute, ascent: ExpeditionSimulationStage[]): ExpeditionSimulationStage[] {
   const source = route.descentSegments?.length ? route.descentSegments : [...route.segments].reverse();
-  const target = Math.max(12, Math.round(ascent.filter(stage => stage.sourceSegmentId).length * .78 + route.objectiveRisk / 18));
-  const counts = distributeCounts(source, target);
+  const budget = targetStageBudget(route);
+  const counts = distributeCounts(source, Math.max(source.length * 2, budget.descent - 1));
   const bySegment = new Map<string, ExpeditionSimulationStage[]>();
   ascent.forEach(stage => {
     if (!stage.sourceSegmentId) return;
@@ -156,50 +205,70 @@ function buildFullDescentStages(route: ExpeditionRoute, ascent: ExpeditionSimula
   });
   const stages: ExpeditionSimulationStage[] = [];
   let relative = route.summitElevation - route.startElevation;
+
   source.forEach((segment, segmentIndex) => {
     const count = counts[segmentIndex]!;
     const sourceId = segment.linkedAscentSegmentId ?? segment.id.replace(/-descent$/, '');
     const ascentParts = bySegment.get(sourceId) ?? [];
     const segmentDrop = Math.min(relative, segment.elevationGain);
     const segmentStart = relative;
+    const module = segment.terrainModuleId ? terrainModuleById(segment.terrainModuleId) : detectTerrainModule(segment.terrain, 'DESCENT');
     for (let index = 0; index < count; index += 1) {
       const start = segmentStart - Math.round(segmentDrop * index / count);
       const end = segmentStart - Math.round(segmentDrop * (index + 1) / count);
       const linked = ascentParts[Math.max(0, ascentParts.length - 1 - Math.floor(index * ascentParts.length / count))] ?? null;
-      const critical = index === 0 && (segment.exposure >= 50 || segment.difficulty >= 58);
+      const moduleCheckpoint = module.id === 'ICEFALL'
+        ? (index + 1) % 3 === 0
+        : module.id === 'MIXED_FACE'
+          ? (index + 1) % 2 === 0
+          : false;
+      const critical = index === 0 && (segment.exposure >= 45 || segment.difficulty >= 52)
+        || moduleCheckpoint;
+      const inheritedTags = linked ? [...linked.preparationTags] : [];
+      if (linked?.ropeFixed && !inheritedTags.includes('ROPE_FIXED')) inheritedTags.push('ROPE_FIXED');
+      if ((linked?.anchorsPlaced ?? 0) > 0 && !inheritedTags.includes('ANCHOR_PLACED')) inheritedTags.push('ANCHOR_PLACED');
       stages.push({
         id: `${route.id}:descent:${segment.id}:${index + 1}`,
+        terrainModuleId: module.id,
         sourceSegmentId: segment.id,
         linkedAscentStageId: linked?.id ?? null,
         phase: 'DESCENT',
         label: count > 2 ? `${segment.name} · ${index + 1}/${count}` : segment.name,
         terrain: segment.terrain,
         hazard: `${segment.hazard}; накопленная усталость`,
-        skill: segment.skill,
-        difficulty: clamp(segment.difficulty + 6 + (critical ? 6 : 0)),
-        exposure: clamp(segment.exposure + 6 + (critical ? 8 : 0)),
+        skill: segment.skill ?? module.primarySkill,
+        difficulty: clamp(Math.max(module.baseDifficulty, segment.difficulty) + module.descentDifficultyModifier + (critical ? 5 : 0)),
+        exposure: clamp(Math.max(module.baseExposure, segment.exposure) + 5 + (critical ? 6 : 0)),
         relativeStart: start,
         relativeEnd: end,
         progress: 0,
-        requiredProgress: critical ? 145 : segment.difficulty >= 55 ? 120 : 95,
+        requiredProgress: Math.round((critical ? 102 : segment.difficulty >= 55 ? 84 : 68) / module.progressMultiplier),
         preparation: linked?.ropeFixed ? 25 : 0,
-        routeKnowledge: 10,
-        surfaceKnowledge: 0,
+        routeKnowledge: linked?.routeKnowledge ?? 10,
+        surfaceKnowledge: linked?.surfaceKnowledge ?? 0,
         anchorsPlaced: linked?.anchorsPlaced ?? 0,
         ropeFixed: Boolean(linked?.ropeFixed),
-        campPossible: segment.campPossible,
+        campPossible: segment.campPossible || module.campCompatible,
         critical,
+        preparationOptions: module.preparationOptions,
+        preparationTags: uniqueTags(inheritedTags),
+        recommendedActions: module.recommendedActions,
+        repetitionKey: `${module.id}:${segment.id}:descent`,
+        incidentHistory: [],
         completed: false,
       });
     }
     relative -= segmentDrop;
   });
-  if (relative > 0) {
-    stages.push({
-      id: `${route.id}:descent:exit`, sourceSegmentId: null, linkedAscentStageId: null, phase: 'EXIT', label: 'Выход к точке старта', terrain: 'Морена и тропа', hazard: 'Усталость на простом рельефе', skill: 'ENDURANCE', difficulty: 28, exposure: 8,
-      relativeStart: relative, relativeEnd: 0, progress: 0, requiredProgress: 90, preparation: 0, routeKnowledge: 20, surfaceKnowledge: 0, anchorsPlaced: 0, ropeFixed: false, campPossible: true, critical: false, completed: false,
-    });
-  }
+
+  const exitModule = terrainModuleById('EXIT_TRAIL');
+  stages.push({
+    id: `${route.id}:descent:exit`, sourceSegmentId: null, linkedAscentStageId: null, phase: 'EXIT', label: 'Выход к точке старта', terrainModuleId: exitModule.id,
+    terrain: exitModule.label, hazard: 'Усталость на простом рельефе', skill: exitModule.primarySkill, difficulty: 28, exposure: 8,
+    relativeStart: Math.max(0, relative), relativeEnd: 0, progress: 0, requiredProgress: 65, preparation: 0, routeKnowledge: 20, surfaceKnowledge: 0,
+    anchorsPlaced: 0, ropeFixed: false, campPossible: true, critical: false, preparationOptions: exitModule.preparationOptions, preparationTags: [],
+    recommendedActions: exitModule.recommendedActions, repetitionKey: `${exitModule.id}:exit`, incidentHistory: [], completed: false,
+  });
   return stages;
 }
 
@@ -207,7 +276,7 @@ export function createExpeditionSimulation(route: ExpeditionRoute): ExpeditionSi
   const ascentStages = buildAscentStages(route);
   const descentStages = buildFullDescentStages(route, ascentStages);
   return {
-    version: 1,
+    version: 2,
     direction: 'ASCENT',
     status: 'ACTIVE',
     ascentStages,
@@ -219,7 +288,7 @@ export function createExpeditionSimulation(route: ExpeditionRoute): ExpeditionSi
     totalActions: 0,
     totalMovementActions: 0,
     eventSerial: 0,
-    actionsUntilEvent: 4,
+    actionsUntilEvent: 6,
     activeEvent: null,
     leaderOrder: null,
     survivalTurns: 0,
@@ -228,17 +297,54 @@ export function createExpeditionSimulation(route: ExpeditionRoute): ExpeditionSi
     loadDroppedKg: 0,
     rescueEtaMinutes: null,
     actionLog: [],
+    failureTrace: [],
+    lastCheckpointAction: 0,
   };
 }
 
 export function hydrateExpeditionSimulation(climb: QualificationClimb, route: ExpeditionRoute): ExpeditionSimulationState {
-  if (climb.simulation?.version === 1) return climb.simulation;
-  const simulation = createExpeditionSimulation(route);
-  const relative = clamp(climb.currentElevation - climb.startElevation, 0, simulation.maxRelativeElevation);
-  const stages = simulation.ascentStages;
-  let stageIndex = stages.findIndex(stage => relative <= Math.max(stage.relativeStart, stage.relativeEnd));
+  if (climb.simulation?.version === 2) return climb.simulation;
+  const fresh = createExpeditionSimulation(route);
+  const legacy = climb.simulation as any;
+  const direction = legacy?.direction === 'DESCENT' || climb.phase === 'DESCENT' ? 'DESCENT' as const : 'ASCENT' as const;
+  const relative = clamp(climb.currentElevation - climb.startElevation, 0, fresh.maxRelativeElevation);
+  const stages = direction === 'ASCENT' ? fresh.ascentStages : fresh.descentStages;
+  let stageIndex = stages.findIndex(stage => direction === 'ASCENT'
+    ? relative <= Math.max(stage.relativeStart, stage.relativeEnd)
+    : relative >= Math.min(stage.relativeStart, stage.relativeEnd));
   if (stageIndex < 0) stageIndex = Math.max(0, stages.length - 1);
-  return { ...simulation, relativeElevation: relative, highestRelativeElevation: relative, stageIndex };
+  const actionLog = Array.isArray(legacy?.actionLog) ? legacy.actionLog.map((record: any, index: number) => ({
+    id: record.id ?? `${climb.id}:legacy-action:${index}`,
+    actionId: record.actionId ?? 'MOVE_STEADY',
+    stageId: record.stageId ?? stages[stageIndex]?.id ?? 'legacy',
+    success: record.success !== false,
+    detail: record.detail ?? 'Восстановлено из старого сейва.',
+    elapsedMinutes: record.elapsedMinutes ?? climb.elapsedMinutes,
+    relativeElevation: record.relativeElevation ?? relative,
+    energyAfter: record.energyAfter ?? climb.energy,
+    conditionAfter: record.conditionAfter ?? climb.condition,
+    stageProgressAfter: record.stageProgressAfter ?? 0,
+    suppliesAfter: record.suppliesAfter ?? { ...climb.supplies },
+  })) : [];
+  return {
+    ...fresh,
+    direction,
+    status: legacy?.status ?? (climb.phase === 'SUMMIT' ? 'SUMMIT' : 'ACTIVE'),
+    relativeElevation: relative,
+    highestRelativeElevation: Math.max(relative, legacy?.highestRelativeElevation ?? relative),
+    stageIndex,
+    totalActions: legacy?.totalActions ?? actionLog.length,
+    totalMovementActions: legacy?.totalMovementActions ?? climb.moveCount,
+    eventSerial: legacy?.eventSerial ?? 0,
+    actionsUntilEvent: legacy?.actionsUntilEvent ?? 4,
+    forcedRetreat: legacy?.forcedRetreat ?? climb.retreating,
+    returnReason: legacy?.returnReason ?? null,
+    loadDroppedKg: legacy?.loadDroppedKg ?? 0,
+    rescueEtaMinutes: legacy?.rescueEtaMinutes ?? null,
+    actionLog,
+    failureTrace: legacy?.failureTrace ?? [],
+    lastCheckpointAction: legacy?.lastCheckpointAction ?? actionLog.length,
+  };
 }
 
 export function currentExpeditionStage(career: CareerState) {
@@ -280,9 +386,12 @@ function chanceFor(career: CareerState, actionId: ExpeditionFieldActionId, stage
   const paceModifier = actionId === 'MOVE_CAUTIOUS' ? 18 : actionId === 'MOVE_FAST' ? -14 : 0;
   const weatherPenalty = Math.max(0, climb.windKmh - 45) * .18 + Math.max(0, 45 - climb.visibility) * .15 + Math.max(0, -20 - climb.temperatureC) * .25;
   const fatiguePenalty = Math.max(0, climb.hoursAwake - 14) * .9 + Math.max(0, 25 - climb.energy) * .25;
-  const preparation = stage.preparation * .3 + stage.routeKnowledge * .2 + stage.surfaceKnowledge * .22 + stage.anchorsPlaced * 7 + (stage.ropeFixed ? 12 : 0);
+  const prepared = isStagePrepared(stage);
+  const missing = missingStagePreparation(stage).length;
+  const preparation = stage.preparation * .3 + stage.routeKnowledge * .2 + stage.surfaceKnowledge * .22 + stage.anchorsPlaced * 7 + (stage.ropeFixed ? 12 : 0) + (prepared ? 12 : 0);
+  const tacticalPenalty = actionId.startsWith('MOVE_') && stage.critical && !prepared ? 18 + missing * 5 : 0;
   const loadPenalty = Math.max(0, climb.packWeightKg - 13) * 1.1;
-  const raw = 52 + skill * 7 + career.hero.form * .15 + preparation + paceModifier - stage.difficulty * .52 - stage.exposure * .16 - weatherPenalty - fatiguePenalty - loadPenalty;
+  const raw = 52 + skill * 7 + career.hero.form * .15 + preparation + paceModifier - stage.difficulty * .52 - stage.exposure * .16 - weatherPenalty - fatiguePenalty - loadPenalty - tacticalPenalty;
   return Math.round(clamp(raw, 4, 96));
 }
 
@@ -312,8 +421,8 @@ function preview(career: CareerState, actionId: ExpeditionFieldActionId): Expedi
                         : actionId === 'REQUEST_AID' ? 15
                           : actionId === 'CHALLENGE_ORDER' ? 20
                             : 10;
-  const progress = move ? Math.round((actionId === 'MOVE_CAUTIOUS' ? 44 : actionId === 'MOVE_FAST' ? 78 : 60) + career.hero.skills[stage.skill] * 2.2) : 0;
-  const energyDelta = move ? -Math.round((4 + stage.difficulty * .055 + stage.exposure * .035 + Math.max(0, climb.packWeightKg - 13) * .32) * (actionId === 'MOVE_CAUTIOUS' ? .86 : actionId === 'MOVE_FAST' ? 1.26 : 1))
+  const progress = move ? Math.round((actionId === 'MOVE_CAUTIOUS' ? 55 : actionId === 'MOVE_FAST' ? 94 : 74) + career.hero.skills[stage.skill] * 2.5) : 0;
+  const energyDelta = move ? -Math.round((3 + stage.difficulty * .042 + stage.exposure * .027 + Math.max(0, climb.packWeightKg - 13) * .24) * (actionId === 'MOVE_CAUTIOUS' ? .82 : actionId === 'MOVE_FAST' ? 1.22 : 1))
     : actionId === 'SCOUT_LINE' ? -2
       : actionId === 'PLACE_ANCHOR' || actionId === 'FIX_ROPE' ? -3
         : actionId === 'CHECK_SURFACE' ? -2
@@ -340,8 +449,10 @@ function preview(career: CareerState, actionId: ExpeditionFieldActionId): Expedi
   const successChance = skill ? chanceFor(career, actionId, stage) : null;
   const risk = successChance === null ? 0 : 100 - successChance + (move ? stage.exposure * .18 : 0);
   const riskLabel = risk < 18 ? 'НИЗКИЙ' : risk < 34 ? 'СРЕДНИЙ' : risk < 56 ? 'ВЫСОКИЙ' : 'КРИТИЧЕСКИЙ';
+  const missingPreparation = missingStagePreparation(stage);
+  const prepText = missingPreparation.length ? ` Не подготовлено: ${missingPreparation.join(', ')}.` : ' Участок подготовлен.';
   const detail = move
-    ? `${progress} прогресса участка. Темп меняет время, расход сил и шанс ошибки.`
+    ? `${progress} прогресса участка. Темп меняет время, расход сил и шанс ошибки.${stage.critical ? prepText : ''}`
     : actionId === 'SCOUT_LINE' ? 'Открывает линию и повышает шанс следующего движения.'
       : actionId === 'PLACE_ANCHOR' ? 'Тратит 5 м верёвки, повышает защиту текущего участка.'
         : actionId === 'FIX_ROPE' ? 'Тратит 20 м верёвки, сильно упрощает работу и обратный путь.'
@@ -377,10 +488,14 @@ function consume(climb: QualificationClimb, minutes: number) {
 function evolveWeather(career: CareerState, climb: QualificationClimb, minutes: number) {
   const rng = createRng(`${career.rootSeed}:${climb.id}:weather:${climb.elapsedMinutes}:${minutes}`);
   const steps = Math.max(1, Math.round(minutes / 45));
+  const temperatureDrift = climb.temperatureC < -30 ? rng.int(0, 2) : climb.temperatureC > -8 ? rng.int(-2, 0) : rng.int(-1, 1);
+  const windDrift = climb.windKmh > 68 ? rng.int(-8, 1) : climb.windKmh < 18 ? rng.int(-1, 6) : rng.int(-4, 4);
+  const visibilityDrift = climb.visibility < 28 ? rng.int(0, 10) : climb.visibility > 86 ? rng.int(-8, 1) : rng.int(-6, 7);
+  const longStopPenalty = minutes >= 300 ? rng.int(-1, 1) : 0;
   return {
-    temperatureC: clamp(climb.temperatureC + rng.int(-1, 1) + (minutes >= 300 ? rng.int(-2, 1) : 0), -45, 8),
-    windKmh: clamp(climb.windKmh + rng.int(-4, 5), 0, 95),
-    visibility: clamp(climb.visibility + rng.int(-7, 7), 5, 100),
+    temperatureC: clamp(climb.temperatureC + temperatureDrift + longStopPenalty, -40, 8),
+    windKmh: clamp(climb.windKmh + windDrift, 0, 82),
+    visibility: clamp(climb.visibility + visibilityDrift, 8, 100),
     weatherStep: climb.weatherStep + steps,
   };
 }
@@ -405,7 +520,7 @@ function buildRetreatStages(simulation: ExpeditionSimulationState) {
       relativeStart: current,
       relativeEnd: lower,
       progress: 0,
-      requiredProgress: fixed ? Math.max(75, source.requiredProgress * .72) : Math.max(90, source.requiredProgress * .92),
+      requiredProgress: fixed ? Math.max(52, source.requiredProgress * .68) : Math.max(64, source.requiredProgress * .84),
       preparation: fixed ? 30 : source.preparation * .45,
       routeKnowledge: Math.max(15, source.routeKnowledge),
       completed: false,
@@ -413,9 +528,11 @@ function buildRetreatStages(simulation: ExpeditionSimulationState) {
     current = lower;
   }
   if (!stages.length || stages[stages.length - 1]!.relativeEnd > 0) {
+    const exitModule = terrainModuleById('EXIT_TRAIL');
     stages.push({
-      id: `retreat:exit:${simulation.totalActions}`, sourceSegmentId: null, linkedAscentStageId: null, phase: 'EXIT', label: 'Возвращение к точке старта', terrain: 'Тропа и морена', hazard: 'Усталость после отхода', skill: 'ENDURANCE', difficulty: 25, exposure: 5,
-      relativeStart: current, relativeEnd: 0, progress: 0, requiredProgress: 85, preparation: 0, routeKnowledge: 20, surfaceKnowledge: 0, anchorsPlaced: 0, ropeFixed: false, campPossible: true, critical: false, completed: false,
+      id: `retreat:exit:${simulation.totalActions}`, terrainModuleId: exitModule.id, sourceSegmentId: null, linkedAscentStageId: null, phase: 'EXIT', label: 'Возвращение к точке старта', terrain: exitModule.label, hazard: 'Усталость после отхода', skill: 'ENDURANCE', difficulty: 25, exposure: 5,
+      relativeStart: current, relativeEnd: 0, progress: 0, requiredProgress: 62, preparation: 0, routeKnowledge: 20, surfaceKnowledge: 0, anchorsPlaced: 0, ropeFixed: false, campPossible: true, critical: false,
+      preparationOptions: exitModule.preparationOptions, preparationTags: [], recommendedActions: exitModule.recommendedActions, repetitionKey: `${exitModule.id}:retreat`, incidentHistory: [], completed: false,
     });
   }
   return stages;
@@ -503,7 +620,7 @@ function maybeTriggerEvent(career: CareerState, simulation: ExpeditionSimulation
   return {
     ...simulation,
     eventSerial: serial,
-    actionsUntilEvent: rng.int(3, 6),
+    actionsUntilEvent: rng.int(5, 9),
     activeEvent: createParticipantEvent(career, stage, serial),
   };
 }
@@ -551,7 +668,9 @@ function applySurvival(career: CareerState, climb: QualificationClimb, simulatio
   }
   const stranded = climb.energy <= 1 || climb.condition <= 10 || simulation.status === 'STRANDED';
   if (!stranded) return { career: { ...career, activeClimb: { ...climb, simulation: { ...simulation, rescueEtaMinutes } } }, terminal: null };
-  const coldLoss = Math.max(1, Math.round((Math.max(0, -10 - climb.temperatureC) + Math.max(0, climb.windKmh - 35) * .25) / (helpful ? 16 : 8)));
+  const rescueShelter = rescueEtaMinutes !== null ? 1.7 : 1;
+  const teamShelter = 1 + Math.max(0, climb.teamCondition - 45) / 140;
+  const coldLoss = Math.max(1, Math.round((Math.max(0, -10 - climb.temperatureC) + Math.max(0, climb.windKmh - 35) * .25) / ((helpful ? 18 : 10) * rescueShelter * teamShelter)));
   const condition = clamp(climb.condition - coldLoss, 0, 100);
   const nextSimulation = { ...simulation, status: condition <= 0 ? 'DEAD' as const : 'STRANDED' as const, survivalTurns: simulation.survivalTurns + 1, rescueEtaMinutes };
   const nextClimb = { ...climb, condition, simulation: nextSimulation };
@@ -588,24 +707,37 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
   let helpful = false;
 
   if (actionId.startsWith('MOVE_')) {
-    const progress = Math.max(12, Math.round(action.progressDelta * (success ? 1 : .38)));
+    const prepared = isStagePrepared(stage);
+    const rawProgress = Math.max(12, Math.round(action.progressDelta * (success ? 1 : .38)));
+    const tacticalCap = Math.round(stage.requiredProgress * .38);
+    const progress = stage.critical && !prepared && simulation.direction === 'ASCENT'
+      ? Math.max(0, Math.min(Math.round(rawProgress * .42), tacticalCap - stage.progress))
+      : stage.critical && !prepared
+        ? Math.max(10, Math.round(rawProgress * .55))
+        : rawProgress;
     nextStage.progress = clamp(stage.progress + progress, 0, stage.requiredProgress);
     nextSimulation.totalMovementActions += 1;
     const stageRatio = nextStage.progress / Math.max(1, stage.requiredProgress);
     nextSimulation.relativeElevation = Math.round(stage.relativeStart + (stage.relativeEnd - stage.relativeStart) * stageRatio);
     nextSimulation.highestRelativeElevation = Math.max(nextSimulation.highestRelativeElevation, nextSimulation.relativeElevation);
     if (success) {
-      detail = `${progress} прогресса. Связка удержала выбранный темп.`;
+      detail = stage.critical && !prepared && simulation.direction === 'ASCENT'
+        ? progress > 0 ? `${progress} прогресса. Дальше без подготовки участок не пускает.` : 'Движение остановлено требованиями участка. Нужна разведка, проверка или страховка.'
+        : stage.critical && !prepared
+          ? `${progress} прогресса. Спуск идёт без полной защиты: риск остаётся высоким.`
+          : `${progress} прогресса. Связка удержала выбранный темп.`;
     } else {
       const loss = rng.int(3, 9) + Math.round(stage.exposure / 18);
       energy = clamp(energy - loss);
-      condition = clamp(condition - rng.int(1, Math.max(2, Math.round(stage.exposure / 14))));
+      condition = clamp(condition - rng.int(1, Math.max(2, Math.round(stage.exposure / 22))));
       teamCondition = clamp(teamCondition - rng.int(1, 5));
       duration += rng.int(18, 55);
       detail = `Проверка навыка провалена. Пройдено только ${progress} прогресса, потеряны силы и время.`;
       severity = stage.critical || stage.exposure >= 55 ? 'DANGER' : 'WARNING';
-      if (stage.critical && rng.chance(clamp((100 - (action.successChance ?? 50)) / 120, .08, .38))) {
-        condition = clamp(condition - rng.int(8, 18));
+      const baseAccidentChance = clamp((100 - (action.successChance ?? 50)) / 260, .02, .12);
+      const accidentChance = prepared ? 0 : baseAccidentChance * (stage.exposure >= 72 ? 1.25 : 1);
+      if (stage.critical && simulation.direction === 'ASCENT' && rng.chance(accidentChance)) {
+        condition = clamp(condition - rng.int(4, 10));
         nextSimulation.forcedRetreat = true;
         nextSimulation.returnReason = `Авария на этапе «${stage.label}»`;
         headline = 'Срыв на участке';
@@ -615,20 +747,24 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
   } else if (actionId === 'SCOUT_LINE') {
     nextStage.routeKnowledge = clamp(stage.routeKnowledge + (success ? 30 : 10));
     nextStage.preparation = clamp(stage.preparation + (success ? 18 : 5));
+    if (success) nextStage = addPreparationTag(nextStage, 'ROUTE_SCOUTED');
     detail = success ? 'Линия прочитана. Следующее движение будет надёжнее.' : 'Разведка дала неполную картину. Время потрачено, неизвестность осталась.';
   } else if (actionId === 'PLACE_ANCHOR') {
     ropeMetersRemaining = Math.max(0, ropeMetersRemaining - 5);
     nextStage.anchorsPlaced += 1;
     nextStage.preparation = clamp(stage.preparation + (success ? 24 : 8));
+    if (success) nextStage = addPreparationTag(nextStage, 'ANCHOR_PLACED');
     detail = success ? 'Точка выдерживает рабочую нагрузку.' : 'Точка поставлена плохо. Она даёт мало защиты и потребует перепроверки.';
   } else if (actionId === 'FIX_ROPE') {
     ropeMetersRemaining = Math.max(0, ropeMetersRemaining - 20);
     nextStage.ropeFixed = success;
     nextStage.preparation = clamp(stage.preparation + (success ? 42 : 14));
+    if (success) nextStage = addPreparationTag(nextStage, 'ROPE_FIXED');
     detail = success ? 'Линия закреплена. Спуск по этому месту станет безопаснее.' : 'Верёвка потрачена, но линия закреплена плохо.';
   } else if (actionId === 'CHECK_SURFACE') {
     nextStage.surfaceKnowledge = clamp(stage.surfaceKnowledge + (success ? 34 : 11));
     nextStage.preparation = clamp(stage.preparation + (success ? 20 : 4));
+    if (success) nextStage = addPreparationTag(nextStage, 'SURFACE_CHECKED');
     detail = success ? 'Опасные зоны отмечены. Группа знает, где нельзя нагружать склон.' : 'Проверка не дала уверенного ответа.';
   } else if (actionId === 'REST_SHORT') {
     helpful = true;
@@ -660,6 +796,7 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
     helpful = true;
     teamCondition = clamp(teamCondition + (success ? 7 : 2));
     energy = clamp(energy - 2);
+    if (success) nextStage = addPreparationTag(nextStage, 'TEAM_STABILIZED');
     detail = success ? 'Слабый участник стабилизирован. Темп группы станет ровнее.' : 'Помощь заняла время, но проблему полностью решить не удалось.';
   } else if (actionId === 'DROP_LOAD') {
     nextSimulation.loadDroppedKg = clamp(simulation.loadDroppedKg + 2.5, 0, climb.packWeightKg - 5);
@@ -693,8 +830,36 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
   const orderUpdate = updateOrder(career, actionId, nextSimulation);
   if (orderUpdate.order) nextSimulation.leaderOrder = orderUpdate.order;
 
-  const actionRecord = { id: `${climb.id}:action:${nextSimulation.totalActions}`, actionId, stageId: stage.id, success, detail, elapsedMinutes, relativeElevation: nextSimulation.relativeElevation };
+  const actionRecord = {
+    id: `${climb.id}:action:${nextSimulation.totalActions}`,
+    actionId,
+    stageId: stage.id,
+    success,
+    detail,
+    elapsedMinutes,
+    relativeElevation: nextSimulation.relativeElevation,
+    energyAfter: energy,
+    conditionAfter: condition,
+    stageProgressAfter: nextStage.progress,
+    suppliesAfter: { ...supplies },
+  };
+  const failureTrace = !success || energy <= 10 || condition <= 20
+    ? [...simulation.failureTrace, {
+      id: `${climb.id}:failure:${nextSimulation.totalActions}`,
+      actionNumber: nextSimulation.totalActions,
+      stageId: stage.id,
+      cause: !success ? `Провал действия «${action.title}»` : energy <= 10 ? 'Критическое истощение' : 'Критическое состояние',
+      energy,
+      condition,
+      food: supplies.foodUnits,
+      water: supplies.waterUnits,
+      temperatureC: weather.temperatureC,
+      windKmh: weather.windKmh,
+    }].slice(-24)
+    : simulation.failureTrace;
   nextSimulation.actionLog = [...simulation.actionLog, actionRecord];
+  nextSimulation.failureTrace = failureTrace;
+  nextSimulation.lastCheckpointAction = nextSimulation.totalActions;
   const nextParticipant = orderUpdate.participant ? { ...orderUpdate.participant, totalActions: orderUpdate.participant.totalActions + 1, competence: orderUpdate.participant.competence + (success && action.skill ? 1 : 0), decisions: orderUpdate.participant.decisions } : climb.participant;
   let nextClimb: QualificationClimb = {
     ...climb,
@@ -739,7 +904,15 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
   const activeSimulation = active.simulation!;
   const activeStage = currentExpeditionStage(nextCareer);
   if (activeStage && activeStage.progress >= activeStage.requiredProgress && activeSimulation.status === 'ACTIVE') {
-    return stageCompleteResult(nextCareer, active, activeSimulation, activeStage);
+    const completed = stageCompleteResult(nextCareer, active, activeSimulation, activeStage);
+    const completedClimb = completed.career.activeClimb;
+    const completedSimulation = completedClimb?.simulation;
+    const nextStage = currentExpeditionStage(completed.career);
+    if (completedClimb && completedSimulation && nextStage && completedSimulation.status === 'ACTIVE') {
+      const eventSimulation = maybeTriggerEvent(completed.career, completedSimulation, nextStage);
+      return { ...completed, career: { ...completed.career, activeClimb: { ...completedClimb, simulation: eventSimulation } } };
+    }
+    return completed;
   }
 
   if (activeStage) {

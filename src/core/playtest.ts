@@ -9,6 +9,7 @@ import {
   resolveParticipantAction,
   startPlannedClimb,
 } from './career';
+import { isStagePrepared, missingStagePreparation } from './simulationEngine';
 import { getEntryOrganizations } from './ecosystem';
 import { getCurrentParticipantScene } from './expeditionEngine';
 import { generateWorld } from './generator';
@@ -50,20 +51,23 @@ function chooseAutoplayAction(career: CareerState) {
       ?? usable('DROP_LOAD');
   }
 
+  const ascentRatio = simulation.maxRelativeElevation > 0 ? simulation.relativeElevation / simulation.maxRelativeElevation : 0;
   if (simulation.direction === 'ASCENT' && (
-    climb.condition < 48
-    || (climb.supplies.waterUnits <= 3 && climb.supplies.fuelUnits <= 0)
-    || climb.supplies.foodUnits <= Math.max(3, climb.teamMemberIds.length + 1)
+    climb.condition < 36
+    || (climb.supplies.waterUnits <= 0 && climb.supplies.fuelUnits <= 0)
+    || (climb.supplies.foodUnits <= 0 && ascentRatio < .72)
   )) {
     const retreat = usable('TURN_BACK');
     if (retreat) return retreat;
   }
 
   if (climb.energy < 24) {
-    return usable('EAT_DRINK')
+    const recovery = usable('EAT_DRINK')
       ?? (climb.energy < 52 ? usable('REST_SHORT') : undefined)
       ?? usable('DROP_LOAD')
+      ?? usable('REQUEST_AID')
       ?? usable('TURN_BACK');
+    if (recovery) return recovery;
   }
 
   if (climb.hoursAwake > 16) {
@@ -75,7 +79,10 @@ function chooseAutoplayAction(career: CareerState) {
   if (climb.supplies.waterUnits <= 3) {
     const water = usable('MELT_SNOW');
     if (water) return water;
-    if (climb.supplies.waterUnits > 0 && climb.energy < 72) return usable('EAT_DRINK');
+    if (climb.supplies.waterUnits > 0 && climb.energy < 72) {
+      const ration = usable('EAT_DRINK');
+      if (ration) return ration;
+    }
   }
 
   const cautious = usable('MOVE_CAUTIOUS');
@@ -91,16 +98,27 @@ function chooseAutoplayAction(career: CareerState) {
     if (help) return help;
   }
 
+  const missingPreparation = missingStagePreparation(stage);
+  if (missingPreparation.length) {
+    const actionForTag = {
+      ROUTE_SCOUTED: 'SCOUT_LINE',
+      SURFACE_CHECKED: 'CHECK_SURFACE',
+      ANCHOR_PLACED: 'PLACE_ANCHOR',
+      ROPE_FIXED: 'FIX_ROPE',
+      TEAM_STABILIZED: 'HELP_TEAM',
+    } as const;
+    for (const tag of missingPreparation) {
+      const candidate = usable(actionForTag[tag]);
+      if (candidate) return candidate;
+    }
+  }
+
   if (stage.critical) {
-    if (!stage.ropeFixed && climb.ropeMetersRemaining >= 20) {
+    if (stage.exposure >= 78 && !stage.ropeFixed && climb.ropeMetersRemaining >= 40) {
       const fixed = usable('FIX_ROPE');
       if (fixed) return fixed;
     }
-    if (stage.anchorsPlaced < 1 && climb.ropeMetersRemaining >= 5) {
-      const anchor = usable('PLACE_ANCHOR');
-      if (anchor) return anchor;
-    }
-    if (stage.preparation < 24) {
+    if (stage.preparation < 24 && !isStagePrepared(stage)) {
       const prep = stage.terrain.toLowerCase().includes('снег') || stage.terrain.toLowerCase().includes('лед')
         ? usable('CHECK_SURFACE')
         : usable('SCOUT_LINE');
@@ -164,12 +182,15 @@ export function runBalanceSample(seedPrefix: string, count = 12, difficulty: Dif
   const sampleSize = outcomes.length;
   const average = (values: number[]) => Math.round(values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length));
   const rate = (phase: string) => Number((outcomes.filter(item => item.phase === phase).length / sampleSize).toFixed(3));
+  const successRate = rate('COMPLETE');
+  const retreatRate = rate('RETREATED');
+  const failureRate = 1 - successRate - retreatRate;
   return {
     sampleSize,
     difficulty,
-    successRate: rate('COMPLETE'),
-    retreatRate: rate('RETREATED'),
-    failureRate: rate('FAILED'),
+    successRate,
+    retreatRate,
+    failureRate,
     averageMoves: average(outcomes.map(item => item.moves)),
     averageFinalEnergy: average(outcomes.map(item => item.energy)),
     averageFinalTeamCondition: average(outcomes.map(item => item.teamCondition)),

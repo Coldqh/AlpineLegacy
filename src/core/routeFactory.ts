@@ -1,3 +1,5 @@
+import { detectTerrainModule } from '../content/terrainModules';
+import { attachContentMetadata } from './contentPipeline';
 import type { ExpeditionRoute, RouteGraph, RouteGraphNode, RouteSegment, SkillId, WorldState } from './types';
 
 function clamp(value: number, min = 0, max = 100) {
@@ -62,12 +64,12 @@ function graphForRoute(route: ExpeditionRoute): RouteGraph {
 function attachGraph(route: ExpeditionRoute): ExpeditionRoute {
   const graph = graphForRoute(route);
   const actionCount = graph.nodes.reduce((sum, node) => sum + node.requiredActionCount, 0);
-  return {
+  return attachContentMetadata({
     ...route,
     graph,
     estimatedDecisionCount: actionCount,
     expectedPlayMinutes: Math.max(20, Math.round(actionCount * 1.05)),
-  };
+  });
 }
 
 function splitGain(total: number, shares: number[]) {
@@ -205,6 +207,7 @@ function enrichRouteForVerticalSlice(route: ExpeditionRoute, routeIndex: number,
   const bySegment = new Map(decisions.map(item => [item.segmentId, item.id]));
   const segments = route.segments.map((item, index) => ({
     ...item,
+    terrainModuleId: item.terrainModuleId ?? detectTerrainModule(item.terrain).id,
     decisionId: bySegment.get(item.id),
     noReturn: signatureMountain && index >= Math.ceil(route.segments.length * .58),
     safeHaven: item.campPossible,

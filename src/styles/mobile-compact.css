@@ -494,3 +494,13 @@
   .m-sim-event > div span { margin-top: 2px; color: var(--m-muted); font-size: 8px; }
   .m-sim-event > div small { margin-top: 3px; color: var(--m-accent); font-size: 7px; }
 }
+
+@media (max-width: 1024px) {
+  .m-preparation-state, .m-failure-trace { margin-top: 6px; padding: 7px 8px; border-left: 3px solid var(--m-warn); background: var(--m-surface); }
+  .m-preparation-state.is-ready { border-left-color: var(--m-good); }
+  .m-preparation-state strong, .m-preparation-state span, .m-failure-trace small, .m-failure-trace strong, .m-failure-trace span { display: block; }
+  .m-preparation-state strong, .m-failure-trace strong { font-size: 10px; }
+  .m-preparation-state span, .m-failure-trace span { margin-top: 2px; color: var(--m-muted); font-size: 8px; line-height: 1.3; }
+  .m-failure-trace { border-left-color: var(--m-accent); }
+  .m-failure-trace small { color: var(--m-muted); font-size: 7px; letter-spacing: .1em; }
+}

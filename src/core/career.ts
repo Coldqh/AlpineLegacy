@@ -442,7 +442,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
   const activeClimb = activeClimbBase && activeRoute ? { ...activeClimbBase, simulation: hydrateExpeditionSimulation(activeClimbBase, activeRoute) } : activeClimbBase;
   return hydrateCareerProgression({
     ...career,
-    schemaVersion: 13,
+    schemaVersion: 14,
     club,
     routes,
     teamRoster,
@@ -470,7 +470,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = rosterForOrganization(world, membership.organizationId);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 13,
+    schemaVersion: 14,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,
@@ -1030,7 +1030,9 @@ export function startPlannedClimb(career: CareerState): CareerState {
     segmentChoices: {},
     routeChoices: [],
     fixedRopeSegmentIds: [],
-    ropeMetersRemaining: career.expeditionPlan.ropeMeters,
+    ropeMetersRemaining: career.expeditionPlan.authorityMode === 'PARTICIPANT'
+      ? Math.max(career.expeditionPlan.ropeMeters, route.expeditionScale === 'GIANT' ? 180 : route.expeditionScale === 'MAJOR' ? 120 : 80)
+      : career.expeditionPlan.ropeMeters,
     caches: [],
     log: [`05:10 — ${career.expeditionPlan.authorityMode === 'COMMAND' ? 'группа' : 'экспедиция под руководством другого альпиниста'} вышла на ${route.name}. Твоя роль: ${career.expeditionPlan.playerRole}. Высота старта ${route.startElevation} м. Окно: ${window.label}.`],
     injuries: [],

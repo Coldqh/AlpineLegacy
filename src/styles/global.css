@@ -3929,3 +3929,10 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
 .simulation-event-panel blockquote { font: 25px/1.2 var(--serif); }
 .simulation-event-panel > div { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
 .simulation-event-panel button { padding: 14px; border: 1px solid var(--line); background: transparent; text-align: left; }
+
+.simulation-preparation-state, .simulation-failure-trace { margin: -4px 0 14px; padding: 12px 14px; border-left: 4px solid #b68a42; background: var(--paper); }
+.simulation-preparation-state.is-ready { border-left-color: #4c806a; }
+.simulation-preparation-state strong, .simulation-preparation-state p, .simulation-failure-trace strong, .simulation-failure-trace span { display: block; }
+.simulation-preparation-state p { margin: 4px 0 0; color: var(--muted); }
+.simulation-failure-trace { border-left-color: var(--accent); }
+.simulation-failure-trace span { margin-top: 5px; color: var(--muted); }

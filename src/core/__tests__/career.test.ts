@@ -63,7 +63,7 @@ describe('career and expedition module', () => {
     const organization = getEntryOrganizations(world)[0]!;
     const career = createCareer(world, { name: 'Test Climber', age: 20, originId: 'CLUB_SCHOOL', entryMode: 'ORGANIZATION', organizationId: organization.id });
     expect(career.worldId).toBe(world.id);
-    expect(career.schemaVersion).toBe(13);
+    expect(career.schemaVersion).toBe(14);
     expect(career.membership.rank).toBe('NOVICE');
     expect(career.membership.permissions.canChooseRoute).toBe(false);
     expect(career.expeditionPlan.teamMemberIds).toEqual([]);
@@ -125,7 +125,7 @@ describe('career and expedition module', () => {
           relativeElevation: last.relativeStart,
           activeEvent: null,
           leaderOrder: null,
-          ascentStages: simulation.ascentStages.map((stage, index) => index === lastIndex ? { ...stage, progress: stage.requiredProgress - 1, preparation: 100, routeKnowledge: 100, surfaceKnowledge: 100 } : stage),
+          ascentStages: simulation.ascentStages.map((stage, index) => index === lastIndex ? { ...stage, progress: stage.requiredProgress - 1, preparation: 100, routeKnowledge: 100, surfaceKnowledge: 100, preparationTags: [...stage.preparationOptions[0]] } : stage),
         },
       },
     };
