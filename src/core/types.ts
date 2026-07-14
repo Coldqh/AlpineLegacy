@@ -50,6 +50,25 @@ export type CareerEntryMode = 'ORGANIZATION' | 'INDEPENDENT';
 export type ExpeditionRank = 'NOVICE' | 'MEMBER' | 'SPECIALIST' | 'ROPE_LEAD' | 'DEPUTY' | 'LEADER' | 'ORGANIZER';
 export type ExpeditionAuthority = 'PARTICIPANT' | 'SPECIALIST' | 'COMMAND';
 export type ExpeditionPhaseNode = 'APPROACH' | 'BASE_CAMP' | 'ACCLIMATIZATION' | 'CARRY' | 'CAMP' | 'TECHNICAL' | 'HAZARD' | 'DECISION' | 'SUMMIT' | 'DESCENT' | 'EXIT';
+export type ExpeditionDirection = 'ASCENT' | 'DESCENT';
+export type ExpeditionSimulationStatus = 'ACTIVE' | 'STRANDED' | 'SUMMIT' | 'SAFE' | 'DEAD' | 'EVACUATED';
+export type ExpeditionFieldActionId =
+  | 'MOVE_CAUTIOUS'
+  | 'MOVE_STEADY'
+  | 'MOVE_FAST'
+  | 'SCOUT_LINE'
+  | 'PLACE_ANCHOR'
+  | 'FIX_ROPE'
+  | 'CHECK_SURFACE'
+  | 'REST_SHORT'
+  | 'EAT_DRINK'
+  | 'MAKE_CAMP'
+  | 'MELT_SNOW'
+  | 'HELP_TEAM'
+  | 'DROP_LOAD'
+  | 'REQUEST_AID'
+  | 'CHALLENGE_ORDER'
+  | 'TURN_BACK';
 
 export interface RouteGraphNode {
   id: string;
@@ -595,6 +614,89 @@ export interface ParticipantEvaluation {
   tags: string[];
 }
 
+export interface ExpeditionSimulationStage {
+  id: string;
+  sourceSegmentId: string | null;
+  linkedAscentStageId: string | null;
+  phase: ExpeditionPhaseNode;
+  label: string;
+  terrain: string;
+  hazard: string;
+  skill: SkillId;
+  difficulty: number;
+  exposure: number;
+  relativeStart: number;
+  relativeEnd: number;
+  progress: number;
+  requiredProgress: number;
+  preparation: number;
+  routeKnowledge: number;
+  surfaceKnowledge: number;
+  anchorsPlaced: number;
+  ropeFixed: boolean;
+  campPossible: boolean;
+  critical: boolean;
+  completed: boolean;
+}
+
+export interface ExpeditionLeaderOrder {
+  id: string;
+  text: string;
+  preferredAction: ExpeditionFieldActionId;
+  issuedAtAction: number;
+  strictness: number;
+  resolved: boolean;
+  obeyed: boolean | null;
+}
+
+export interface ExpeditionActionRecord {
+  id: string;
+  actionId: ExpeditionFieldActionId;
+  stageId: string;
+  success: boolean;
+  detail: string;
+  elapsedMinutes: number;
+  relativeElevation: number;
+}
+
+export interface ExpeditionSimulationState {
+  version: 1;
+  direction: ExpeditionDirection;
+  status: ExpeditionSimulationStatus;
+  ascentStages: ExpeditionSimulationStage[];
+  descentStages: ExpeditionSimulationStage[];
+  stageIndex: number;
+  relativeElevation: number;
+  maxRelativeElevation: number;
+  highestRelativeElevation: number;
+  totalActions: number;
+  totalMovementActions: number;
+  eventSerial: number;
+  actionsUntilEvent: number;
+  activeEvent: ParticipantScene | null;
+  leaderOrder: ExpeditionLeaderOrder | null;
+  survivalTurns: number;
+  forcedRetreat: boolean;
+  returnReason: string | null;
+  loadDroppedKg: number;
+  rescueEtaMinutes: number | null;
+  actionLog: ExpeditionActionRecord[];
+}
+
+export interface ExpeditionActionPreview {
+  id: ExpeditionFieldActionId;
+  title: string;
+  detail: string;
+  durationMinutes: number;
+  energyDelta: number;
+  progressDelta: number;
+  successChance: number | null;
+  riskLabel: 'НИЗКИЙ' | 'СРЕДНИЙ' | 'ВЫСОКИЙ' | 'КРИТИЧЕСКИЙ';
+  disabled: boolean;
+  disabledReason: string | null;
+  skill: SkillId | null;
+}
+
 export interface ParticipantExpeditionState {
   graphNodeIndex: number;
   nodeActionIndex: number;
@@ -665,6 +767,7 @@ export interface QualificationClimb {
   earnedReputation: number;
   earnedMoney: number;
   participant: ParticipantExpeditionState | null;
+  simulation: ExpeditionSimulationState | null;
 }
 
 export interface ReputationProfile {
@@ -904,7 +1007,7 @@ export interface CareerMembership {
 }
 
 export interface CareerState {
-  schemaVersion: 12;
+  schemaVersion: 13;
   id: string;
   worldId: string;
   rootSeed: string;

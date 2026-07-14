@@ -32,6 +32,7 @@ import {
   meltSnow,
   resolveClimbStep,
   resolveParticipantAction,
+  resolveExpeditionFieldAction,
   retreatClimb,
   selectMountain,
   selectRoute,
@@ -42,7 +43,7 @@ import {
   updateExpeditionPlan,
   waitWeather,
 } from '../core/career';
-import type { CareerState, CareerTabId, ClimbOrderId, ClimbPace, ClimbStepResult, ExpeditionPlan, TrainingId, WorldState } from '../core/types';
+import type { CareerState, CareerTabId, ClimbOrderId, ClimbPace, ClimbStepResult, ExpeditionFieldActionId, ExpeditionPlan, TrainingId, WorldState } from '../core/types';
 import { CareerOverviewScreen } from './CareerOverviewScreen';
 import { NewsScreen } from './NewsScreen';
 import { RecordsScreen } from './RecordsScreen';
@@ -100,37 +101,40 @@ function WorkspaceSubnav({ activeTab, onTab }: { activeTab: CareerTabId; onTab: 
 
 export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersist, onTrain, onExit, onAtlas }: Props) {
   const mobile = useIsMobile();
-  useScrollReset(activeTab);
+  const expeditionLocked = Boolean(career.activeClimb);
+  const tab = expeditionLocked ? 'CLIMB' as const : activeTab;
+  const navigate = (next: CareerTabId) => { if (!expeditionLocked || next === 'CLIMB') onTab(next); };
+  useScrollReset(tab);
   function persistResult(result: ClimbStepResult) {
     onPersist(result.career);
     return result;
   }
 
   function renderMobileTab() {
-    if (activeTab === 'OVERVIEW') return <MobileOverview world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} />;
-    if (activeTab === 'WORLD') return <MobileWorld world={world} career={career} />;
-    if (activeTab === 'NEWS') return <MobileNews career={career} />;
-    if (activeTab === 'RIVALS') return <MobileRivals career={career} />;
-    if (activeTab === 'RECORDS') return <MobileRecords career={career} />;
-    if (activeTab === 'JOURNAL') return <MobileJournal career={career} />;
-    if (activeTab === 'PEOPLE') return <MobilePeople career={career} />;
-    if (activeTab === 'ROUTE') return <MobileRoute world={world} career={career} offers={availableExpeditionOffers(world, career)} onAcceptOffer={offerId => onPersist(applyToExpeditionOffer(world, career, offerId))} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} />;
-    if (activeTab === 'TEAM') return <MobileTeam career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
-    if (activeTab === 'EQUIPMENT') return <MobileEquipment career={career} onSetQuantity={(gearId, quantity) => onPersist(setGearQuantity(career, gearId, quantity))} onSetPlan={(patch: Partial<ExpeditionPlan>) => onPersist(updateExpeditionPlan(career, patch))} onPreset={preset => onPersist(applyEquipmentPreset(career, preset))} onContinue={() => onTab('EXPEDITION')} />;
-    if (activeTab === 'EXPEDITION') return <MobileExpedition career={career} difficulty={world.config.difficulty} onOpenTab={onTab} onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))} onSetAcclimatization={days => onPersist(updateExpeditionPlan(career, { acclimatizationDays: days }))} onLaunch={() => { const readiness = expeditionReadiness(career); const next = startPlannedClimb(career); onPersist(next); if (next.activeClimb && readiness.blockers.length === 0) onTab('CLIMB'); }} />;
-    if (activeTab === 'CLIMB' && career.activeClimb) return <MobileClimbScreen career={career} difficulty={world.config.difficulty} onStep={(pace: ClimbPace) => persistResult(resolveClimbStep(career, pace))} onCamp={() => persistResult(establishCamp(career))} onMeltSnow={() => persistResult(meltSnow(career))} onWait={() => persistResult(waitWeather(career))} onOrder={(order: ClimbOrderId) => persistResult(issueClimbOrder(career, order))} onChooseDecision={optionId => persistResult(chooseRouteDecision(career, optionId))} onFixRope={() => persistResult(fixRope(career))} onLeaveCache={() => persistResult(leaveCache(career))} onParticipantAction={optionId => persistResult(resolveParticipantAction(career, optionId))} onBeginDescent={() => onPersist(beginDescent(career))} onRetreat={() => onPersist(retreatClimb(career))} onClose={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }} />;
+    if (tab === 'OVERVIEW') return <MobileOverview world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} />;
+    if (tab === 'WORLD') return <MobileWorld world={world} career={career} />;
+    if (tab === 'NEWS') return <MobileNews career={career} />;
+    if (tab === 'RIVALS') return <MobileRivals career={career} />;
+    if (tab === 'RECORDS') return <MobileRecords career={career} />;
+    if (tab === 'JOURNAL') return <MobileJournal career={career} />;
+    if (tab === 'PEOPLE') return <MobilePeople career={career} />;
+    if (tab === 'ROUTE') return <MobileRoute world={world} career={career} offers={availableExpeditionOffers(world, career)} onAcceptOffer={offerId => onPersist(applyToExpeditionOffer(world, career, offerId))} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} />;
+    if (tab === 'TEAM') return <MobileTeam career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
+    if (tab === 'EQUIPMENT') return <MobileEquipment career={career} onSetQuantity={(gearId, quantity) => onPersist(setGearQuantity(career, gearId, quantity))} onSetPlan={(patch: Partial<ExpeditionPlan>) => onPersist(updateExpeditionPlan(career, patch))} onPreset={preset => onPersist(applyEquipmentPreset(career, preset))} onContinue={() => onTab('EXPEDITION')} />;
+    if (tab === 'EXPEDITION') return <MobileExpedition career={career} difficulty={world.config.difficulty} onOpenTab={navigate} onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))} onSetAcclimatization={days => onPersist(updateExpeditionPlan(career, { acclimatizationDays: days }))} onLaunch={() => { const readiness = expeditionReadiness(career); const next = startPlannedClimb(career); onPersist(next); if (next.activeClimb && readiness.blockers.length === 0) onTab('CLIMB'); }} />;
+    if (tab === 'CLIMB' && career.activeClimb) return <MobileClimbScreen career={career} difficulty={world.config.difficulty} onStep={(pace: ClimbPace) => persistResult(resolveClimbStep(career, pace))} onCamp={() => persistResult(establishCamp(career))} onMeltSnow={() => persistResult(meltSnow(career))} onWait={() => persistResult(waitWeather(career))} onOrder={(order: ClimbOrderId) => persistResult(issueClimbOrder(career, order))} onChooseDecision={optionId => persistResult(chooseRouteDecision(career, optionId))} onFixRope={() => persistResult(fixRope(career))} onLeaveCache={() => persistResult(leaveCache(career))} onParticipantAction={optionId => persistResult(resolveParticipantAction(career, optionId))} onFieldAction={(actionId: ExpeditionFieldActionId) => persistResult(resolveExpeditionFieldAction(career, actionId))} onBeginDescent={() => onPersist(beginDescent(career))} onRetreat={() => onPersist(retreatClimb(career))} onClose={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }} />;
     return <MobileJournal career={career} />;
   }
 
   function renderTab() {
-    if (activeTab === 'OVERVIEW') {
+    if (tab === 'OVERVIEW') {
       return <CareerOverviewScreen world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} />;
     }
-    if (activeTab === 'WORLD') return <WorldScreen world={world} career={career} />;
-    if (activeTab === 'NEWS') return <NewsScreen career={career} />;
-    if (activeTab === 'RIVALS') return <RivalsScreen career={career} />;
-    if (activeTab === 'RECORDS') return <RecordsScreen career={career} />;
-    if (activeTab === 'ROUTE') {
+    if (tab === 'WORLD') return <WorldScreen world={world} career={career} />;
+    if (tab === 'NEWS') return <NewsScreen career={career} />;
+    if (tab === 'RIVALS') return <RivalsScreen career={career} />;
+    if (tab === 'RECORDS') return <RecordsScreen career={career} />;
+    if (tab === 'ROUTE') {
       return (
         <RoutePlanningScreen
           world={world}
@@ -143,11 +147,11 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
         />
       );
     }
-    if (activeTab === 'TEAM') {
+    if (tab === 'TEAM') {
       return <TeamScreen career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
     }
-    if (activeTab === 'PEOPLE') return <PeopleScreen career={career} />;
-    if (activeTab === 'EQUIPMENT') {
+    if (tab === 'PEOPLE') return <PeopleScreen career={career} />;
+    if (tab === 'EQUIPMENT') {
       return (
         <EquipmentScreen
           career={career}
@@ -158,12 +162,12 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
         />
       );
     }
-    if (activeTab === 'EXPEDITION') {
+    if (tab === 'EXPEDITION') {
       return (
         <ExpeditionScreen
           career={career}
           difficulty={world.config.difficulty}
-          onOpenTab={onTab}
+          onOpenTab={navigate}
           onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))}
           onSetAcclimatization={days => onPersist(updateExpeditionPlan(career, { acclimatizationDays: days }))}
           onLaunch={() => {
@@ -175,7 +179,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
         />
       );
     }
-    if (activeTab === 'CLIMB' && career.activeClimb) {
+    if (tab === 'CLIMB' && career.activeClimb) {
       return (
         <ClimbScreen
           career={career}
@@ -189,6 +193,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
           onFixRope={() => persistResult(fixRope(career))}
           onLeaveCache={() => persistResult(leaveCache(career))}
           onParticipantAction={optionId => persistResult(resolveParticipantAction(career, optionId))}
+          onFieldAction={(actionId: ExpeditionFieldActionId) => persistResult(resolveExpeditionFieldAction(career, actionId))}
           onBeginDescent={() => onPersist(beginDescent(career))}
           onRetreat={() => onPersist(retreatClimb(career))}
           onClose={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }}
@@ -198,23 +203,23 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     return <JournalScreen career={career} world={world} />;
   }
 
-  const mobilePrep = ['TEAM', 'EQUIPMENT', 'EXPEDITION'].includes(activeTab);
-  const mobileWorld = ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'].includes(activeTab);
+  const mobilePrep = !expeditionLocked && ['TEAM', 'EQUIPMENT', 'EXPEDITION'].includes(tab);
+  const mobileWorld = !expeditionLocked && ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'].includes(tab);
 
   if (mobile) {
     return (
-      <MobileCareerShell world={world} career={career} activeTab={activeTab} onTab={onTab} onExit={onExit} onAtlas={onAtlas}>
-        {mobilePrep && <nav className="m-subnav" aria-label="Подготовка"><button className={activeTab === 'TEAM' ? 'is-active' : ''} onClick={() => onTab('TEAM')}>Люди</button><button className={activeTab === 'EQUIPMENT' ? 'is-active' : ''} onClick={() => onTab('EQUIPMENT')}>Груз</button><button className={activeTab === 'EXPEDITION' ? 'is-active' : ''} onClick={() => onTab('EXPEDITION')}>Выход</button></nav>}
-        {mobileWorld && <nav className="m-subnav m-subnav--world" aria-label="Живой мир"><button className={activeTab === 'WORLD' ? 'is-active' : ''} onClick={() => onTab('WORLD')}>Обзор</button><button className={activeTab === 'NEWS' ? 'is-active' : ''} onClick={() => onTab('NEWS')}>Новости</button><button className={activeTab === 'RIVALS' ? 'is-active' : ''} onClick={() => onTab('RIVALS')}>Люди</button><button className={activeTab === 'RECORDS' ? 'is-active' : ''} onClick={() => onTab('RECORDS')}>Рекорды</button></nav>}
+      <MobileCareerShell world={world} career={career} activeTab={tab} onTab={navigate} locked={expeditionLocked} onExit={onExit} onAtlas={onAtlas}>
+        {mobilePrep && <nav className="m-subnav" aria-label="Подготовка"><button className={tab === 'TEAM' ? 'is-active' : ''} onClick={() => navigate('TEAM')}>Люди</button><button className={tab === 'EQUIPMENT' ? 'is-active' : ''} onClick={() => navigate('EQUIPMENT')}>Груз</button><button className={tab === 'EXPEDITION' ? 'is-active' : ''} onClick={() => navigate('EXPEDITION')}>Выход</button></nav>}
+        {mobileWorld && <nav className="m-subnav m-subnav--world" aria-label="Живой мир"><button className={tab === 'WORLD' ? 'is-active' : ''} onClick={() => navigate('WORLD')}>Обзор</button><button className={tab === 'NEWS' ? 'is-active' : ''} onClick={() => navigate('NEWS')}>Новости</button><button className={tab === 'RIVALS' ? 'is-active' : ''} onClick={() => navigate('RIVALS')}>Люди</button><button className={tab === 'RECORDS' ? 'is-active' : ''} onClick={() => navigate('RECORDS')}>Рекорды</button></nav>}
         {renderMobileTab()}
       </MobileCareerShell>
     );
   }
 
   return (
-    <CareerShell world={world} career={career} activeTab={activeTab} onTab={onTab} onExit={onExit} onAtlas={onAtlas}>
-      <WorkspaceSubnav activeTab={activeTab} onTab={onTab} />
-      <CareerFlowGuide career={career} activeTab={activeTab} onTab={onTab} onDismiss={() => onPersist(dismissOnboarding(career))} />
+    <CareerShell world={world} career={career} activeTab={tab} onTab={navigate} locked={expeditionLocked} onExit={onExit} onAtlas={onAtlas}>
+      <WorkspaceSubnav activeTab={tab} onTab={navigate} />
+      {!expeditionLocked && <CareerFlowGuide career={career} activeTab={tab} onTab={navigate} onDismiss={() => onPersist(dismissOnboarding(career))} />}
       {renderTab()}
     </CareerShell>
   );

@@ -3885,3 +3885,47 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
 .participant-evaluation-panel > div span { padding: 6px 9px; border: 1px solid var(--line); font-size: 11px; }
 .participant-evaluation-panel footer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-weight: 700; }
 @media (max-width: 1000px) { .participant-layout { grid-template-columns: 1fr; } .participant-choice-grid { grid-template-columns: 1fr; } }
+
+/* Alpine Legacy 0.6.3 — physical expedition simulation. */
+.career-shell.is-expedition-locked .career-sidebar__nav button:not(.is-active),
+.career-shell.is-expedition-locked .career-sidebar__footer button,
+.career-shell.is-expedition-locked .career-topbar__menu { opacity: .3; cursor: not-allowed; }
+.simulation-expedition-page { padding: 24px 28px 70px; }
+.simulation-expedition-head { display: flex; justify-content: space-between; gap: 24px; align-items: end; }
+.simulation-expedition-head h1 { margin: 4px 0; font-size: clamp(34px,4vw,66px); }
+.simulation-expedition-head > div:last-child { text-align: right; }
+.simulation-expedition-head > div:last-child strong { display: block; font: 48px/1 var(--serif); }
+.simulation-expedition-head > div:last-child small { color: var(--muted); }
+.simulation-route-meter { position: relative; height: 24px; margin: 14px 0; background: var(--line); overflow: hidden; }
+.simulation-route-meter i { display: block; height: 100%; background: var(--accent); }
+.simulation-route-meter span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; letter-spacing: .12em; }
+.simulation-survival { margin: 14px 0; padding: 18px; border: 1px solid var(--accent); background: var(--paper); }
+.simulation-survival h2 { margin: 0; }
+.simulation-order { margin: 14px 0; padding: 16px 18px; border-left: 5px solid #b68a42; background: var(--paper); }
+.simulation-order blockquote { margin: 8px 0 0; font: 25px/1.2 var(--serif); }
+.simulation-stage-card { margin: 14px 0; padding: 18px; border: 1px solid var(--line); background: var(--paper); }
+.simulation-stage-card.is-critical { border-color: var(--accent); box-shadow: inset 6px 0 var(--accent); }
+.simulation-stage-card header { display: flex; justify-content: space-between; gap: 20px; }
+.simulation-stage-card h2 { margin: 5px 0; font-size: 30px; }
+.simulation-stage-card header > strong { font: 42px var(--serif); }
+.simulation-stage-card > i { display: block; height: 5px; margin: 12px 0; background: var(--line); }
+.simulation-stage-card > i b { display: block; height: 100%; background: var(--accent); }
+.simulation-stage-card > div { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+.simulation-stage-card > div span { padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); }
+.simulation-stage-card > div b { display: block; margin-top: 4px; color: var(--ink); }
+.simulation-action-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.simulation-action-layout > section:last-child { grid-column: 1 / -1; }
+.simulation-actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+.simulation-action-layout > section:first-child .simulation-actions { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.simulation-action-card { min-height: 150px; padding: 14px; border: 1px solid var(--line); background: var(--paper); text-align: left; }
+.simulation-action-card header { display: flex; justify-content: space-between; gap: 10px; }
+.simulation-action-card header strong { font: 22px/1 var(--serif); }
+.simulation-action-card header span { color: var(--accent); font-size: 10px; text-transform: uppercase; }
+.simulation-action-card p { color: var(--muted); }
+.simulation-action-card footer { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; }
+.simulation-action-card > small { display: block; margin-top: 8px; color: var(--accent); }
+.simulation-action-card:disabled { opacity: .38; }
+.simulation-event-panel { padding: 20px; border: 1px solid var(--accent); background: var(--paper); }
+.simulation-event-panel blockquote { font: 25px/1.2 var(--serif); }
+.simulation-event-panel > div { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+.simulation-event-panel button { padding: 14px; border: 1px solid var(--line); background: transparent; text-align: left; }

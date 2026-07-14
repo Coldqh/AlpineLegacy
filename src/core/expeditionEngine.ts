@@ -4,6 +4,7 @@ import type {
   ClimbPace,
   ExpeditionPhaseNode,
   ExpeditionRoute,
+  ExpeditionSimulationStage,
   ParticipantActionTone,
   ParticipantEvaluation,
   ParticipantExpeditionState,
@@ -367,17 +368,58 @@ export function createParticipantExpeditionState(route: ExpeditionRoute): Partic
 }
 
 export function getCurrentParticipantNode(career: CareerState) {
+  const simulation = career.activeClimb?.simulation;
+  if (simulation) {
+    const stages = simulation.direction === 'ASCENT' ? simulation.ascentStages : simulation.descentStages;
+    const stage = stages[Math.min(simulation.stageIndex, Math.max(0, stages.length - 1))];
+    if (!stage) return null;
+    return {
+      id: stage.id,
+      phase: stage.phase,
+      label: stage.label,
+      segmentId: stage.sourceSegmentId,
+      campPossible: stage.campPossible,
+      estimatedMinutes: 0,
+      requiredActionCount: Math.max(1, Math.ceil(stage.requiredProgress / 50)),
+    };
+  }
   const route = routeForCareer(career);
   const participant = career.activeClimb?.participant;
   if (!route?.graph || !participant) return null;
   return route.graph.nodes[Math.min(participant.graphNodeIndex, route.graph.nodes.length - 1)] ?? null;
 }
 
+export function createParticipantEvent(career: CareerState, stage: ExpeditionSimulationStage, serial: number): ParticipantScene {
+  const climb = career.activeClimb!;
+  const participant = climb.participant;
+  const templates = phaseTemplates[stage.phase]?.length ? phaseTemplates[stage.phase] : phaseTemplates.TECHNICAL;
+  const templateIndex = Math.abs(serial + stage.id.length + (participant?.totalActions ?? 0)) % templates.length;
+  const template = templates[templateIndex]!;
+  const leader = climb.leaderNpcId ? career.teamRoster.find(member => member.id === climb.leaderNpcId) ?? null : null;
+  const options = template.options.map((item, index) => normalizedOption(item, `${stage.id}:event:${serial}:${index}`, climb.playerRole));
+  return {
+    id: `${stage.id}:event:${serial}`,
+    kind: template.kind,
+    phase: stage.phase,
+    nodeId: stage.id,
+    nodeLabel: stage.label,
+    title: template.title,
+    situation: template.situation.replace('{ROLE}', roleNames[climb.playerRole]),
+    orderText: template.order ?? null,
+    leaderNpcId: climb.leaderNpcId,
+    leaderName: leader?.name ?? 'Руководитель экспедиции',
+    roleLabel: roleNames[climb.playerRole],
+    options,
+  };
+}
+
 export function getCurrentParticipantScene(career: CareerState): ParticipantScene | null {
   const climb = career.activeClimb;
-  const participant = climb?.participant;
+  if (!climb?.participant) return null;
+  if (climb.simulation) return climb.simulation.activeEvent;
+  const participant = climb.participant;
   const node = getCurrentParticipantNode(career);
-  if (!climb || !participant || !node) return null;
+  if (!node) return null;
   const templates = phaseTemplates[node.phase];
   const templateIndex = (participant.graphNodeIndex + participant.nodeActionIndex) % templates.length;
   const template = templates[templateIndex]!;
@@ -449,6 +491,17 @@ export function evaluateParticipant(state: ParticipantExpeditionState, successfu
 }
 
 export function nodeProgress(career: CareerState) {
+  const simulation = career.activeClimb?.simulation;
+  if (simulation) {
+    const stages = simulation.direction === 'ASCENT' ? simulation.ascentStages : simulation.descentStages;
+    const stage = stages[simulation.stageIndex];
+    if (!stage) return { current: 0, required: 0, overall: simulation.status === 'SAFE' ? 100 : 0 };
+    return {
+      current: Math.floor(stage.progress),
+      required: Math.floor(stage.requiredProgress),
+      overall: Math.min(100, Math.round((simulation.stageIndex + stage.progress / Math.max(1, stage.requiredProgress)) / Math.max(1, stages.length) * 100)),
+    };
+  }
   const participant = career.activeClimb?.participant;
   const node = getCurrentParticipantNode(career);
   if (!participant || !node) return { current: 0, required: 0, overall: 0 };

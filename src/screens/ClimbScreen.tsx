@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { RouteBlueprint } from '../components/RouteBlueprint';
-import { getCurrentRouteDecision, previewClimbAction, SKILL_LABELS } from '../core/career';
+import { currentExpeditionStage, getCurrentRouteDecision, previewClimbAction, previewExpeditionActions, SKILL_LABELS } from '../core/career';
 import { getCurrentParticipantScene, nodeProgress, participantLeader } from '../core/expeditionEngine';
-import type { CareerState, ClimbActionPreview, ClimbOrderId, ClimbPace, ClimbStepResult, DifficultyId } from '../core/types';
+import type { CareerState, ClimbActionPreview, ClimbOrderId, ClimbPace, ClimbStepResult, DifficultyId, ExpeditionFieldActionId } from '../core/types';
 
 type Props = {
   career: CareerState;
@@ -16,6 +16,7 @@ type Props = {
   onFixRope: () => ClimbStepResult;
   onLeaveCache: () => ClimbStepResult;
   onParticipantAction: (optionId: string) => ClimbStepResult;
+  onFieldAction: (actionId: ExpeditionFieldActionId) => ClimbStepResult;
   onBeginDescent: () => void;
   onRetreat: () => void;
   onClose: () => void;
@@ -86,7 +87,7 @@ function PaceCard({ preview, primary, recommended, difficulty, onClick }: { prev
   );
 }
 
-export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onParticipantAction, onBeginDescent, onRetreat, onClose }: Props) {
+export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onParticipantAction, onFieldAction, onBeginDescent, onRetreat, onClose }: Props) {
   const climb = career.activeClimb!;
   const [feedback, setFeedback] = useState<Pick<ClimbStepResult, 'headline' | 'detail' | 'severity'> | null>(null);
   const activeSegment = climb.route[Math.max(0, Math.min(climb.route.length - 1, climb.segmentIndex))]!;
@@ -96,6 +97,8 @@ export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, on
   const participantScene = getCurrentParticipantScene(career);
   const participantProgress = nodeProgress(career);
   const participantLeaderData = participantLeader(career);
+  const simulationStage = currentExpeditionStage(career);
+  const fieldActions = useMemo(() => previewExpeditionActions(career), [career]);
   const previews = useMemo(() => (['CAUTIOUS', 'STEADY', 'FAST'] as ClimbPace[]).map(pace => previewClimbAction(career, pace)).filter(Boolean) as ClimbActionPreview[], [career]);
   const recommendedPace = difficulty === 'EXPLORER' ? [...previews].sort((a, b) => (a.incidentRisk + a.energyCost * .45 + a.durationMinutes / 180) - (b.incidentRisk + b.energyCost * .45 + b.durationMinutes / 180))[0]?.pace : null;
   const noReturn = climb.phase === 'ASCENT' && Boolean(activeSegment.noReturn || activeSegment.exposure >= 65);
@@ -143,6 +146,27 @@ export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, on
         <button className="primary-action result-close" onClick={onClose}><span>Закрыть экспедицию</span><b>→</b></button>
       </section>
     );
+  }
+
+  if (climb.simulation && simulationStage) {
+    const simulation = climb.simulation;
+    const stages = simulation.direction === 'ASCENT' ? simulation.ascentStages : simulation.descentStages;
+    const stagePercent = Math.min(100, Math.round(simulationStage.progress / Math.max(1, simulationStage.requiredProgress) * 100));
+    const routePercent = Math.min(100, Math.round((simulation.stageIndex + stagePercent / 100) / Math.max(1, stages.length) * 100));
+    const chanceLabel = (chance: number | null, risk: string) => difficulty === 'EXPLORER' && chance !== null ? `${chance}%` : difficulty === 'EXPEDITION' ? 'скрыто' : risk.toLowerCase();
+    if (simulation.status === 'SUMMIT') return <section className="workspace-page summit-screen summit-screen--embedded"><div className="summit-screen__altitude">+{simulation.maxRelativeElevation}</div><p className="eyebrow">SUMMIT / RETURN REQUIRED</p><h1>{climb.mountainName}</h1><p className="lead">Высота над стартом {simulation.maxRelativeElevation} м. Реальная высота {climb.summitElevation} м. Внизу {simulation.descentStages.length} физических этапов.</p><button className="primary-action summit-descent" onClick={onBeginDescent}><span>Начать полный спуск</span><b>↓</b></button></section>;
+    const renderAction = (action: typeof fieldActions[number]) => <button key={action.id} disabled={action.disabled} className="simulation-action-card" onClick={() => resolve(() => onFieldAction(action.id))}><header><strong>{action.title}</strong><span>{action.successChance === null ? 'ДЕЙСТВИЕ' : chanceLabel(action.successChance, action.riskLabel)}</span></header><p>{action.detail}</p><footer><b>{durationLabel(action.durationMinutes)}</b><span>{action.energyDelta > 0 ? `силы +${action.energyDelta}` : action.energyDelta < 0 ? `силы ${action.energyDelta}` : 'силы 0'}</span>{action.progressDelta > 0 && <span>этап +{action.progressDelta}</span>}</footer>{action.disabledReason && <small>{action.disabledReason}</small>}</button>;
+    return <section className="workspace-page simulation-expedition-page">
+      <header className="simulation-expedition-head"><div><p className="eyebrow">{simulation.direction === 'ASCENT' ? 'ASCENT' : climb.retreating ? 'RETREAT' : 'DESCENT'} · STAGE {simulation.stageIndex + 1}/{stages.length}</p><h1>{simulationStage.label}</h1><span>{climb.mountainName} · {simulationStage.terrain}</span></div><div><strong>+{Math.round(simulation.relativeElevation)} м</strong><small>{climb.currentElevation} м над уровнем моря</small></div></header>
+      <div className="simulation-route-meter"><i style={{ width: `${routePercent}%` }} /><span>{routePercent}% маршрута · {simulation.totalActions} действий</span></div>
+      <div className="climb-instruments climb-instruments--workspace"><div><span>Силы</span><strong>{Math.round(climb.energy)}%</strong></div><div><span>Состояние</span><strong>{Math.round(climb.condition)}%</strong></div><div><span>Группа</span><strong>{Math.round(climb.teamCondition)}%</strong></div><div><span>Вода</span><strong>{climb.supplies.waterUnits}</strong></div><div><span>Верёвка</span><strong>{climb.ropeMetersRemaining} м</strong></div><div><span>Без сна</span><strong>{Math.round(climb.hoursAwake)} ч</strong></div></div>
+      {simulation.status === 'STRANDED' && <section className="simulation-survival"><h2>Движение остановлено</h2><p>Ты остаёшься на горе. Восстанавливай силы, ставь лагерь, проси помощь или состояние продолжит падать.</p>{simulation.rescueEtaMinutes !== null && <strong>Помощь через ≈ {Math.ceil(simulation.rescueEtaMinutes / 60)} ч</strong>}</section>}
+      {simulation.leaderOrder && !simulation.leaderOrder.resolved && <section className="simulation-order"><p className="eyebrow">ПРИКАЗ РУКОВОДИТЕЛЯ</p><blockquote>«{simulation.leaderOrder.text}»</blockquote></section>}
+      <section className={`simulation-stage-card ${simulationStage.critical ? 'is-critical' : ''}`}><header><div><p className="eyebrow">{simulationStage.critical ? 'KEY SECTION' : 'CURRENT SECTION'}</p><h2>{simulationStage.hazard}</h2></div><strong>{stagePercent}%</strong></header><i><b style={{ width: `${stagePercent}%` }} /></i><div><span>Навык <b>{SKILL_LABELS[simulationStage.skill]} {career.hero.skills[simulationStage.skill]}</b></span><span>Сложность <b>{Math.round(simulationStage.difficulty)}</b></span><span>Подготовка <b>{Math.round(simulationStage.preparation)}</b></span><span>Точки <b>{simulationStage.anchorsPlaced}</b></span></div></section>
+      {feedback && <div className={`climb-feedback is-${feedback.severity.toLowerCase()}`}><span>ПОСЛЕДНЕЕ ДЕЙСТВИЕ</span><h3>{feedback.headline}</h3><p>{feedback.detail}</p></div>}
+      {participantScene ? <section className="simulation-event-panel"><p className="eyebrow">EVENT ON ROUTE</p><h2>{participantScene.title}</h2>{participantScene.orderText && <blockquote>«{participantScene.orderText}»</blockquote>}<p>{participantScene.situation}</p><div>{participantScene.options.map(option => <button key={option.id} onClick={() => resolve(() => onParticipantAction(option.id))}><strong>{option.title}</strong><p>{option.detail}</p>{option.skill && <small>{SKILL_LABELS[option.skill]}</small>}</button>)}</div></section> : <div className="simulation-action-layout"><section><p className="eyebrow">ДВИЖЕНИЕ</p><div className="simulation-actions">{fieldActions.filter(action => action.id.startsWith('MOVE_')).map(renderAction)}</div></section><section><p className="eyebrow">ПОДГОТОВКА УЧАСТКА</p><div className="simulation-actions">{fieldActions.filter(action => ['SCOUT_LINE','PLACE_ANCHOR','FIX_ROPE','CHECK_SURFACE'].includes(action.id)).map(renderAction)}</div></section><section><p className="eyebrow">СОСТОЯНИЕ И ВЫЖИВАНИЕ</p><div className="simulation-actions">{fieldActions.filter(action => !action.id.startsWith('MOVE_') && !['SCOUT_LINE','PLACE_ANCHOR','FIX_ROPE','CHECK_SURFACE','TURN_BACK'].includes(action.id)).map(renderAction)}</div></section></div>}
+      {!participantScene && simulation.direction === 'ASCENT' && <button className="m-retreat-button" onClick={onRetreat}>Развернуться и пройти весь путь вниз</button>}
+    </section>;
   }
 
   if (climb.participant && participantScene) {

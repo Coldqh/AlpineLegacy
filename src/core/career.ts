@@ -6,6 +6,8 @@ import { buildExpeditionReport, createClimbTeamStates, enrichRoster, finalizeRos
 import { advanceLivingWorld, createLivingWorld, registerHeroExpedition } from './worldSimulation';
 import { createCareerProgression, currentSeasonExpeditionCount, expeditionLimitForTier, hydrateCareerProgression, normalizeCareerProgression, rollCareerSeason, syncCareerProgression } from './progression';
 import { createParticipantExpeditionState, evaluateParticipant, getCurrentParticipantNode, getCurrentParticipantScene, leaderPace, resolveParticipantSkill } from './expeditionEngine';
+import { beginSimulationDescent, beginSimulationRetreat, createExpeditionSimulation, hydrateExpeditionSimulation, resolveExpeditionEventChoice, resolveExpeditionFieldAction as resolveSimulationFieldAction } from './simulationEngine';
+export { currentExpeditionStage, previewExpeditionActions } from './simulationEngine';
 import type {
   CalendarEntry,
   CareerDraft,
@@ -22,6 +24,7 @@ import type {
   ExpeditionApplication,
   ExpeditionOffer,
   ExpeditionPlan,
+  ExpeditionFieldActionId,
   ExpeditionRank,
   ExpeditionReadiness,
   ExpeditionRoute,
@@ -426,17 +429,20 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
   const organization = getOrganization(world, membership.organizationId);
   const club = membership.mode === 'INDEPENDENT' ? independentClub(world) : organizationToClub(organization, world);
   const teamRoster = career.teamRoster?.length ? career.teamRoster : rosterForOrganization(world, membership.organizationId);
-  const activeClimb = career.activeClimb ? {
+  const activeClimbBase = career.activeClimb ? {
     ...career.activeClimb,
     expeditionOfferId: career.activeClimb.expeditionOfferId ?? career.selectedOfferId ?? career.expeditionPlan?.offerId ?? null,
     leaderNpcId: career.activeClimb.leaderNpcId ?? teamRoster.find((member: TeamMember) => member.role === 'LEADER')?.id ?? null,
     playerRole: career.activeClimb.playerRole ?? 'LEADER',
     authorityMode: career.activeClimb.authorityMode ?? (membership.permissions.canIssueOrders ? 'COMMAND' : 'PARTICIPANT'),
     participant: career.activeClimb.participant ?? null,
-  } : null;
+    simulation: career.activeClimb.simulation ?? null,
+  } as QualificationClimb : null;
+  const activeRoute = activeClimbBase ? routes.find((route: ExpeditionRoute) => route.id === activeClimbBase.routeId) ?? routes[0] : null;
+  const activeClimb = activeClimbBase && activeRoute ? { ...activeClimbBase, simulation: hydrateExpeditionSimulation(activeClimbBase, activeRoute) } : activeClimbBase;
   return hydrateCareerProgression({
     ...career,
-    schemaVersion: 12,
+    schemaVersion: 13,
     club,
     routes,
     teamRoster,
@@ -464,7 +470,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = rosterForOrganization(world, membership.organizationId);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 12,
+    schemaVersion: 13,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,
@@ -545,6 +551,8 @@ function migrateActiveClimbV8(active: any, routes: ExpeditionRoute[]): Qualifica
     decisions: active.decisions ?? [],
     casualties: active.casualties ?? [],
     rescuedMemberIds: active.rescuedMemberIds ?? [],
+    participant: active.participant ?? null,
+    simulation: active.simulation ?? null,
   } as QualificationClimb;
 }
 
@@ -971,6 +979,10 @@ export function startPlannedClimb(career: CareerState): CareerState {
   const team = selectedTeam(career);
   const cost = expeditionCost(career);
   const startEnergy = clamp(96 - career.hero.fatigue * .28 - Math.max(0, packWeight(career) - 13) * 1.2, 58, 96);
+  const simulation = createExpeditionSimulation(route);
+  const expeditionStageCount = simulation.ascentStages.length + simulation.descentStages.length;
+  const plannedDays = Math.max(career.expeditionPlan.foodDays, Math.ceil(expeditionStageCount / 8));
+  const groupSize = team.length + 1;
   const climb: QualificationClimb = {
     id: `exp-${career.id}-${career.completedClimbs + 1}-${route.id}`,
     expeditionOfferId: career.expeditionPlan.offerId,
@@ -1006,9 +1018,9 @@ export function startPlannedClimb(career: CareerState): CareerState {
     rescuedMemberIds: [],
     teamCondition: team.length ? Math.round(team.reduce((sum, member) => sum + member.condition, 0) / team.length) : career.hero.health,
     supplies: {
-      foodUnits: career.expeditionPlan.foodDays * (team.length + 1) * 3,
-      waterUnits: Math.max(8, (team.length + 1) * 4),
-      fuelUnits: career.expeditionPlan.fuelUnits,
+      foodUnits: Math.max(career.expeditionPlan.foodDays, plannedDays) * groupSize * 3,
+      waterUnits: Math.max(12, groupSize * Math.max(6, plannedDays * 4)),
+      fuelUnits: Math.max(career.expeditionPlan.fuelUnits * 2, plannedDays * 3),
     },
     hoursAwake: 0,
     campEstablished: false,
@@ -1025,7 +1037,11 @@ export function startPlannedClimb(career: CareerState): CareerState {
     earnedReputation: 0,
     earnedMoney: 0,
     participant: career.expeditionPlan.authorityMode === 'PARTICIPANT' ? createParticipantExpeditionState(route) : null,
+    simulation,
   };
+  if (climb.participant && climb.simulation) {
+    climb.participant.targetActions = climb.simulation.ascentStages.length + climb.simulation.descentStages.length;
+  }
   const timeline = advanceDays(career, window.startsInDays + career.expeditionPlan.acclimatizationDays);
   const next: CareerState = {
     ...career,
@@ -1096,6 +1112,7 @@ export function chooseRouteDecision(career: CareerState, optionId: string): Clim
 }
 
 export function fixRope(career: CareerState): ClimbStepResult {
+  if (career.activeClimb?.simulation) return resolveSimulationFieldAction(career, 'FIX_ROPE');
   const climb = career.activeClimb;
   if (!climb || climb.phase !== 'ASCENT') return { career, headline: 'Верёвка недоступна', detail: 'Стационарную линию можно оставить только на подъёме.', severity: 'WARNING' };
   const segment = climb.route[climb.segmentIndex]!;
@@ -1338,6 +1355,7 @@ function descentStartIndex(climb: QualificationClimb, descentRoute: RouteSegment
 }
 
 export function beginDescent(career: CareerState): CareerState {
+  if (career.activeClimb?.simulation) return beginSimulationDescent(career);
   const climb = career.activeClimb;
   if (!climb || climb.phase !== 'SUMMIT') return career;
   const descentRoute = descentRouteFor(career, climb);
@@ -1357,6 +1375,7 @@ export function beginDescent(career: CareerState): CareerState {
 }
 
 export function retreatClimb(career: CareerState): CareerState {
+  if (career.activeClimb?.simulation) return beginSimulationRetreat(career);
   const climb = career.activeClimb;
   if (!climb || !['ASCENT', 'SUMMIT'].includes(climb.phase)) return career;
   const descentRoute = descentRouteFor(career, climb);
@@ -1535,6 +1554,7 @@ function fieldTexture(segment: RouteSegment, climb: QualificationClimb, temperat
 }
 
 export function resolveParticipantAction(career: CareerState, optionId: string): ClimbStepResult {
+  if (career.activeClimb?.simulation) return resolveExpeditionEventChoice(career, optionId);
   const climb = career.activeClimb;
   const participant = climb?.participant;
   const scene = getCurrentParticipantScene(career);
@@ -1699,6 +1719,10 @@ export function resolveParticipantAction(career: CareerState, optionId: string):
 }
 
 export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbStepResult {
+  if (career.activeClimb?.simulation) {
+    const action: ExpeditionFieldActionId = pace === 'CAUTIOUS' ? 'MOVE_CAUTIOUS' : pace === 'FAST' ? 'MOVE_FAST' : 'MOVE_STEADY';
+    return resolveSimulationFieldAction(career, action);
+  }
   const climb = career.activeClimb;
   if (!climb || (climb.phase !== 'ASCENT' && climb.phase !== 'DESCENT')) {
     return { career, headline: 'Действие недоступно', detail: 'Группа сейчас не движется по маршруту.', severity: 'WARNING' };
@@ -1890,6 +1914,7 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
 }
 
 export function establishCamp(career: CareerState): ClimbStepResult {
+  if (career.activeClimb?.simulation) return resolveSimulationFieldAction(career, 'MAKE_CAMP');
   const climb = career.activeClimb;
   if (!climb || !['ASCENT', 'DESCENT'].includes(climb.phase)) return { career, headline: 'Лагерь недоступен', detail: 'Группа не находится на маршруте.', severity: 'WARNING' };
   const segment = climb.route[climb.segmentIndex]!;
@@ -1925,6 +1950,7 @@ export function establishCamp(career: CareerState): ClimbStepResult {
 }
 
 export function meltSnow(career: CareerState): ClimbStepResult {
+  if (career.activeClimb?.simulation) return resolveSimulationFieldAction(career, 'MELT_SNOW');
   const climb = career.activeClimb;
   if (!climb || !['ASCENT', 'DESCENT'].includes(climb.phase)) return { career, headline: 'Действие недоступно', detail: '', severity: 'WARNING' };
   if (climb.supplies.fuelUnits <= 0) return { career, headline: 'Топливо закончилось', detail: 'Получить воду из снега больше нельзя.', severity: 'DANGER' };
@@ -1942,6 +1968,7 @@ export function meltSnow(career: CareerState): ClimbStepResult {
 }
 
 export function waitWeather(career: CareerState): ClimbStepResult {
+  if (career.activeClimb?.simulation) return resolveSimulationFieldAction(career, 'REST_SHORT');
   const climb = career.activeClimb;
   if (!climb || !['ASCENT', 'DESCENT'].includes(climb.phase)) return { career, headline: 'Действие недоступно', detail: '', severity: 'WARNING' };
   const duration = 3 * 60;
@@ -1958,6 +1985,11 @@ export function waitWeather(career: CareerState): ClimbStepResult {
     log: [...climb.log, `${clock(climb.elapsedMinutes + duration)} — группа ждала три часа. ${improved ? 'Условия улучшились.' : 'Окно не открылось.'}`],
   };
   return { career: { ...career, activeClimb: nextClimb }, headline: improved ? 'Условия улучшились' : 'Погода держит группу', detail: 'Прошло три часа. Запасы и время потрачены.', severity: improved ? 'CALM' : 'WARNING' };
+}
+
+
+export function resolveExpeditionFieldAction(career: CareerState, actionId: ExpeditionFieldActionId): ClimbStepResult {
+  return resolveSimulationFieldAction(career, actionId);
 }
 
 export function closeClimb(career: CareerState): CareerState {

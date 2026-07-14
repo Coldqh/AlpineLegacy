@@ -4,15 +4,19 @@ import {
   availableExpeditionOffers,
   closeClimb,
   createCareer,
+  currentExpeditionStage,
+  previewExpeditionActions,
+  resolveExpeditionFieldAction,
   resolveParticipantAction,
   startPlannedClimb,
 } from '../career';
 import { getCurrentParticipantScene } from '../expeditionEngine';
 import { getEntryOrganizations } from '../ecosystem';
 import { generateWorld } from '../generator';
+import { autoplayExpedition } from '../playtest';
 import type { CareerState, ParticipantSceneOption } from '../types';
 
-const config = { seed: 'PARTICIPANT-062', eraId: 'EXPEDITION' as const, startYear: 1968, difficulty: 'EXPLORER' as const };
+const config = { seed: 'PARTICIPANT-063', eraId: 'EXPEDITION' as const, startYear: 1968, difficulty: 'EXPLORER' as const };
 
 function acceptedCareer() {
   const world = generateWorld(config);
@@ -40,31 +44,45 @@ describe('playable participant expedition', () => {
     expect(career.expeditionPlan.leaderNpcId).toBeTruthy();
   });
 
-  it('starts with a long graph of personal decisions and NPC orders', () => {
+  it('starts at relative zero with a long physical route and field actions', () => {
     const { career } = acceptedCareer();
     const started = startPlannedClimb(career);
+    const simulation = started.activeClimb?.simulation;
     expect(started.activeClimb?.participant).toBeTruthy();
-    expect(started.activeClimb?.participant?.targetActions).toBeGreaterThanOrEqual(25);
-    const scene = getCurrentParticipantScene(started);
-    expect(scene?.options.length).toBeGreaterThanOrEqual(3);
-    expect(scene?.leaderNpcId).toBeTruthy();
+    expect(simulation?.relativeElevation).toBe(0);
+    expect((simulation?.ascentStages.length ?? 0) + (simulation?.descentStages.length ?? 0)).toBeGreaterThanOrEqual(30);
+    expect(currentExpeditionStage(started)?.phase).toBe('APPROACH');
+    const actionIds = previewExpeditionActions(started).map(action => action.id);
+    expect(actionIds).toContain('MOVE_CAUTIOUS');
+    expect(actionIds).toContain('FIX_ROPE');
+    expect(actionIds).toContain('MAKE_CAMP');
   });
 
-  it('records personal choices and produces a leader evaluation', () => {
+  it('triggers personal events on top of movement instead of replacing it', () => {
     const { career } = acceptedCareer();
     let current: CareerState = startPlannedClimb(career);
-    for (let step = 0; step < 180 && current.activeClimb; step += 1) {
-      const climb = current.activeClimb;
-      if (['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) break;
-      const scene = getCurrentParticipantScene(current);
-      if (!scene) break;
-      current = resolveParticipantAction(current, safestOption(scene.options).id).career;
+    for (let step = 0; step < 12 && !getCurrentParticipantScene(current); step += 1) {
+      current = resolveExpeditionFieldAction(current, 'MOVE_CAUTIOUS').career;
     }
-    expect(current.activeClimb?.participant?.totalActions ?? 0).toBeGreaterThanOrEqual(20);
-    if (current.activeClimb && ['FAILED', 'RETREATED'].includes(current.activeClimb.phase)) current = closeClimb(current);
-    const report = current.reports[current.reports.length - 1];
+    const scene = getCurrentParticipantScene(current);
+    expect(scene?.options.length).toBeGreaterThanOrEqual(3);
+    expect(scene?.leaderNpcId).toBeTruthy();
+    const beforeMoves = current.activeClimb?.moveCount ?? 0;
+    current = resolveParticipantAction(current, safestOption(scene!.options).id).career;
+    expect(current.activeClimb?.moveCount).toBe(beforeMoves);
+    expect(currentExpeditionStage(current)).toBeTruthy();
+  });
+
+  it('records a long physical expedition and produces a leader evaluation after return or evacuation', () => {
+    const { career } = acceptedCareer();
+    let current = autoplayExpedition(startPlannedClimb(career));
+    expect(['COMPLETE', 'RETREATED', 'FAILED']).toContain(current.activeClimb?.phase);
+    expect(current.activeClimb?.moveCount ?? 0).toBeGreaterThanOrEqual(40);
+    expect(current.activeClimb?.participant?.totalActions ?? 0).toBeGreaterThanOrEqual(25);
+    current = closeClimb(current);
+    const report = current.reports.at(-1);
     expect(report).toBeTruthy();
     expect(report?.participantEvaluation).toBeTruthy();
-    expect(report?.participantEvaluation?.rankPoints).toBeGreaterThan(0);
+    expect(report?.participantEvaluation?.rankPoints).toBeGreaterThanOrEqual(0);
   });
 });

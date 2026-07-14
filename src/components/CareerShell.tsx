@@ -11,6 +11,7 @@ type Props = {
   onTab: (tab: CareerTabId) => void;
   onExit: () => void;
   onAtlas: () => void;
+  locked?: boolean;
   children: ReactNode;
 };
 
@@ -36,19 +37,19 @@ function isPrimaryActive(tab: PrimaryTab, activeTab: CareerTabId) {
   return tab.id === activeTab || tab.children?.includes(activeTab);
 }
 
-export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, children }: Props) {
+export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, locked = false, children }: Props) {
   const mobile = useIsMobile();
-  if (mobile) return <MobileCareerShell world={world} career={career} activeTab={activeTab} onTab={onTab} onExit={onExit} onAtlas={onAtlas}>{children}</MobileCareerShell>;
+  if (mobile) return <MobileCareerShell world={world} career={career} activeTab={activeTab} onTab={onTab} onExit={onExit} onAtlas={onAtlas} locked={locked}>{children}</MobileCareerShell>;
 
   const initials = career.hero.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
   const current = tabs.find(tab => isPrimaryActive(tab, activeTab)) ?? tabs[0]!;
 
   return (
-    <main className="career-shell">
+    <main className={`career-shell ${locked ? 'is-expedition-locked' : ''}`}>
       <aside className="career-sidebar">
         <nav className="career-sidebar__nav" aria-label="Главные разделы карьеры">
           {tabs.map((tab, index) => {
-            const disabled = tab.id === 'CLIMB' && !career.activeClimb;
+            const disabled = locked ? tab.id !== 'CLIMB' : tab.id === 'CLIMB' && !career.activeClimb;
             const active = isPrimaryActive(tab, activeTab);
             return (
               <button
@@ -69,14 +70,14 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
         </nav>
 
         <div className="career-sidebar__footer">
-          <button onClick={onAtlas} title="Горный атлас" aria-label="Открыть горный атлас">△</button>
+          <button disabled={locked} onClick={onAtlas} title="Горный атлас" aria-label="Открыть горный атлас">△</button>
           <div><span>{initials}</span><small>{career.hero.reputation} REP</small></div>
         </div>
       </aside>
 
       <section className="career-workspace">
         <header className="career-topbar">
-          <button className="career-topbar__menu" onClick={onExit}>← Меню</button>
+          <button className="career-topbar__menu" disabled={locked} onClick={onExit}>{locked ? "Экспедиция идёт" : "← Меню"}</button>
           <div className="career-topbar__place">
             <small>{current.label} · {world.region.name}</small>
             <strong>{formatSeasonDate(career.year, career.seasonDay)}</strong>

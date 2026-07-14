@@ -2,12 +2,10 @@ import {
   acceptExpeditionOffer,
   availableExpeditionOffers,
   beginDescent,
-  chooseRouteDecision,
   createCareer,
-  establishCamp,
-  getCurrentRouteDecision,
-  meltSnow,
-  resolveClimbStep,
+  currentExpeditionStage,
+  previewExpeditionActions,
+  resolveExpeditionFieldAction,
   resolveParticipantAction,
   startPlannedClimb,
 } from './career';
@@ -36,42 +34,118 @@ function safestParticipantOption(options: ParticipantSceneOption[]) {
   return [...options].sort((a, b) => order.indexOf(a.tone) - order.indexOf(b.tone))[0]!;
 }
 
+function chooseAutoplayAction(career: CareerState) {
+  const climb = career.activeClimb!;
+  const simulation = climb.simulation!;
+  const stage = currentExpeditionStage(career)!;
+  const actions = previewExpeditionActions(career);
+  const usable = (id: string) => actions.find(action => action.id === id && !action.disabled);
+
+  if (simulation.status === 'STRANDED') {
+    return usable('MAKE_CAMP')
+      ?? usable('EAT_DRINK')
+      ?? (climb.energy < 45 ? usable('REST_SHORT') : undefined)
+      ?? usable('REQUEST_AID')
+      ?? usable('REST_SHORT')
+      ?? usable('DROP_LOAD');
+  }
+
+  if (simulation.direction === 'ASCENT' && (
+    climb.condition < 48
+    || (climb.supplies.waterUnits <= 3 && climb.supplies.fuelUnits <= 0)
+    || climb.supplies.foodUnits <= Math.max(3, climb.teamMemberIds.length + 1)
+  )) {
+    const retreat = usable('TURN_BACK');
+    if (retreat) return retreat;
+  }
+
+  if (climb.energy < 24) {
+    return usable('EAT_DRINK')
+      ?? (climb.energy < 52 ? usable('REST_SHORT') : undefined)
+      ?? usable('DROP_LOAD')
+      ?? usable('TURN_BACK');
+  }
+
+  if (climb.hoursAwake > 16) {
+    const camp = usable('MAKE_CAMP');
+    if (camp) return camp;
+    if (climb.energy < 48) return usable('REST_SHORT') ?? usable('EAT_DRINK');
+  }
+
+  if (climb.supplies.waterUnits <= 3) {
+    const water = usable('MELT_SNOW');
+    if (water) return water;
+    if (climb.supplies.waterUnits > 0 && climb.energy < 72) return usable('EAT_DRINK');
+  }
+
+  const cautious = usable('MOVE_CAUTIOUS');
+  if (cautious?.successChance !== null && cautious && cautious.successChance < 58 && stage.preparation < 38) {
+    const prep = stage.terrain.toLowerCase().includes('снег') || stage.terrain.toLowerCase().includes('лед')
+      ? usable('CHECK_SURFACE')
+      : usable('SCOUT_LINE');
+    if (prep) return prep;
+  }
+
+  if (climb.teamCondition < 45) {
+    const help = usable('HELP_TEAM');
+    if (help) return help;
+  }
+
+  if (stage.critical) {
+    if (!stage.ropeFixed && climb.ropeMetersRemaining >= 20) {
+      const fixed = usable('FIX_ROPE');
+      if (fixed) return fixed;
+    }
+    if (stage.anchorsPlaced < 1 && climb.ropeMetersRemaining >= 5) {
+      const anchor = usable('PLACE_ANCHOR');
+      if (anchor) return anchor;
+    }
+    if (stage.preparation < 24) {
+      const prep = stage.terrain.toLowerCase().includes('снег') || stage.terrain.toLowerCase().includes('лед')
+        ? usable('CHECK_SURFACE')
+        : usable('SCOUT_LINE');
+      if (prep) return prep;
+    }
+  }
+
+  if (simulation.leaderOrder && !simulation.leaderOrder.resolved) {
+    const ordered = usable(simulation.leaderOrder.preferredAction);
+    if (ordered) return ordered;
+  }
+
+  return usable('MOVE_CAUTIOUS')
+    ?? usable('MOVE_STEADY')
+    ?? usable('REST_SHORT')
+    ?? actions.find(action => !action.disabled);
+}
+
+export function autoplayExpedition(career: CareerState, maxActions = 1400): CareerState {
+  let current = career;
+  for (let guard = 0; guard < maxActions; guard += 1) {
+    const climb = current.activeClimb;
+    if (!climb || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) break;
+    if (climb.phase === 'SUMMIT') {
+      current = beginDescent(current);
+      continue;
+    }
+    const scene = getCurrentParticipantScene(current);
+    if (scene) {
+      current = resolveParticipantAction(current, safestParticipantOption(scene.options).id).career;
+      continue;
+    }
+    const chosen = chooseAutoplayAction(current);
+    if (!chosen) break;
+    current = resolveExpeditionFieldAction(current, chosen.id).career;
+  }
+  return current;
+}
+
 function runCareer(seed: string, origin: OriginId, difficulty: DifficultyId) {
   const world = generateWorld({ seed, eraId: 'EXPEDITION', startYear: 1968, difficulty });
   const organization = getEntryOrganizations(world)[0]!;
   let career: CareerState = createCareer(world, { name: 'Balance Runner', age: 20, originId: origin, entryMode: 'ORGANIZATION', organizationId: organization.id });
   const offer = availableExpeditionOffers(world, career)[0]!;
-  career = startPlannedClimb(acceptExpeditionOffer(world, career, offer.id));
-  for (let guard = 0; guard < 180; guard += 1) {
-    const climb = career.activeClimb;
-    if (!climb || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) break;
-    if (climb.participant) {
-      const scene = getCurrentParticipantScene(career);
-      if (!scene) break;
-      career = resolveParticipantAction(career, safestParticipantOption(scene.options).id).career;
-      continue;
-    }
-    if (climb.phase === 'SUMMIT') {
-      career = beginDescent(career);
-      continue;
-    }
-    const decision = getCurrentRouteDecision(career);
-    if (decision) {
-      const choice = decision.options.find(item => item.tone === 'SAFE' && (!item.requiresRopeMeters || climb.ropeMetersRemaining >= item.requiresRopeMeters)) ?? decision.options[0]!;
-      career = chooseRouteDecision(career, choice.id).career;
-      continue;
-    }
-    const segment = climb.route[climb.segmentIndex]!;
-    if (segment.campPossible && climb.hoursAwake > 7 && climb.supplies.foodUnits > 0 && climb.supplies.fuelUnits > 0) {
-      career = establishCamp(career).career;
-      continue;
-    }
-    if (climb.supplies.waterUnits < 4 && climb.supplies.fuelUnits > 0) {
-      career = meltSnow(career).career;
-      continue;
-    }
-    career = resolveClimbStep(career, 'CAUTIOUS').career;
-  }
+  career = autoplayExpedition(startPlannedClimb(acceptExpeditionOffer(world, career, offer.id)));
   const climb = career.activeClimb!;
   return {
     seed,

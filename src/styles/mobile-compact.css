@@ -419,3 +419,78 @@
   html[data-device='phone'] .m-participant-evaluation > div span { padding: 3px 5px; border: 1px solid var(--m-line); font-size: 7px; }
   html[data-device='phone'] .m-participant-evaluation footer { margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--m-line); font-weight: 700; font-size: 9px; }
 }
+
+/* Alpine Legacy 0.6.3 — physical expedition simulation on phones. */
+@media (max-width: 1024px) {
+  html[data-device='phone'] .m-career-shell.is-expedition-locked { padding-bottom: env(safe-area-inset-bottom); }
+  html[data-device='phone'] .m-career-shell.is-expedition-locked .m-career-content { min-height: calc(100dvh - var(--m-top)); }
+  html[data-device='phone'] .m-career-shell.is-expedition-locked .m-topbar-back:disabled { opacity: 1; color: var(--m-accent); }
+  html[data-device='phone'] .m-career-shell.is-expedition-locked .m-topbar-title small { color: var(--m-accent); }
+  html[data-device='phone'] .m-expedition-simulation { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+
+  .m-sim-head { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; align-items: end; }
+  .m-sim-head small, .m-sim-head h1, .m-sim-head span, .m-sim-head > div:last-child strong { display: block; }
+  .m-sim-head small { color: var(--m-muted); font-size: 7px; letter-spacing: .12em; }
+  .m-sim-head h1 { margin: 2px 0; font: 600 19px/.98 var(--serif); }
+  .m-sim-head span { color: var(--m-muted); font-size: 9px; }
+  .m-sim-head > div:last-child { text-align: right; }
+  .m-sim-head > div:last-child strong { font: 20px/1 var(--serif); }
+  .m-sim-head > div:last-child small { margin-top: 3px; }
+
+  .m-sim-route-progress { position: relative; height: 18px; margin: 6px 0; overflow: hidden; background: var(--m-line); }
+  .m-sim-route-progress i { display: block; height: 100%; background: color-mix(in srgb, var(--m-accent) 72%, var(--m-active)); }
+  .m-sim-route-progress span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 7px; letter-spacing: .08em; color: var(--m-text); mix-blend-mode: difference; }
+
+  .m-survival-alert { margin: 7px 0; padding: 9px; border: 1px solid var(--m-accent); background: color-mix(in srgb, var(--m-accent) 10%, var(--m-surface)); }
+  .m-survival-alert strong, .m-survival-alert p, .m-survival-alert span { display: block; }
+  .m-survival-alert strong { font: 17px var(--serif); }
+  .m-survival-alert p { margin: 4px 0; color: var(--m-muted); font-size: 10px; }
+  .m-survival-alert span { font-size: 9px; font-weight: 700; }
+
+  .m-live-order { margin: 7px 0; padding: 8px 9px; border-left: 3px solid var(--m-warn); background: var(--m-surface); }
+  .m-live-order small, .m-live-order strong, .m-live-order span { display: block; }
+  .m-live-order small { color: var(--m-muted); font-size: 7px; letter-spacing: .1em; }
+  .m-live-order strong { margin-top: 3px; font: 14px/1.18 var(--serif); }
+  .m-live-order span { margin-top: 3px; color: var(--m-muted); font-size: 8px; }
+
+  .m-sim-stage { margin-top: 7px; padding: 8px; border: 1px solid var(--m-line); background: var(--m-surface); }
+  .m-sim-stage.is-critical { border-color: var(--m-accent); box-shadow: inset 3px 0 var(--m-accent); }
+  .m-sim-stage header { display: flex; justify-content: space-between; gap: 8px; align-items: start; }
+  .m-sim-stage header small { display: block; color: var(--m-muted); font-size: 7px; letter-spacing: .11em; }
+  .m-sim-stage h2 { margin: 2px 0 0; font: 16px/1 var(--serif); }
+  .m-sim-stage header > b { font: 18px var(--serif); }
+  .m-stage-progress { height: 3px; margin: 7px 0; background: var(--m-line); }
+  .m-stage-progress i { display: block; height: 100%; background: var(--m-accent); }
+  .m-sim-stage dl { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); margin: 0; border-top: 1px solid var(--m-line); }
+  .m-sim-stage dl div { padding: 5px 3px 0; min-width: 0; }
+  .m-sim-stage dt { color: var(--m-muted); font-size: 7px; }
+  .m-sim-stage dd { margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+
+  .m-sim-action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .m-sim-action-grid--move { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .m-sim-action { min-width: 0; min-height: 82px; padding: 7px; border: 1px solid var(--m-line); background: var(--m-surface); text-align: left; }
+  .m-sim-action.is-move { min-height: 90px; }
+  .m-sim-action header { display: flex; justify-content: space-between; gap: 5px; align-items: start; }
+  .m-sim-action header strong { font: 13px/.98 var(--serif); }
+  .m-sim-action header b { color: var(--m-accent); font-size: 7px; text-transform: uppercase; }
+  .m-sim-action p { margin: 4px 0; color: var(--m-muted); font-size: 8px; line-height: 1.2; }
+  .m-sim-action footer { display: flex; flex-wrap: wrap; gap: 3px 6px; color: var(--m-muted); font-size: 7px; }
+  .m-sim-action > small { display: block; margin-top: 4px; color: var(--m-accent); font-size: 7px; }
+  .m-sim-action:disabled { opacity: .38; }
+  .m-sim-tools { margin-top: 6px; }
+  .m-sim-tools summary { min-height: 34px; padding: 8px 2px; }
+  .m-sim-tools > .m-sim-action-grid { padding: 4px 0; }
+
+  .m-sim-event { margin-top: 8px; padding: 9px; border: 1px solid var(--m-accent); background: var(--m-surface); }
+  .m-sim-event header small, .m-sim-event header strong { display: block; }
+  .m-sim-event header small { color: var(--m-muted); font-size: 7px; letter-spacing: .12em; }
+  .m-sim-event header strong { margin-top: 2px; font: 18px var(--serif); }
+  .m-sim-event blockquote { margin: 7px 0; padding-left: 8px; border-left: 2px solid var(--m-accent); font: 13px/1.2 var(--serif); }
+  .m-sim-event > p { color: var(--m-muted); font-size: 9px; }
+  .m-sim-event > div { display: grid; gap: 4px; }
+  .m-sim-event > div button { min-height: 52px; padding: 7px 8px; border: 1px solid var(--m-line); background: transparent; text-align: left; }
+  .m-sim-event > div strong, .m-sim-event > div span, .m-sim-event > div small { display: block; }
+  .m-sim-event > div strong { font: 14px var(--serif); }
+  .m-sim-event > div span { margin-top: 2px; color: var(--m-muted); font-size: 8px; }
+  .m-sim-event > div small { margin-top: 3px; color: var(--m-accent); font-size: 7px; }
+}
