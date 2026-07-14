@@ -39,31 +39,56 @@ export function MobileOverview({ world, career, onTrain, onOpenExpedition, onOpe
   const mountain = world.region.mountains.find(item => item.id === route.mountainId) ?? world.region.mountains[0]!;
   const readiness = careerReadiness(career);
   const expedition = expeditionReadiness(career);
+  const primaryTraining = trainingOrder.slice(0, 4);
+  const extraTraining = trainingOrder.slice(4);
+
+  const renderTraining = (id: TrainingId) => {
+    const action = TRAINING_ACTIONS[id];
+    const disabled = action.cost > 0 && career.hero.money < action.cost;
+    const impacts = [
+      action.skill && action.xp ? `${SKILL_LABELS[action.skill]} +${action.xp}` : '',
+      action.form ? `форма ${signed(action.form)}` : '',
+      action.fatigue ? `усталость ${signed(action.fatigue)}` : '',
+      `${action.cost < 0 ? '+' : '−'}${Math.abs(action.cost)} кр.`,
+    ].filter(Boolean).slice(0, 2);
+    return <button key={id} disabled={disabled} onClick={() => onTrain(id)}><span className="m-action-index">{action.days}д</span><div><strong>{action.title}</strong><small>{impacts.join(' · ')}</small></div><b>›</b></button>;
+  };
+
   return <section className="m-screen">
-    <header className="m-screen-title"><div><small>{career.club.name}</small><h1>{career.hero.name}</h1><p>{career.hero.age} лет · {career.hero.originTitle}</p></div><span>{career.completedClimbs} вершин</span></header>
-    <button className="m-focus-card" onClick={onOpenExpedition}><div><small>ГЛАВНОЕ СЕЙЧАС</small><strong>{career.activeClimb ? 'Вернуться на маршрут' : expedition.blockers.length ? 'Закончить подготовку' : 'Начать экспедицию'}</strong><span>{career.activeClimb ? 'Экспедиция продолжается' : expedition.blockers[0] ?? `${route.mountainName} · ${route.name}`}</span></div><b>→</b></button>
-    <div className="m-stat-grid"><div><span>Готовность</span><strong>{readiness}</strong></div><div><span>План</span><strong>{expedition.total}</strong></div><div><span>Здоровье</span><strong>{Math.round(career.hero.health)}</strong></div><div><span>Деньги</span><strong>{career.hero.money}</strong></div></div>
-    <section className="m-target-card"><MountainArt points={mountain.profilePoints} variant="hero" label={route.mountainName} elevation={route.summitElevation} /><footer><div><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{route.mountainName}</strong><span>{route.name}</span></div><b>{route.summitElevation} м</b></footer></section>
-    <div className="m-section-head"><h2>Подготовка</h2><span>действия двигают время</span></div>
-    <div className="m-action-list">{trainingOrder.map(id => { const action = TRAINING_ACTIONS[id]; const disabled = action.cost > 0 && career.hero.money < action.cost; const impacts = [action.skill && action.xp ? `${SKILL_LABELS[action.skill]} +${action.xp}` : '', action.form ? `форма ${signed(action.form)}` : '', action.fatigue ? `усталость ${signed(action.fatigue)}` : '', `${action.cost < 0 ? '+' : '−'}${Math.abs(action.cost)} кр.`].filter(Boolean).slice(0, 3); return <button key={id} disabled={disabled} onClick={() => onTrain(id)}><span className="m-action-index">{action.days}д</span><div><strong>{action.title}</strong><small>{impacts.join(' · ')}</small></div><b>›</b></button>; })}</div>
+    <header className="m-screen-title m-screen-title--compact"><div><small>{career.club.name}</small><h1>{career.hero.name}</h1></div><span>{career.completedClimbs} вершин</span></header>
+    <button className="m-focus-card m-focus-card--compact" onClick={onOpenExpedition}><div><small>СЕЙЧАС</small><strong>{career.activeClimb ? 'Вернуться на маршрут' : expedition.blockers.length ? 'Закончить подготовку' : 'Начать экспедицию'}</strong><span>{career.activeClimb ? 'Экспедиция продолжается' : expedition.blockers[0] ?? route.mountainName}</span></div><b>→</b></button>
+    <div className="m-stat-strip"><span>Готовность <b>{readiness}</b></span><span>План <b>{expedition.total}</b></span><span>Здоровье <b>{Math.round(career.hero.health)}</b></span></div>
+    <button className="m-target-row" onClick={onOpenExpedition}><div className="m-target-row__profile"><MountainArt points={mountain.profilePoints} variant="card" /></div><div><small>ЦЕЛЬ</small><strong>{route.mountainName}</strong><span>{route.name}</span></div><b>{route.summitElevation} м</b></button>
+    <div className="m-section-head"><h2>Подготовка</h2><span>двигает время</span></div>
+    <div className="m-action-list">{primaryTraining.map(renderTraining)}</div>
+    <details className="m-details m-details--flat"><summary>Ещё действия</summary><div className="m-action-list">{extraTraining.map(renderTraining)}</div></details>
     {career.livingWorld.news[0] && <button className="m-news-line" onClick={onOpenWorld}><span><small>МИР</small><strong>{career.livingWorld.news[0].headline}</strong></span><b>→</b></button>}
   </section>;
 }
 
 export function MobileRoute({ world, career, onSelectMountain, onSelectRoute, onContinue }: { world: WorldState; career: CareerState; onSelectMountain: (id: string) => void; onSelectRoute: (id: string) => void; onContinue: () => void }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const route = getSelectedRoute(career);
   const mountain = world.region.mountains.find(item => item.id === route.mountainId) ?? world.region.mountains[0]!;
   const mountains = [...world.region.mountains].sort((a, b) => mountainScore(a) - mountainScore(b));
   const routes = routesForMountain(career, mountain.id);
   const readiness = expeditionReadiness(career);
+
+  const chooseMountain = (id: string) => {
+    onSelectMountain(id);
+    setPickerOpen(false);
+  };
+
   return <section className="m-screen m-screen--with-action">
-    <header className="m-screen-title"><div><small>ШАГ 1 ИЗ 4</small><h1>Цель</h1><p>Вершина и маршрут</p></div><span>{readiness.routeFit}/100</span></header>
+    <header className="m-screen-title m-screen-title--compact"><div><small>ШАГ 1 ИЗ 4</small><h1>Цель</h1></div><span>{readiness.routeFit}/100</span></header>
     <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>{mountain.characterTitle}</small><strong>{mountain.name}</strong><span>{mountain.dangerProfile}</span></div><b>{mountain.elevation} м</b></footer></section>
-    <details className="m-picker" open><summary>Сменить вершину <span>{mountains.length}</span></summary><div className="m-list">{mountains.map((item, index) => <button key={item.id} className={item.id === mountain.id ? 'is-active' : ''} onClick={() => onSelectMountain(item.id)}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{item.name}</strong><small>{item.characterTitle} · техника {level(item.technicality)}</small></div><b>{item.elevation} м</b></button>)}</div></details>
+    <button className="m-picker-button" onClick={() => setPickerOpen(true)}><span>Сменить вершину</span><b>{mountains.length} доступно ›</b></button>
     <div className="m-section-head"><h2>Маршрут</h2><span>выбери один</span></div>
-    <div className="m-route-list">{routes.map(item => <button key={item.id} className={item.id === route.id ? 'is-active' : ''} onClick={() => onSelectRoute(item.id)}><div><small>{item.style}</small><strong>{item.name}</strong><span>≈{item.estimatedHours} ч · риск {level(item.objectiveRisk)} · группа {item.recommendedTeamSize}+</span></div><b>{item.id === route.id ? '✓' : '○'}</b></button>)}</div>
-    <details className="m-details"><summary>Подробнее о маршруте</summary><p>{route.summary}</p><div className="m-mini-grid"><span>Старт <b>{route.startElevation} м</b></span><span>Вершина <b>{route.summitElevation} м</b></span><span>Участков <b>{route.segments.length}</b></span><span>Решений <b>{route.decisions?.length ?? 0}</b></span></div></details>
+    <div className="m-route-list">{routes.map(item => <button key={item.id} className={item.id === route.id ? 'is-active' : ''} onClick={() => onSelectRoute(item.id)}><div><small>{item.style}</small><strong>{item.name}</strong><span>{item.estimatedHours} ч · риск {level(item.objectiveRisk)} · {item.recommendedTeamSize}+ чел.</span></div><b>{item.id === route.id ? '✓' : '○'}</b></button>)}</div>
+    <details className="m-details m-details--flat"><summary>Параметры маршрута</summary><div className="m-mini-grid"><span>Старт <b>{route.startElevation} м</b></span><span>Вершина <b>{route.summitElevation} м</b></span><span>Участков <b>{route.segments.length}</b></span><span>Решений <b>{route.decisions?.length ?? 0}</b></span></div></details>
     <button className="m-sticky-action" onClick={onContinue}><span>Подобрать команду</span><b>→</b></button>
+
+    {pickerOpen && <div className="m-modal-layer" onClick={() => setPickerOpen(false)}><section className="m-picker-sheet" onClick={event => event.stopPropagation()}><header><div><small>РЕЕСТР ГОР</small><strong>Выбери вершину</strong></div><button onClick={() => setPickerOpen(false)}>×</button></header><div className="m-list">{mountains.map((item, index) => <button key={item.id} className={item.id === mountain.id ? 'is-active' : ''} onClick={() => chooseMountain(item.id)}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{item.name}</strong><small>{item.characterTitle} · техника {level(item.technicality)}</small></div><b>{item.elevation} м</b></button>)}</div></section></div>}
   </section>;
 }
 
@@ -126,4 +151,4 @@ export function MobileRecords({ career }: { career: CareerState }) { return <sec
 
 export function MobilePeople({ career }: { career: CareerState }) { const [selectedId, setSelectedId] = useState(career.teamRoster[0]?.id ?? ''); const selected = career.teamRoster.find(item => item.id === selectedId) ?? career.teamRoster[0]; if (!selected) return null; return <section className="m-screen"><header className="m-screen-title"><div><small>ДОСЬЕ</small><h1>Люди</h1></div><span>{career.teamRoster.length}</span></header><div className="m-chip-row m-chip-row--people">{career.teamRoster.map(person => <button key={person.id} className={person.id === selected.id ? 'is-active' : ''} onClick={() => setSelectedId(person.id)}>{person.name.split(' ')[0]}</button>)}</div><section className="m-person-profile"><header><span>{initials(selected.name)}</span><div><strong>{selected.name}</strong><small>{roleLabel[selected.role]} · {selected.age} лет</small></div></header><p>{selected.note}</p><div className="m-mini-grid"><span>Доверие <b>{selected.relationship.trust}</b></span><span>Уважение <b>{selected.relationship.respect}</b></span><span>Состояние <b>{selected.condition}</b></span><span>Выходы <b>{selected.sharedClimbs}</b></span></div><details className="m-details"><summary>Память</summary>{[...selected.memories].reverse().map(memory => <p key={memory.id}><b>{memory.year}</b> · {memory.title}</p>)}</details></section></section>; }
 
-export function MobileJournal({ career }: { career: CareerState }) { return <section className="m-screen"><header className="m-screen-title"><div><small>КАРЬЕРА</small><h1>Архив</h1><p>{career.hero.name}</p></div><span>{career.log.length}</span></header>{career.reports.length > 0 && <><div className="m-section-head"><h2>Экспедиции</h2><span>{career.reports.length}</span></div><div className="m-report-list">{[...career.reports].reverse().map(report => <article key={report.id}><div><small>{report.year} · день {report.seasonDay}</small><strong>{report.mountainName}</strong><span>{report.routeName}</span></div><b>{report.highestElevation} м</b></article>)}</div></>}<div className="m-section-head"><h2>История</h2><span>{career.highestElevation} м</span></div><div className="m-ledger-list">{[...career.log].reverse().map(entry => <article key={entry.id}><span>{entry.year}</span><div><small>{entry.type} · день {entry.seasonDay}</small><strong>{entry.title}</strong><p>{entry.description}</p></div></article>)}</div><p className="m-note">Экспорт сейва, replay и balance sample перенесены в Настройки → Диагностика.</p></section>; }
+export function MobileJournal({ career }: { career: CareerState }) { return <section className="m-screen"><header className="m-screen-title"><div><small>КАРЬЕРА</small><h1>Архив</h1><p>{career.hero.name}</p></div><span>{career.log.length}</span></header>{career.reports.length > 0 && <><div className="m-section-head"><h2>Экспедиции</h2><span>{career.reports.length}</span></div><div className="m-report-list">{[...career.reports].reverse().map(report => <article key={report.id}><div><small>{report.year} · день {report.seasonDay}</small><strong>{report.mountainName}</strong><span>{report.routeName}</span></div><b>{report.highestElevation} м</b></article>)}</div></>}<div className="m-section-head"><h2>История</h2><span>{career.highestElevation} м</span></div><div className="m-ledger-list">{[...career.log].reverse().map(entry => <article key={entry.id}><span>{entry.year}</span><div><small>{entry.type} · день {entry.seasonDay}</small><strong>{entry.title}</strong><p>{entry.description}</p></div></article>)}</div></section>; }

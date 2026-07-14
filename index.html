@@ -13,6 +13,23 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const width = Math.round(window.visualViewport?.width || window.innerWidth || root.clientWidth);
+        const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        const coarse = window.matchMedia('(pointer: coarse)').matches;
+        root.dataset.device = width <= 820 || (standalone && coarse && width <= 1024) ? 'phone' : 'desktop';
+        try {
+          const saved = JSON.parse(localStorage.getItem('alpine-legacy:ui-settings:v1') || '{}');
+          const theme = saved.theme === 'dark' || saved.theme === 'light'
+            ? saved.theme
+            : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          root.dataset.theme = theme;
+          root.style.colorScheme = theme;
+        } catch {}
+      })();
+    </script>
 
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./favicon.ico" sizes="any" />

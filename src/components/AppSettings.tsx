@@ -90,9 +90,21 @@ async function forceUpdateApplication() {
     await Promise.all(names.map(name => caches.delete(name)));
   }
 
-  const nextUrl = new URL(window.location.href);
+  const nextUrl = new URL(import.meta.env.BASE_URL, window.location.href);
+  nextUrl.searchParams.set('v', CURRENT_VERSION);
   nextUrl.searchParams.set('__update', Date.now().toString());
   nextUrl.hash = '';
+
+  try {
+    await fetch(nextUrl.toString(), {
+      cache: 'reload',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+    });
+  } catch {
+    // Navigation below still forces a new document request.
+  }
+
+  window.localStorage.setItem('alpine-legacy:last-force-update', Date.now().toString());
   window.location.replace(nextUrl.toString());
 }
 
