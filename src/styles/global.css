@@ -3936,3 +3936,36 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
 .simulation-preparation-state p { margin: 4px 0 0; color: var(--muted); }
 .simulation-failure-trace { border-left-color: var(--accent); }
 .simulation-failure-trace span { margin-top: 5px; color: var(--muted); }
+
+/* 0.6.5 — readable full-height expedition scale */
+.exp-height-scale {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+.exp-height-scale > header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: end;
+}
+.exp-height-scale > header span:last-child { text-align: right; }
+.exp-height-scale > header small,
+.exp-height-scale > header strong { display: block; }
+.exp-height-scale > header small { color: var(--muted); font-size: 9px; letter-spacing: .12em; }
+.exp-height-scale > header strong { margin-top: 3px; font: 600 20px/1 var(--serif); }
+.exp-height-scale > header .is-current { padding: 0 14px; border-inline: 1px solid var(--line); text-align: center; }
+.exp-height-scale > header .is-current strong { font-size: 27px; }
+.exp-height-track { position: relative; height: 28px; margin: 14px 6px 10px; border: 1px solid var(--line); background: color-mix(in srgb, var(--paper) 65%, var(--ink) 8%); }
+.exp-height-fill { position: absolute; inset: 0 auto 0 0; width: var(--height-progress); background: color-mix(in srgb, var(--accent) 62%, var(--ink)); }
+.exp-height-critical { position: absolute; top: 0; bottom: 0; left: var(--marker-position); width: 1px; background: var(--accent); opacity: .55; }
+.exp-height-camp { position: absolute; z-index: 2; top: 50%; left: var(--marker-position); width: 20px; height: 20px; translate: -50% -50%; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--paper); font-size: 8px; font-weight: 800; }
+.exp-height-current { position: absolute; z-index: 3; top: 50%; left: var(--marker-position); width: 14px; height: 34px; translate: -50% -50%; border: 2px solid var(--ink); background: var(--paper); }
+.exp-height-current em { position: absolute; left: 50%; top: 50%; translate: -50% -50%; font-style: normal; font-size: 11px; }
+.exp-height-scale > footer { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; color: var(--muted); font-size: 11px; }
+.exp-height-scale > footer span:nth-child(2) { text-align: center; }
+.exp-height-scale > footer span:last-child { text-align: right; }
+.exp-height-scale > footer b { color: var(--ink); }
+.simulation-action-layout--context { grid-template-columns: 1fr; }
+.simulation-action-layout--context .simulation-actions { grid-template-columns: repeat(3,minmax(0,1fr)); }

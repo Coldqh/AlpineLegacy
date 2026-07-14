@@ -18,6 +18,12 @@ describe('expedition content pipeline', () => {
     expect(report.errors).toEqual([]);
     expect(report.routeReports.length).toBe(world.ecosystem.content.routes.allIds.length);
     expect(report.routeReports.every(item => item.ascentStages > 0 && item.descentStages > 0)).toBe(true);
+    const routes = world.ecosystem.content.routes.allIds.map(id => world.ecosystem.content.routes.byId[id]!);
+    expect(routes.every(route => route.startElevation >= 0 && route.startElevation <= 1000)).toBe(true);
+    expect(routes.every(route => {
+      const declaredGain = route.segments.reduce((sum, segment) => sum + segment.elevationGain, 0);
+      return Math.abs(declaredGain - (route.summitElevation - route.startElevation)) <= 20;
+    })).toBe(true);
   });
 
   it('supports small, major and giant expedition budgets with one route schema', () => {

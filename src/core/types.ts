@@ -689,7 +689,7 @@ export interface ExpeditionFailureTrace {
 }
 
 export interface ExpeditionSimulationState {
-  version: 2;
+  version: 3;
   direction: ExpeditionDirection;
   status: ExpeditionSimulationStatus;
   ascentStages: ExpeditionSimulationStage[];
@@ -1073,7 +1073,7 @@ export interface CareerMembership {
 }
 
 export interface CareerState {
-  schemaVersion: 14;
+  schemaVersion: 15;
   id: string;
   worldId: string;
   rootSeed: string;

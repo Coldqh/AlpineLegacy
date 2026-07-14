@@ -94,20 +94,26 @@ function segment(
   return { id, name, terrain, elevationGain, baseDurationMinutes, difficulty, exposure, skill, note, campPossible, hazard };
 }
 
+function expeditionStartElevation(world: WorldState, mountain: WorldState['region']['mountains'][number], offset = 0) {
+  // An expedition starts at the lower access point, not one kilometre below the summit.
+  // Region elevation only nudges the trailhead; the hard cap keeps every generated start readable.
+  const regionalFloor = Math.min(520, Math.max(0, Math.round(world.region.elevationMin * .16)));
+  const accessLift = Math.round((mountain.remoteness * 3.2 + mountain.prominence * .012) / 50) * 50;
+  return clamp(regionalFloor + accessLift + offset, 0, 1000);
+}
+
 export function getQualificationTarget(world: WorldState) {
   const mountain = [...world.region.mountains].sort((a, b) =>
     (a.elevation * 0.012 + a.technicality + a.remoteness * 0.35) -
     (b.elevation * 0.012 + b.technicality + b.remoteness * 0.35),
   )[0]!;
-  const safeUpperLimit = Math.max(3200, world.region.elevationMin + 1650);
-  const summitElevation = Math.min(mountain.elevation, safeUpperLimit);
-  const subsidiary = summitElevation < mountain.elevation;
+  const summitElevation = mountain.elevation;
   return {
     mountain,
     summitElevation,
-    startElevation: Math.max(world.region.elevationMin + 120, summitElevation - 920),
-    displayName: subsidiary ? `${mountain.name} / Южная вершина` : mountain.name,
-    subsidiary,
+    startElevation: expeditionStartElevation(world, mountain),
+    displayName: mountain.name,
+    subsidiary: false,
   };
 }
 
@@ -234,9 +240,8 @@ function enrichRouteForVerticalSlice(route: ExpeditionRoute, routeIndex: number,
 
 function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['mountains'][number]): ExpeditionRoute[] {
   const eraPenalty = routeEraPenalty(world);
-  const totalGain = clamp(Math.round(760 + mountain.prominence * .17 + mountain.remoteness * 2.1), 760, 1650);
-  const startElevation = Math.max(world.region.elevationMin + 80, mountain.elevation - totalGain);
-  const actualGain = mountain.elevation - startElevation;
+  const startElevation = expeditionStartElevation(world, mountain);
+  const actualGain = Math.max(1, mountain.elevation - startElevation);
   const baseDifficulty = mountain.technicality * .48 + mountain.altitudeSeverity * .32 + mountain.remoteness * .16 + eraPenalty;
   const baseRisk = mountain.altitudeSeverity * .36 + mountain.remoteness * .22 + mountain.technicality * .24;
   const characterTech = mountain.characterId === 'TECHNICAL' ? 9 : 0;
@@ -244,9 +249,11 @@ function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['m
   const characterHours = mountain.characterId === 'ENDURANCE' ? 1.18 : 1;
   const slug = mountain.id.replace(/[^a-zA-Z0-9-]/g, '-');
 
-  const ridgeGain = splitGain(actualGain, [.12, .18, .22, .21, .27]);
-  const glacierGain = splitGain(actualGain, [.1, .16, .18, .19, .17, .2]);
-  const faceGain = splitGain(actualGain, [.08, .17, .25, .24, .26]);
+  const eastStartElevation = expeditionStartElevation(world, mountain, -50);
+  const northStartElevation = expeditionStartElevation(world, mountain, 50);
+  const ridgeGain = splitGain(mountain.elevation - startElevation, [.12, .18, .22, .21, .27]);
+  const glacierGain = splitGain(mountain.elevation - eastStartElevation, [.1, .16, .18, .19, .17, .2]);
+  const faceGain = splitGain(mountain.elevation - northStartElevation, [.08, .17, .25, .24, .26]);
 
   const ridgeTech = clamp(Math.round(18 + baseDifficulty * .62 + characterTech), 28, 92);
   const glacierTech = clamp(Math.round(15 + baseDifficulty * .56 + characterTech), 25, 90);
@@ -276,7 +283,7 @@ function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['m
       id: `${slug}-east-glacier`, regionId: world.region.id, mountainId: mountain.id, mountainName: mountain.name, mountainCharacterId: mountain.characterId, name: 'Восточный ледник',
       style: 'Длинная ледниковая линия',
       summary: 'Меньше сложного лазания, больше времени на высоте, закрытых трещин и зависимости от холодного утреннего окна.',
-      startElevation: Math.max(world.region.elevationMin + 50, startElevation - 70), summitElevation: mountain.elevation,
+      startElevation: eastStartElevation, summitElevation: mountain.elevation,
       estimatedHours: Math.round((11 + altitudeHours * 1.14) * characterHours), technicality: glacierTech, objectiveRisk: glacierRisk,
       recommendedTeamSize: mountain.elevation > 5600 ? 4 : 3,
       requiredGearIds: ['rope', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'],
@@ -293,7 +300,7 @@ function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['m
       id: `${slug}-north-line`, regionId: world.region.id, mountainId: mountain.id, mountainName: mountain.name, mountainCharacterId: mountain.characterId, name: 'Северная линия',
       style: 'Прямая техническая линия',
       summary: 'Короткая по расстоянию, но жёсткая по технике. Высокая открытость, мало мест для отдыха и тяжёлый отход после ключевой стены.',
-      startElevation: Math.max(world.region.elevationMin + 100, startElevation + 40), summitElevation: mountain.elevation,
+      startElevation: northStartElevation, summitElevation: mountain.elevation,
       estimatedHours: Math.round((7 + altitudeHours * .92) * characterHours), technicality: faceTech, objectiveRisk: faceRisk,
       recommendedTeamSize: mountain.elevation > 6500 ? 4 : 3,
       requiredGearIds: ['rope', 'rock-kit', 'ice-kit', 'medkit', 'bivy'],

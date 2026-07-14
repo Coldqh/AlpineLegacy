@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { RouteBlueprint } from '../components/RouteBlueprint';
+import { ExpeditionHeightScale } from '../components/ExpeditionHeightScale';
 import { currentExpeditionStage, getCurrentRouteDecision, previewClimbAction, previewExpeditionActions, SKILL_LABELS } from '../core/career';
 import { getCurrentParticipantScene, nodeProgress, participantLeader } from '../core/expeditionEngine';
 import { isStagePrepared, missingStagePreparation } from '../core/simulationEngine';
@@ -56,6 +57,7 @@ export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSn
   const climb = career.activeClimb!;
   const [feedback, setFeedback] = useState<Pick<ClimbStepResult, 'headline' | 'detail' | 'severity'> | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [activePanel, setActivePanel] = useState<'ROUTE' | 'GROUP' | 'PACK' | 'STATE' | 'LOG'>('ROUTE');
   const terminal = ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase);
   const segment = climb.route[Math.max(0, Math.min(climb.route.length - 1, climb.segmentIndex))]!;
   const decision = getCurrentRouteDecision(career);
@@ -96,9 +98,6 @@ export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSn
 
   if (climb.simulation && simulationStage) {
     const simulation = climb.simulation;
-    const movement = fieldActions.filter(action => action.id.startsWith('MOVE_'));
-    const preparation = fieldActions.filter(action => ['SCOUT_LINE', 'PLACE_ANCHOR', 'FIX_ROPE', 'CHECK_SURFACE'].includes(action.id));
-    const survival = fieldActions.filter(action => ['REST_SHORT', 'EAT_DRINK', 'MAKE_CAMP', 'MELT_SNOW', 'HELP_TEAM', 'DROP_LOAD', 'REQUEST_AID', 'CHALLENGE_ORDER'].includes(action.id));
     const stagePercent = Math.min(100, Math.round(simulationStage.progress / Math.max(1, simulationStage.requiredProgress) * 100));
     const routeStages = simulation.direction === 'ASCENT' ? simulation.ascentStages : simulation.descentStages;
     const routePercent = Math.min(100, Math.round((simulation.stageIndex + stagePercent / 100) / Math.max(1, routeStages.length) * 100));
@@ -109,25 +108,45 @@ export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSn
     const chanceLabel = (chance: number | null, risk: string) => difficulty === 'EXPLORER' && chance !== null ? `${chance}%` : difficulty === 'EXPEDITION' ? 'скрыто' : risk.toLowerCase();
     const actionButton = (action: typeof fieldActions[number]) => <button key={action.id} disabled={action.disabled} className={`m-sim-action ${action.id.startsWith('MOVE_') ? 'is-move' : ''}`} onClick={() => resolve(() => onFieldAction(action.id))}><header><strong>{action.title}</strong><b>{action.successChance !== null ? chanceLabel(action.successChance, action.riskLabel) : 'действие'}</b></header><p>{action.detail}</p><footer><span>{action.durationMinutes} мин</span><span>{action.energyDelta > 0 ? `силы +${action.energyDelta}` : action.energyDelta < 0 ? `силы ${action.energyDelta}` : 'без расхода сил'}</span>{action.progressDelta > 0 && <span>этап +{action.progressDelta}</span>}</footer>{action.disabledReason && <small>{action.disabledReason}</small>}</button>;
     if (simulation.status === 'SUMMIT') {
-      return <section className="m-screen m-summit-card m-simulation-summit"><p className="m-kicker">ВЕРШИНА · +{simulation.maxRelativeElevation} М ОТ СТАРТА</p><h1>{climb.mountainName}</h1><p>Реальная высота {climb.summitElevation} м. Экспедиция не закончена. Внизу {simulation.descentStages.length} этапов спуска.</p><div className="m-stat-grid"><div><span>Силы</span><strong>{Math.round(climb.energy)}%</strong></div><div><span>Группа</span><strong>{Math.round(climb.teamCondition)}%</strong></div><div><span>Вода</span><strong>{climb.supplies.waterUnits}</strong></div><div><span>Без сна</span><strong>{Math.round(climb.hoursAwake)} ч</strong></div></div><button className="m-primary-button" onClick={onBeginDescent}>Начать физический спуск <b>↓</b></button></section>;
+      return <section className="m-screen m-summit-card m-simulation-summit"><p className="m-kicker">ВЕРШИНА · {climb.summitElevation} М</p><h1>{climb.mountainName}</h1><ExpeditionHeightScale climb={climb} /><p>Экспедиция не закончена. Внизу {simulation.descentStages.length} физических этапов до стартовой точки {climb.startElevation} м.</p><div className="m-stat-grid"><div><span>Силы</span><strong>{Math.round(climb.energy)}%</strong></div><div><span>Группа</span><strong>{Math.round(climb.teamCondition)}%</strong></div><div><span>Вода</span><strong>{climb.supplies.waterUnits}</strong></div><div><span>Без сна</span><strong>{Math.round(climb.hoursAwake)} ч</strong></div></div><button className="m-primary-button" onClick={onBeginDescent}>Начать физический спуск <b>↓</b></button></section>;
     }
+
+    const expeditionHeader = <>
+      <header className="m-sim-head"><div><small>{simulation.direction === 'ASCENT' ? 'ПОДЪЁМ' : climb.retreating ? 'ОТХОД' : 'СПУСК'} · ЭТАП {simulation.stageIndex + 1}/{routeStages.length}</small><h1>{simulationStage.label}</h1><span>{climb.mountainName} · {simulationStage.terrain}</span></div><div><strong>{climb.currentElevation} м</strong><small>{simulation.direction === 'ASCENT' ? 'набор высоты' : 'возвращение вниз'}</small></div></header>
+      <ExpeditionHeightScale climb={climb} />
+      <nav className="m-expedition-tabs" aria-label="Разделы экспедиции">
+        {([['ROUTE', 'Маршрут'], ['GROUP', 'Группа'], ['PACK', 'Рюкзак'], ['STATE', 'Состояние'], ['LOG', 'Журнал']] as const).map(([id, label]) => <button key={id} className={activePanel === id ? 'is-active' : ''} onClick={() => setActivePanel(id)}>{label}</button>)}
+      </nav>
+    </>;
+
+    if (activePanel === 'GROUP') {
+      return <section className="m-screen m-expedition-simulation">{expeditionHeader}<section className="m-expedition-panel"><p className="m-kicker">СОСТАВ ЭКСПЕДИЦИИ</p>{simulation.leaderOrder && !simulation.leaderOrder.resolved && <div className="m-live-order"><small>ПРИКАЗ · {leader?.name ?? 'руководитель'}</small><strong>«{simulation.leaderOrder.text}»</strong></div>}<div className="m-team-route-list">{climb.teamStates.map(state => { const member = career.teamRoster.find(item => item.id === state.memberId); return <div key={state.memberId}><span>{member?.name ?? state.memberId}{climb.leaderNpcId === state.memberId ? ' · руководитель' : ''}</span><strong>{conditionLabel(state.condition)}</strong></div>; })}</div></section></section>;
+    }
+    if (activePanel === 'PACK') {
+      return <section className="m-screen m-expedition-simulation">{expeditionHeader}<section className="m-expedition-panel"><p className="m-kicker">СНАРЯЖЕНИЕ И ЗАПАСЫ</p><div className="m-mini-grid"><span>Еда <b>{climb.supplies.foodUnits}</b></span><span>Вода <b>{climb.supplies.waterUnits}</b></span><span>Топливо <b>{climb.supplies.fuelUnits}</b></span><span>Верёвка <b>{climb.ropeMetersRemaining} м</b></span><span>Вес <b>{climb.packWeightKg.toFixed(1)} кг</b></span><span>Брошено <b>{simulation.loadDroppedKg.toFixed(1)} кг</b></span></div></section></section>;
+    }
+    if (activePanel === 'STATE') {
+      return <section className="m-screen m-expedition-simulation">{expeditionHeader}<section className="m-expedition-panel"><p className="m-kicker">ТЕКУЩЕЕ СОСТОЯНИЕ</p><div className="m-mini-grid"><span>Силы <b>{Math.round(climb.energy)}%</b></span><span>Здоровье <b>{Math.round(climb.condition)}%</b></span><span>Группа <b>{Math.round(climb.teamCondition)}%</b></span><span>Без сна <b>{Math.round(climb.hoursAwake)} ч</b></span><span>Температура <b>{climb.temperatureC}°</b></span><span>Ветер <b>{climb.windKmh} км/ч</b></span></div>{lastFailure && <section className="m-failure-trace"><small>ПОСЛЕДНЯЯ ПРОБЛЕМА</small><strong>{lastFailure.cause}</strong><span>Высота {climb.startElevation + simulation.relativeElevation} м</span></section>}</section></section>;
+    }
+    if (activePanel === 'LOG') {
+      return <section className="m-screen m-expedition-simulation">{expeditionHeader}<section className="m-expedition-panel"><p className="m-kicker">ЖУРНАЛ · {climb.log.length}</p><div className="m-expedition-log">{climb.log.map((line, index) => <p key={`${line}-${index}`}><b>{String(index + 1).padStart(2, '0')}</b>{line}</p>)}</div></section></section>;
+    }
+
     return <section className="m-screen m-screen--with-action m-expedition-simulation">
-      <header className="m-sim-head"><div><small>{simulation.direction === 'ASCENT' ? 'ПОДЪЁМ' : climb.retreating ? 'ОТХОД' : 'СПУСК'} · ЭТАП {simulation.stageIndex + 1}/{routeStages.length}</small><h1>{simulationStage.label}</h1><span>{climb.mountainName} · {simulationStage.terrain}</span></div><div><strong>+{Math.round(simulation.relativeElevation)} м</strong><small>{climb.currentElevation} м н.у.м.</small></div></header>
-      <div className="m-sim-route-progress"><i style={{ width: `${routePercent}%` }} /><span>{routePercent}% пути · {simulation.totalActions} действий</span></div>
+      {expeditionHeader}
+      <div className="m-sim-route-progress"><i style={{ width: `${routePercent}%` }} /><span>{routePercent}% этапов · {simulation.totalActions} действий</span></div>
       <div className="m-climb-vitals"><div><span>Силы</span><strong>{Math.round(climb.energy)}%</strong></div><div><span>Состояние</span><strong>{Math.round(climb.condition)}%</strong></div><div><span>Группа</span><strong>{conditionLabel(climb.teamCondition)}</strong></div><div><span>Запасы</span><strong>{climb.supplies.foodUnits}/{climb.supplies.waterUnits}</strong></div></div>
-      {simulation.status === 'STRANDED' && <section className="m-survival-alert"><strong>Движение невозможно</strong><p>Ты всё ещё на горе. Восстанови силы, поставь лагерь, сбрось груз или запроси помощь. Бездействие ухудшает состояние.</p>{simulation.rescueEtaMinutes !== null && <span>Помощь: примерно {Math.ceil(simulation.rescueEtaMinutes / 60)} ч</span>}</section>}
+      {simulation.status === 'STRANDED' && <section className="m-survival-alert"><strong>Движение невозможно</strong><p>Ты остаёшься на этой высоте. Используй доступные действия, добивайся решения об отходе или вызывай помощь.</p>{simulation.rescueEtaMinutes !== null && <span>Помощь: примерно {Math.ceil(simulation.rescueEtaMinutes / 60)} ч</span>}</section>}
       {simulation.leaderOrder && !simulation.leaderOrder.resolved && <section className="m-live-order"><small>ПРИКАЗ · {leader?.name ?? 'руководитель'}</small><strong>«{simulation.leaderOrder.text}»</strong><span>Ожидаемое действие: {fieldActions.find(action => action.id === simulation.leaderOrder?.preferredAction)?.title ?? simulation.leaderOrder.preferredAction}</span></section>}
       <section className={`m-sim-stage ${simulationStage.critical ? 'is-critical' : ''}`}><header><div><small>{simulationStage.critical ? 'КЛЮЧЕВОЙ УЧАСТОК' : 'ТЕКУЩИЙ УЧАСТОК'} · {terrainModule.label}</small><h2>{simulationStage.hazard}</h2></div><b>{stagePercent}%</b></header><div className="m-stage-progress"><i style={{ width: `${stagePercent}%` }} /></div><dl><div><dt>Навык</dt><dd>{SKILL_LABELS[simulationStage.skill]} {career.hero.skills[simulationStage.skill]}</dd></div><div><dt>Сложность</dt><dd>{Math.round(simulationStage.difficulty)}</dd></div><div><dt>Подготовка</dt><dd>{prepared ? 'готово' : Math.round(simulationStage.preparation)}</dd></div><div><dt>Верёвка</dt><dd>{climb.ropeMetersRemaining} м</dd></div></dl></section>
       {simulationStage.critical && <section className={`m-preparation-state ${prepared ? 'is-ready' : 'is-missing'}`}><strong>{prepared ? 'Участок подготовлен' : 'Перед движением нужна работа'}</strong><span>{prepared ? terrainModule.description : missingPreparation.map(tag => preparationLabel[tag]).join(' · ')}</span></section>}
       {lastFailure && lastFailure.actionNumber >= simulation.totalActions - 3 && <section className="m-failure-trace"><small>ПОСЛЕДНЯЯ ОШИБКА</small><strong>{lastFailure.cause}</strong><span>Силы {Math.round(lastFailure.energy)} · состояние {Math.round(lastFailure.condition)} · ветер {lastFailure.windKmh}</span></section>}
       {feedback && <div className={`m-alert-card is-${feedback.severity.toLowerCase()}`}><strong>{feedback.headline}</strong><span>{feedback.detail}</span></div>}
       {participantScene ? <section className="m-sim-event"><header><small>{participantScene.kind === 'ORDER' ? 'ВНЕЗАПНЫЙ ПРИКАЗ' : 'СОБЫТИЕ НА МАРШРУТЕ'}</small><strong>{participantScene.title}</strong></header>{participantScene.orderText && <blockquote>«{participantScene.orderText}»</blockquote>}<p>{participantScene.situation}</p><div>{participantScene.options.map(option => <button key={option.id} onClick={() => resolve(() => onParticipantAction(option.id))}><strong>{option.title}</strong><span>{option.detail}</span>{option.skill && <small>{SKILL_LABELS[option.skill]}</small>}</button>)}</div></section> : <>
-        <div className="m-section-head"><h2>Движение</h2><span>проверка навыка</span></div><div className="m-sim-action-grid m-sim-action-grid--move">{movement.map(actionButton)}</div>
-        <details className="m-details m-sim-tools" open={simulationStage.critical}><summary>Подготовить участок</summary><div className="m-sim-action-grid">{preparation.map(actionButton)}</div></details>
-        <details className="m-details m-sim-tools"><summary>Состояние и выживание</summary><div className="m-sim-action-grid">{survival.map(actionButton)}</div></details>
-        {simulation.direction === 'ASCENT' && <button className="m-retreat-button" onClick={onRetreat}>Развернуться и пройти весь путь вниз</button>}
+        <div className="m-section-head"><h2>Доступные действия</h2><span>{fieldActions.length}</span></div>
+        <div className="m-sim-action-grid m-sim-action-grid--context">{fieldActions.map(actionButton)}</div>
+        {simulation.direction === 'ASCENT' && <button className="m-retreat-button" onClick={() => resolve(() => onFieldAction('TURN_BACK'))}>{climb.authorityMode === 'COMMAND' ? 'Развернуть группу и начать спуск' : 'Потребовать у руководителя начать отход'}</button>}
       </>}
-      <details className="m-details"><summary>Экспедиционный журнал · {climb.log.length}</summary>{climb.log.slice(-12).map((line, index) => <p key={`${line}-${index}`}>{line}</p>)}</details>
     </section>;
   }
 

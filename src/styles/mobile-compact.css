@@ -504,3 +504,44 @@
   .m-failure-trace { border-left-color: var(--m-accent); }
   .m-failure-trace small { color: var(--m-muted); font-size: 7px; letter-spacing: .1em; }
 }
+
+/* 0.6.5 — phone expedition navigation and altitude scale */
+@media (max-width: 1024px) {
+  html[data-device='phone'] .exp-height-scale {
+    margin: 7px 0;
+    padding: 8px;
+    border-color: var(--m-line);
+    background: var(--m-surface);
+  }
+  html[data-device='phone'] .exp-height-scale > header { gap: 5px; }
+  html[data-device='phone'] .exp-height-scale > header small { color: var(--m-muted); font-size: 6px; }
+  html[data-device='phone'] .exp-height-scale > header strong { margin-top: 2px; font: 600 13px/1 var(--serif); }
+  html[data-device='phone'] .exp-height-scale > header .is-current { padding: 0 7px; border-color: var(--m-line); }
+  html[data-device='phone'] .exp-height-scale > header .is-current strong { font-size: 18px; }
+  html[data-device='phone'] .exp-height-track { height: 22px; margin: 9px 5px 7px; border-color: var(--m-line); background: var(--m-card); }
+  html[data-device='phone'] .exp-height-fill { background: color-mix(in srgb, var(--m-accent) 74%, var(--m-active)); }
+  html[data-device='phone'] .exp-height-critical { background: var(--m-accent); }
+  html[data-device='phone'] .exp-height-camp { width: 16px; height: 16px; border-color: var(--m-line); background: var(--m-bg); color: var(--m-text); font-size: 6px; }
+  html[data-device='phone'] .exp-height-current { width: 11px; height: 28px; border-color: var(--m-text); background: var(--m-bg); }
+  html[data-device='phone'] .exp-height-current em { font-size: 8px; }
+  html[data-device='phone'] .exp-height-scale > footer { gap: 4px; color: var(--m-muted); font-size: 7px; }
+  html[data-device='phone'] .exp-height-scale > footer b { display: block; margin-top: 1px; color: var(--m-text); font-size: 9px; }
+
+  .m-expedition-tabs {
+    display: grid;
+    grid-template-columns: repeat(5,minmax(0,1fr));
+    height: 34px;
+    margin: 6px -6px 7px;
+    border-block: 1px solid var(--m-line);
+  }
+  .m-expedition-tabs button { min-width: 0; padding: 0 2px; border: 0; border-right: 1px solid var(--m-line); background: transparent; color: var(--m-muted); font-size: 8px; }
+  .m-expedition-tabs button:last-child { border-right: 0; }
+  .m-expedition-tabs button.is-active { background: var(--m-active); color: #f4f0e8; }
+  .m-expedition-panel { padding-top: 3px; }
+  .m-expedition-panel > .m-kicker { margin-bottom: 7px; }
+  .m-expedition-log { border-top: 1px solid var(--m-line); }
+  .m-expedition-log p { margin: 0; padding: 7px 2px; display: grid; grid-template-columns: 24px 1fr; gap: 6px; border-bottom: 1px solid var(--m-line); color: var(--m-muted); font-size: 8px; line-height: 1.25; }
+  .m-expedition-log p b { color: var(--m-text); font: 11px var(--serif); }
+  .m-sim-action-grid--context { grid-template-columns: 1fr 1fr; }
+  .m-sim-action-grid--context .m-sim-action { min-height: 78px; }
+}

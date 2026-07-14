@@ -1,4 +1,4 @@
-# Alpine Legacy — Content Pipeline 0.6.4
+# Alpine Legacy — Content Pipeline 0.6.5
 
 ## Цель
 

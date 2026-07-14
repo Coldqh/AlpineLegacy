@@ -36,7 +36,7 @@ describe('crash-safe expedition saves', () => {
     const { world, career } = fixture();
     saveCareer(career);
     saveCareer({ ...career, seasonDay: career.seasonDay + 2 });
-    localStorage.setItem('alpine-legacy:career:v14', '{broken');
+    localStorage.setItem('alpine-legacy:career:v15', '{broken');
     const recovered = loadCareer(world);
     expect(recovered).toBeTruthy();
     expect(recovered?.seasonDay).toBe(career.seasonDay);

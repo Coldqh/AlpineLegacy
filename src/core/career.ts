@@ -425,7 +425,8 @@ function legacyMembership(world: WorldState, career: any): CareerMembership {
 
 export function hydrateCareerFoundation(career: any, world: WorldState, preserveLegacyAuthority = true): CareerState {
   const membership = career.membership ?? (preserveLegacyAuthority ? legacyMembership(world, career) : membershipForDraft(world, { name: career.hero?.name ?? '', age: career.hero?.age ?? 20, originId: career.hero?.originId ?? 'CLUB_SCHOOL', entryMode: 'ORGANIZATION', organizationId: null }));
-  const routes = career.routes?.length ? career.routes : generateRoutesForWorld(world);
+  const ecosystemRoutes = world.ecosystem?.content?.routes?.allIds?.map(id => world.ecosystem.content.routes.byId[id]).filter((route): route is ExpeditionRoute => Boolean(route)) ?? [];
+  const routes = ecosystemRoutes.length ? ecosystemRoutes : generateRoutesForWorld(world);
   const organization = getOrganization(world, membership.organizationId);
   const club = membership.mode === 'INDEPENDENT' ? independentClub(world) : organizationToClub(organization, world);
   const teamRoster = career.teamRoster?.length ? career.teamRoster : rosterForOrganization(world, membership.organizationId);
@@ -439,10 +440,22 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     simulation: career.activeClimb.simulation ?? null,
   } as QualificationClimb : null;
   const activeRoute = activeClimbBase ? routes.find((route: ExpeditionRoute) => route.id === activeClimbBase.routeId) ?? routes[0] : null;
-  const activeClimb = activeClimbBase && activeRoute ? { ...activeClimbBase, simulation: hydrateExpeditionSimulation(activeClimbBase, activeRoute) } : activeClimbBase;
+  const activeRelative = activeClimbBase
+    ? Math.max(0, activeClimbBase.simulation?.relativeElevation ?? activeClimbBase.currentElevation - activeClimbBase.startElevation)
+    : 0;
+  const normalizedActiveClimb = activeClimbBase && activeRoute ? {
+    ...activeClimbBase,
+    startElevation: activeRoute.startElevation,
+    summitElevation: activeRoute.summitElevation,
+    currentElevation: Math.min(activeRoute.summitElevation, activeRoute.startElevation + activeRelative),
+    route: activeRoute.segments,
+    ascentRoute: activeRoute.segments,
+    descentRoute: activeRoute.descentSegments ?? defaultDescentSegments(activeRoute),
+  } : activeClimbBase;
+  const activeClimb = normalizedActiveClimb && activeRoute ? { ...normalizedActiveClimb, simulation: hydrateExpeditionSimulation(normalizedActiveClimb, activeRoute) } : normalizedActiveClimb;
   return hydrateCareerProgression({
     ...career,
-    schemaVersion: 14,
+    schemaVersion: 15,
     club,
     routes,
     teamRoster,
@@ -470,7 +483,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = rosterForOrganization(world, membership.organizationId);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 14,
+    schemaVersion: 15,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,

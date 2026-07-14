@@ -26,6 +26,9 @@ describe('physical expedition simulation', () => {
     const { world, career } = startedCareer();
     expect(career.activeClimb?.simulation?.relativeElevation).toBe(0);
     expect(career.activeClimb?.currentElevation).toBe(career.activeClimb?.startElevation);
+    expect(career.activeClimb?.startElevation).toBeGreaterThanOrEqual(0);
+    expect(career.activeClimb?.startElevation).toBeLessThanOrEqual(1000);
+    expect((career.activeClimb?.summitElevation ?? 0) - (career.activeClimb?.startElevation ?? 0)).toBeGreaterThan(1000);
     const routes = [...world.ecosystem.content.routes.allIds]
       .map(id => world.ecosystem.content.routes.byId[id]!)
       .sort((a, b) => (a.summitElevation - a.startElevation) - (b.summitElevation - b.startElevation));

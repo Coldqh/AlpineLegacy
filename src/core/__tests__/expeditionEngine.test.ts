@@ -53,9 +53,11 @@ describe('playable participant expedition', () => {
     expect((simulation?.ascentStages.length ?? 0) + (simulation?.descentStages.length ?? 0)).toBeGreaterThanOrEqual(30);
     expect(currentExpeditionStage(started)?.phase).toBe('APPROACH');
     const actionIds = previewExpeditionActions(started).map(action => action.id);
-    expect(actionIds).toContain('MOVE_CAUTIOUS');
-    expect(actionIds).toContain('FIX_ROPE');
-    expect(actionIds).toContain('MAKE_CAMP');
+    expect(actionIds.length).toBeGreaterThanOrEqual(2);
+    expect(actionIds.length).toBeLessThanOrEqual(6);
+    expect(actionIds).toContain('MOVE_STEADY');
+    expect(actionIds).not.toContain('FIX_ROPE');
+    expect(actionIds).not.toContain('MAKE_CAMP');
   });
 
   it('triggers personal events on top of movement instead of replacing it', () => {

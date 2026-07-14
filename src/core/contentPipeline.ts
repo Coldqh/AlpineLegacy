@@ -12,22 +12,26 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 
 export function expeditionScaleForRoute(route: ExpeditionRoute): ExpeditionScale {
   const gain = Math.max(0, route.summitElevation - route.startElevation);
-  const load = route.estimatedHours + route.technicality * .12 + route.objectiveRisk * .08 + gain / 230;
-  if (route.summitElevation >= 6500 || load >= 33) return 'GIANT';
-  if (route.summitElevation >= 4700 || load >= 22) return 'MAJOR';
+  // Height and total gain define the expedition class. Route hours only refine it;
+  // they must not turn a low mountain into a giant because of one slow technical line.
+  const load = route.estimatedHours * .2 + route.technicality * .12 + route.objectiveRisk * .08 + gain / 350;
+  if (route.summitElevation >= 6500 || gain >= 5000 || load >= 40) return 'GIANT';
+  if (route.summitElevation >= 4700 || gain >= 3000 || load >= 24) return 'MAJOR';
   return 'SMALL';
 }
 
 export function targetStageBudget(route: ExpeditionRoute) {
   const scale = expeditionScaleForRoute(route);
   const gain = Math.max(1, route.summitElevation - route.startElevation);
-  const complexity = route.technicality * .22 + route.objectiveRisk * .14 + route.estimatedHours * .75 + gain / 150;
+  // Full vertical gain is the dominant term. Technicality adds work, but can no
+  // longer flatten every route against the same maximum stage cap.
+  const raw = 8 + gain / 180 + route.technicality * .06 + route.objectiveRisk * .05 + route.estimatedHours * .1;
   const ascent = scale === 'SMALL'
-    ? Math.round(clamp(12 + complexity * .18, 14, 22))
+    ? Math.round(clamp(raw, 12, 20))
     : scale === 'MAJOR'
-      ? Math.round(clamp(20 + complexity * .25, 24, 36))
-      : Math.round(clamp(34 + complexity * .34, 42, 60));
-  const descent = Math.round(ascent * (scale === 'GIANT' ? .84 : scale === 'MAJOR' ? .76 : .68));
+      ? Math.round(clamp(raw, 18, 30))
+      : Math.round(clamp(raw, 28, 48));
+  const descent = Math.round(ascent * (scale === 'GIANT' ? .78 : scale === 'MAJOR' ? .73 : .65));
   return { scale, ascent, descent };
 }
 
@@ -68,6 +72,10 @@ export function buildRouteContentReport(route: ExpeditionRoute): RouteContentRep
   if (!route.segments.length) errors.push('Маршрут не содержит участков подъёма.');
   if (!(route.descentSegments?.length)) errors.push('Маршрут не содержит отдельного спуска.');
   if (route.summitElevation <= route.startElevation) errors.push('Вершина находится не выше точки старта.');
+  if (route.startElevation < 0 || route.startElevation > 1000) errors.push('Точка старта должна находиться в диапазоне 0–1000 м.');
+  const declaredGain = route.segments.reduce((sum, segment) => sum + segment.elevationGain, 0);
+  const fullGain = route.summitElevation - route.startElevation;
+  if (Math.abs(declaredGain - fullGain) > Math.max(20, fullGain * .02)) errors.push('Участки маршрута не покрывают полный набор от старта до вершины.');
   if (!route.requiredGearIds.length) warnings.push('Не задано обязательное снаряжение.');
   if (uniqueModules.size < Math.min(3, route.segments.length)) warnings.push('Слишком мало разных terrain-модулей.');
   if (criticalSegments === 0) warnings.push('Нет ключевых многошаговых участков.');
@@ -141,6 +149,6 @@ export function attachContentMetadata(route: ExpeditionRoute): ExpeditionRoute {
     expeditionScale: report.scale,
     expectedPlayMinutes: report.expectedPlayMinutes,
     estimatedDecisionCount: report.estimatedActions,
-    contentVersion: 2,
+    contentVersion: 3,
   };
 }

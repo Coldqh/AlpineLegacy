@@ -301,10 +301,44 @@ export function createWorldEcosystem(world: Pick<WorldState, 'id' | 'config' | '
 }
 
 export function hydrateWorldEcosystem(world: WorldState): WorldState {
-  const routes = world.ecosystem?.content?.routes?.allIds?.length
+  const storedRoutes = world.ecosystem?.content?.routes?.allIds?.length
     ? tableValues(world.ecosystem.content.routes)
-    : generateRoutesForWorld(world);
-  const ecosystem = world.ecosystem?.schemaVersion === 1 ? world.ecosystem : createWorldEcosystem(world, routes);
+    : [];
+  const refreshRoutes = !storedRoutes.length || storedRoutes.some(route => (route.contentVersion ?? 0) < 3 || route.startElevation < 0 || route.startElevation > 1000);
+  const generatedRoutes = refreshRoutes ? generateRoutesForWorld(world) : storedRoutes;
+  let ecosystem = world.ecosystem?.schemaVersion === 1 ? world.ecosystem : createWorldEcosystem(world, generatedRoutes);
+
+  if (refreshRoutes && ecosystem?.schemaVersion === 1) {
+    const routesByMountain = new Map<string, string[]>();
+    for (const route of generatedRoutes) {
+      const ids = routesByMountain.get(route.mountainId) ?? [];
+      ids.push(route.id);
+      routesByMountain.set(route.mountainId, ids);
+    }
+    const mountains = tableValues(ecosystem.content.mountains).map(mountain => ({
+      ...mountain,
+      routeIds: routesByMountain.get(mountain.id) ?? [],
+    }));
+    const regions = tableValues(ecosystem.content.regions).map(region => ({
+      ...region,
+      mountainIds: region.mountainIds ?? mountains.filter(mountain => mountain.regionId === region.id).map(mountain => mountain.id),
+    }));
+    const mountainState = tableValues(ecosystem.runtime.mountains).map(state => ({
+      ...state,
+      routeAvailability: Object.fromEntries((routesByMountain.get(state.id) ?? []).map(routeId => [routeId, state.routeAvailability[routeId] ?? 'OPEN'])),
+    }));
+    ecosystem = {
+      ...ecosystem,
+      content: {
+        ...ecosystem.content,
+        routes: entityTable(generatedRoutes),
+        mountains: entityTable(mountains),
+        regions: entityTable(regions),
+      },
+      runtime: { ...ecosystem.runtime, mountains: entityTable(mountainState) },
+    };
+  }
+
   const primaryRegion = ecosystem.content.regions.byId[ecosystem.content.primaryRegionId] ?? world.region;
   const mountains = (primaryRegion.mountainIds ?? ecosystem.content.mountains.allIds)
     .map(id => ecosystem.content.mountains.byId[id])
