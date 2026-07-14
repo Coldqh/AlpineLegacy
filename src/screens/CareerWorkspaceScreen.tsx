@@ -17,7 +17,7 @@ import {
 } from '../mobile/MobileCareerScreens';
 import { CareerFlowGuide } from '../components/CareerFlowGuide';
 import {
-  acceptExpeditionOffer,
+  applyToExpeditionOffer,
   applyEquipmentPreset,
   availableExpeditionOffers,
   dismissOnboarding,
@@ -31,6 +31,7 @@ import {
   leaveCache,
   meltSnow,
   resolveClimbStep,
+  resolveParticipantAction,
   retreatClimb,
   selectMountain,
   selectRoute,
@@ -113,11 +114,11 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     if (activeTab === 'RECORDS') return <MobileRecords career={career} />;
     if (activeTab === 'JOURNAL') return <MobileJournal career={career} />;
     if (activeTab === 'PEOPLE') return <MobilePeople career={career} />;
-    if (activeTab === 'ROUTE') return <MobileRoute world={world} career={career} offers={availableExpeditionOffers(world, career)} onAcceptOffer={offerId => onPersist(acceptExpeditionOffer(world, career, offerId))} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} />;
+    if (activeTab === 'ROUTE') return <MobileRoute world={world} career={career} offers={availableExpeditionOffers(world, career)} onAcceptOffer={offerId => onPersist(applyToExpeditionOffer(world, career, offerId))} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} />;
     if (activeTab === 'TEAM') return <MobileTeam career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
     if (activeTab === 'EQUIPMENT') return <MobileEquipment career={career} onSetQuantity={(gearId, quantity) => onPersist(setGearQuantity(career, gearId, quantity))} onSetPlan={(patch: Partial<ExpeditionPlan>) => onPersist(updateExpeditionPlan(career, patch))} onPreset={preset => onPersist(applyEquipmentPreset(career, preset))} onContinue={() => onTab('EXPEDITION')} />;
     if (activeTab === 'EXPEDITION') return <MobileExpedition career={career} difficulty={world.config.difficulty} onOpenTab={onTab} onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))} onSetAcclimatization={days => onPersist(updateExpeditionPlan(career, { acclimatizationDays: days }))} onLaunch={() => { const readiness = expeditionReadiness(career); const next = startPlannedClimb(career); onPersist(next); if (next.activeClimb && readiness.blockers.length === 0) onTab('CLIMB'); }} />;
-    if (activeTab === 'CLIMB' && career.activeClimb) return <MobileClimbScreen career={career} difficulty={world.config.difficulty} onStep={(pace: ClimbPace) => persistResult(resolveClimbStep(career, pace))} onCamp={() => persistResult(establishCamp(career))} onMeltSnow={() => persistResult(meltSnow(career))} onWait={() => persistResult(waitWeather(career))} onOrder={(order: ClimbOrderId) => persistResult(issueClimbOrder(career, order))} onChooseDecision={optionId => persistResult(chooseRouteDecision(career, optionId))} onFixRope={() => persistResult(fixRope(career))} onLeaveCache={() => persistResult(leaveCache(career))} onBeginDescent={() => onPersist(beginDescent(career))} onRetreat={() => onPersist(retreatClimb(career))} onClose={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }} />;
+    if (activeTab === 'CLIMB' && career.activeClimb) return <MobileClimbScreen career={career} difficulty={world.config.difficulty} onStep={(pace: ClimbPace) => persistResult(resolveClimbStep(career, pace))} onCamp={() => persistResult(establishCamp(career))} onMeltSnow={() => persistResult(meltSnow(career))} onWait={() => persistResult(waitWeather(career))} onOrder={(order: ClimbOrderId) => persistResult(issueClimbOrder(career, order))} onChooseDecision={optionId => persistResult(chooseRouteDecision(career, optionId))} onFixRope={() => persistResult(fixRope(career))} onLeaveCache={() => persistResult(leaveCache(career))} onParticipantAction={optionId => persistResult(resolveParticipantAction(career, optionId))} onBeginDescent={() => onPersist(beginDescent(career))} onRetreat={() => onPersist(retreatClimb(career))} onClose={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }} />;
     return <MobileJournal career={career} />;
   }
 
@@ -135,7 +136,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
           world={world}
           career={career}
           offers={availableExpeditionOffers(world, career)}
-          onAcceptOffer={offerId => onPersist(acceptExpeditionOffer(world, career, offerId))}
+          onAcceptOffer={offerId => onPersist(applyToExpeditionOffer(world, career, offerId))}
           onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))}
           onSelectRoute={routeId => onPersist(selectRoute(career, routeId))}
           onContinue={() => onTab('TEAM')}
@@ -187,6 +188,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
           onChooseDecision={optionId => persistResult(chooseRouteDecision(career, optionId))}
           onFixRope={() => persistResult(fixRope(career))}
           onLeaveCache={() => persistResult(leaveCache(career))}
+          onParticipantAction={optionId => persistResult(resolveParticipantAction(career, optionId))}
           onBeginDescent={() => onPersist(beginDescent(career))}
           onRetreat={() => onPersist(retreatClimb(career))}
           onClose={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }}

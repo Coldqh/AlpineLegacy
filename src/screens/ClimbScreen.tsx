@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { RouteBlueprint } from '../components/RouteBlueprint';
 import { getCurrentRouteDecision, previewClimbAction, SKILL_LABELS } from '../core/career';
+import { getCurrentParticipantScene, nodeProgress, participantLeader } from '../core/expeditionEngine';
 import type { CareerState, ClimbActionPreview, ClimbOrderId, ClimbPace, ClimbStepResult, DifficultyId } from '../core/types';
 
 type Props = {
@@ -14,6 +15,7 @@ type Props = {
   onChooseDecision: (optionId: string) => ClimbStepResult;
   onFixRope: () => ClimbStepResult;
   onLeaveCache: () => ClimbStepResult;
+  onParticipantAction: (optionId: string) => ClimbStepResult;
   onBeginDescent: () => void;
   onRetreat: () => void;
   onClose: () => void;
@@ -84,13 +86,16 @@ function PaceCard({ preview, primary, recommended, difficulty, onClick }: { prev
   );
 }
 
-export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onBeginDescent, onRetreat, onClose }: Props) {
+export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onParticipantAction, onBeginDescent, onRetreat, onClose }: Props) {
   const climb = career.activeClimb!;
   const [feedback, setFeedback] = useState<Pick<ClimbStepResult, 'headline' | 'detail' | 'severity'> | null>(null);
   const activeSegment = climb.route[Math.max(0, Math.min(climb.route.length - 1, climb.segmentIndex))]!;
   const terminal = ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase);
   const liveTeam = climb.teamStates.map(state => ({ state, member: career.teamRoster.find(member => member.id === state.memberId) })).filter(item => item.member);
   const currentDecision = getCurrentRouteDecision(career);
+  const participantScene = getCurrentParticipantScene(career);
+  const participantProgress = nodeProgress(career);
+  const participantLeaderData = participantLeader(career);
   const previews = useMemo(() => (['CAUTIOUS', 'STEADY', 'FAST'] as ClimbPace[]).map(pace => previewClimbAction(career, pace)).filter(Boolean) as ClimbActionPreview[], [career]);
   const recommendedPace = difficulty === 'EXPLORER' ? [...previews].sort((a, b) => (a.incidentRisk + a.energyCost * .45 + a.durationMinutes / 180) - (b.incidentRisk + b.energyCost * .45 + b.durationMinutes / 180))[0]?.pace : null;
   const noReturn = climb.phase === 'ASCENT' && Boolean(activeSegment.noReturn || activeSegment.exposure >= 65);
@@ -132,6 +137,7 @@ export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, on
           <article className="is-good"><small>СИЛЬНЫЕ РЕШЕНИЯ</small>{review.strengths.map(item => <p key={item}>✓ {item}</p>)}</article>
           <article className="is-warning"><small>ЧТО ИЗМЕНИТЬ</small>{review.mistakes.map(item => <p key={item}>— {item}</p>)}</article>
         </section>
+        {climb.participant?.evaluation && <section className="participant-evaluation-panel"><header><div><p className="eyebrow">LEADER EVALUATION</p><h2>{climb.participant.evaluation.title}</h2></div><b>{climb.participant.evaluation.grade}</b></header><p>{climb.participant.evaluation.summary}</p><div>{climb.participant.evaluation.tags.map(tag => <span key={tag}>{tag}</span>)}</div><footer>Рост ранга: +{climb.participant.evaluation.rankPoints}</footer></section>}
         {climb.routeChoices.length > 0 && <section className="route-choice-debrief"><p className="eyebrow">ROUTE DECISIONS</p>{climb.routeChoices.map(choice => <article key={`${choice.decisionId}-${choice.optionId}`}><strong>{choice.title}</strong><p>{choice.note}</p></article>)}</section>}
         <details className="result-log-disclosure"><summary>Открыть полный журнал экспедиции ({climb.log.length})</summary><div className="result-ledger">{climb.log.map((line, index) => <div key={`${line}-${index}`}><span>{String(index + 1).padStart(2, '0')}</span><p>{line}</p></div>)}</div></details>
         <button className="primary-action result-close" onClick={onClose}><span>Закрыть экспедицию</span><b>→</b></button>
@@ -139,7 +145,22 @@ export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, on
     );
   }
 
-  if (climb.phase === 'SUMMIT') {
+  if (climb.participant && participantScene) {
+    const toneLabel = { OBEY: 'ВЫПОЛНИТЬ', QUESTION: 'ВОЗРАЗИТЬ', REFUSE: 'ОТКАЗАТЬСЯ', INITIATIVE: 'ИНИЦИАТИВА', CARE: 'ПОМОЧЬ' } as const;
+    return (
+      <section className="workspace-page participant-expedition-page">
+        <header className="participant-expedition-head"><div><p className="eyebrow">{participantScene.phase} · {participantScene.roleLabel}</p><h1>{participantScene.nodeLabel}</h1><span>{climb.mountainName} · {climb.routeName}</span></div><strong>{climb.currentElevation} м</strong></header>
+        <div className="participant-progress"><i style={{ width: `${participantProgress.overall}%` }} /><span>{climb.participant.totalActions}/{climb.participant.targetActions} решений</span></div>
+        <div className="participant-layout"><section className="participant-main">
+          <article className="leader-order-card"><header><div><small>{participantScene.kind === 'ORDER' ? 'ПРИКАЗ РУКОВОДИТЕЛЯ' : 'ЛИЧНАЯ СИТУАЦИЯ'}</small><strong>{participantLeaderData?.name ?? participantScene.leaderName}</strong></div><b>{participantProgress.current + 1}/{participantProgress.required}</b></header>{participantScene.orderText && <blockquote>«{participantScene.orderText}»</blockquote>}<h2>{participantScene.title}</h2><p>{participantScene.situation}</p></article>
+          {feedback && <div className={`climb-feedback is-${feedback.severity.toLowerCase()}`}><span>ПОСЛЕДНЕЕ ДЕЙСТВИЕ</span><h3>{feedback.headline}</h3><p>{feedback.detail}</p></div>}
+          <div className="participant-choice-grid">{participantScene.options.map(option => <button key={option.id} className={`is-${option.tone.toLowerCase()}`} onClick={() => resolve(() => onParticipantAction(option.id))}><header><span>{toneLabel[option.tone]}</span><strong>{option.title}</strong></header><p>{option.detail}</p><footer><span>{option.advanceMinutes} мин</span>{option.skill && <b>{SKILL_LABELS[option.skill]}</b>}<em>→</em></footer></button>)}</div>
+        </section><aside className="participant-side"><p className="eyebrow">ТВОЯ РАБОТА</p><div><span>Силы</span><strong>{Math.round(climb.energy)}%</strong></div><div><span>Доверие руководителя</span><strong>{climb.participant.leaderTrust}</strong></div><div><span>Доверие группы</span><strong>{climb.participant.groupTrust}</strong></div><div><span>Дисциплина</span><strong>{Math.round(climb.participant.discipline)}</strong></div><div><span>Инициатива</span><strong>{Math.round(climb.participant.initiative)}</strong></div><div><span>Помощь</span><strong>{Math.round(climb.participant.care)}</strong></div><div><span>Компетентность</span><strong>{Math.round(climb.participant.competence)}</strong></div><p>Приказы: {climb.participant.ordersObeyed}/{climb.participant.ordersReceived} выполнено · отказов {climb.participant.ordersRefused}</p></aside></div>
+      </section>
+    );
+  }
+
+  if (climb.phase === 'SUMMIT' && !climb.participant) {
     return (
       <section className="workspace-page summit-screen summit-screen--embedded">
         <div className="summit-screen__altitude">{climb.summitElevation}</div>

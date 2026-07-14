@@ -5,6 +5,7 @@ import { getEntryOrganizations, getOrganization, offersForMembership, organizati
 import { buildExpeditionReport, createClimbTeamStates, enrichRoster, finalizeRosterAfterClimb, memory, teamAverage } from './people';
 import { advanceLivingWorld, createLivingWorld, registerHeroExpedition } from './worldSimulation';
 import { createCareerProgression, currentSeasonExpeditionCount, expeditionLimitForTier, hydrateCareerProgression, normalizeCareerProgression, rollCareerSeason, syncCareerProgression } from './progression';
+import { createParticipantExpeditionState, evaluateParticipant, getCurrentParticipantNode, getCurrentParticipantScene, leaderPace, resolveParticipantSkill } from './expeditionEngine';
 import type {
   CalendarEntry,
   CareerDraft,
@@ -13,10 +14,12 @@ import type {
   CareerState,
   ClimbActionPreview,
   PreparationInsight,
+  ParticipantSceneOption,
   ClimbOrderId,
   ClimbPace,
   ClimbStepResult,
   ClubData,
+  ExpeditionApplication,
   ExpeditionOffer,
   ExpeditionPlan,
   ExpeditionRank,
@@ -370,7 +373,8 @@ function rankForPoints(points: number): ExpeditionRank {
 function progressMembership(career: CareerState, climb: QualificationClimb, successful: boolean) {
   const authorityBonus = climb.authorityMode === 'COMMAND' ? 3 : 0;
   const safetyBonus = climb.casualties.length === 0 ? 2 : -8;
-  const gain = Math.max(0, (successful ? 7 : climb.retreating ? 3 : 1) + authorityBonus + safetyBonus);
+  const participantGain = climb.participant?.evaluation?.rankPoints ?? 0;
+  const gain = Math.max(0, participantGain || ((successful ? 7 : climb.retreating ? 3 : 1) + authorityBonus + safetyBonus));
   const rankPoints = career.membership.rankPoints + gain;
   const rank = rankForPoints(rankPoints);
   return { ...career.membership, rankPoints, rank, authority: career.membership.mode === 'INDEPENDENT' || ['LEADER', 'ORGANIZER'].includes(rank) ? 'COMMAND' as const : 'PARTICIPANT' as const, permissions: permissionsForMembership(career.membership.mode, rank) };
@@ -428,15 +432,17 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     leaderNpcId: career.activeClimb.leaderNpcId ?? teamRoster.find((member: TeamMember) => member.role === 'LEADER')?.id ?? null,
     playerRole: career.activeClimb.playerRole ?? 'LEADER',
     authorityMode: career.activeClimb.authorityMode ?? (membership.permissions.canIssueOrders ? 'COMMAND' : 'PARTICIPANT'),
+    participant: career.activeClimb.participant ?? null,
   } : null;
   return hydrateCareerProgression({
     ...career,
-    schemaVersion: 11,
+    schemaVersion: 12,
     club,
     routes,
     teamRoster,
     membership: { ...membership, permissions: permissionsForMembership(membership.mode, membership.rank) },
     selectedOfferId: career.selectedOfferId ?? career.expeditionPlan?.offerId ?? null,
+    applications: career.applications ?? [],
     knownNpcIds: career.knownNpcIds ?? teamRoster.map((member: TeamMember) => member.id),
     expeditionPlan: {
       ...career.expeditionPlan,
@@ -458,7 +464,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = rosterForOrganization(world, membership.organizationId);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 11,
+    schemaVersion: 12,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,
@@ -501,6 +507,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     progression: null as unknown as CareerState['progression'],
     membership,
     selectedOfferId: null,
+    applications: [],
     knownNpcIds: teamRoster.map(member => member.id),
   };
 
@@ -716,6 +723,41 @@ export function availableExpeditionOffers(world: WorldState, career: CareerState
   return offersForMembership(world, career.membership, career.seasonDay);
 }
 
+export function applicationForOffer(career: CareerState, offerId: string) {
+  return [...career.applications].reverse().find(application => application.offerId === offerId) ?? null;
+}
+
+export function applyToExpeditionOffer(world: WorldState, career: CareerState, offerId: string): CareerState {
+  const offer = availableExpeditionOffers(world, career).find(item => item.id === offerId);
+  if (!offer) return career;
+  const previous = applicationForOffer(career, offerId);
+  if (previous?.status === 'ACCEPTED') return acceptExpeditionOffer(world, career, offerId);
+  const route = world.ecosystem.content.routes.byId[offer.routeId];
+  if (!route) return career;
+  const roleSkill: Record<TeamMember['role'], SkillId> = { LEADER: 'LEADERSHIP', ROPE_LEAD: 'ROCK', MEDIC: 'MEDICINE', NAVIGATOR: 'NAVIGATION', SUPPORT: 'ENDURANCE' };
+  const skill = career.hero.skills[roleSkill[offer.playerRole]];
+  const rng = createRng(`${career.rootSeed}:application:${career.year}:${career.seasonDay}:${offer.id}:${career.applications.length}`);
+  const score = Math.round(46 + skill * 6 + career.membership.rankPoints * .35 + career.hero.reputation * .25 + rng.int(-9, 11));
+  const accepted = score >= 58 || (!career.applications.some(item => item.status === 'ACCEPTED') && offer.requiredRank === 'NOVICE' && score >= 51);
+  const application: ExpeditionApplication = {
+    id: `application-${offer.id}-${career.year}-${career.seasonDay}-${career.applications.length + 1}`,
+    offerId,
+    status: accepted ? 'ACCEPTED' : 'REJECTED',
+    score,
+    reason: accepted
+      ? `Руководитель подтвердил место. Твоя роль: ${offer.playerRole}.`
+      : score >= 48 ? 'Руководитель выбрал участника с большим опытом в этой роли.' : 'Навыки и репутация пока ниже требований группы.',
+    appliedYear: career.year,
+    appliedDay: career.seasonDay,
+  };
+  const withApplication = {
+    ...career,
+    applications: [...career.applications, application],
+    log: [...career.log, careerLog(career, 'EXPEDITION', accepted ? 'Заявка принята' : 'Заявка отклонена', `${route.mountainName} · ${route.name}. ${application.reason}`)],
+  };
+  return accepted ? acceptExpeditionOffer(world, withApplication, offerId) : withApplication;
+}
+
 export function acceptExpeditionOffer(world: WorldState, career: CareerState, offerId: string): CareerState {
   const offer = availableExpeditionOffers(world, career).find(item => item.id === offerId);
   if (!offer) return career;
@@ -723,8 +765,19 @@ export function acceptExpeditionOffer(world: WorldState, career: CareerState, of
   if (!route) return career;
   const participantIds = [offer.leaderNpcId, ...offer.memberNpcIds].filter((id): id is string => Boolean(id));
   const known = [...new Set([...career.knownNpcIds, ...participantIds])];
+  const existingApplication = applicationForOffer(career, offer.id);
+  const acceptedApplication: ExpeditionApplication = existingApplication?.status === 'ACCEPTED' ? existingApplication : {
+    id: `application-${offer.id}-${career.year}-${career.seasonDay}-${career.applications.length + 1}`,
+    offerId: offer.id,
+    status: 'ACCEPTED',
+    score: 100,
+    reason: 'Место подтверждено.',
+    appliedYear: career.year,
+    appliedDay: career.seasonDay,
+  };
   return {
     ...career,
+    applications: existingApplication?.status === 'ACCEPTED' ? career.applications : [...career.applications, acceptedApplication],
     selectedOfferId: offer.id,
     knownNpcIds: known,
     expeditionPlan: {
@@ -971,6 +1024,7 @@ export function startPlannedClimb(career: CareerState): CareerState {
     injuries: [],
     earnedReputation: 0,
     earnedMoney: 0,
+    participant: career.expeditionPlan.authorityMode === 'PARTICIPANT' ? createParticipantExpeditionState(route) : null,
   };
   const timeline = advanceDays(career, window.startsInDays + career.expeditionPlan.acclimatizationDays);
   const next: CareerState = {
@@ -1216,16 +1270,20 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
   const sponsorBonus = successful ? (normalizeCareerProgression(career).sponsor?.summitBonus ?? 0) : 0;
   const reward = successful ? Math.max(0, 150 + Math.round(getSelectedRoute(career).objectiveRisk * 1.2) - casualtyPenalty * 3 + sponsorBonus) : 0;
   const reputation = successful ? Math.max(-12, 8 + Math.round(getSelectedRoute(career).technicality / 12) - casualtyPenalty) : climb.retreating ? 1 : -4;
+  const participantEvaluation = climb.participant
+    ? climb.participant.evaluation ?? evaluateParticipant(climb.participant, successful, climb.casualties.length)
+    : null;
   const completed: QualificationClimb = {
     ...climb,
     phase: successful ? 'COMPLETE' : climb.phase === 'FAILED' ? 'FAILED' : 'RETREATED',
     earnedMoney: reward,
     earnedReputation: reputation,
+    participant: climb.participant ? { ...climb.participant, evaluation: participantEvaluation } : null,
     currentElevation: climb.startElevation,
     log: [...climb.log, `${clock(climb.elapsedMinutes)} — группа вернулась к исходной точке. ${successful ? 'Восхождение засчитано.' : 'Выход закрыт без вершины.'}`],
   };
   const roster = finalizeRosterAfterClimb(career, completed, successful);
-  const report = buildExpeditionReport(career, completed, reputation, reward);
+  const report = { ...buildExpeditionReport(career, completed, reputation, reward), participantEvaluation: participantEvaluation ?? undefined };
   const careDelta = completed.rescuedMemberIds.length * 7 + (completed.retreating ? 3 : 0) - completed.casualties.length * 12;
   const reliabilityDelta = successful ? 5 : completed.retreating ? 2 : -5;
   const leadershipDelta = Math.round(completed.decisions.filter(item => item.accepted).length * 1.5) - completed.decisions.filter(item => !item.accepted).length * 2;
@@ -1476,6 +1534,170 @@ function fieldTexture(segment: RouteSegment, climb: QualificationClimb, temperat
   return 'Движение ровное. Люди держат дистанцию и не тратят силы на лишние рывки.';
 }
 
+export function resolveParticipantAction(career: CareerState, optionId: string): ClimbStepResult {
+  const climb = career.activeClimb;
+  const participant = climb?.participant;
+  const scene = getCurrentParticipantScene(career);
+  const node = getCurrentParticipantNode(career);
+  if (!climb || !participant || !scene || !node || climb.authorityMode !== 'PARTICIPANT') {
+    return { career, headline: 'Личное решение недоступно', detail: 'Эта экспедиция не использует режим участника.', severity: 'WARNING' };
+  }
+  const selected = scene.options.find(optionValue => optionValue.id === optionId);
+  if (!selected) return { career, headline: 'Решение не найдено', detail: '', severity: 'WARNING' };
+  const skillResult = resolveParticipantSkill(career, selected);
+  const failedCheck = Boolean(selected.skill) && !skillResult.success;
+  const scale = failedCheck ? -.45 : 1;
+  const signedEffect = (value: number) => value >= 0 ? value * scale : value;
+  const ordersReceived = participant.ordersReceived + (scene.kind === 'ORDER' ? 1 : 0);
+  const ordersObeyed = participant.ordersObeyed + (scene.kind === 'ORDER' && selected.tone === 'OBEY' ? 1 : 0);
+  const ordersRefused = participant.ordersRefused + (scene.kind === 'ORDER' && selected.tone === 'REFUSE' ? 1 : 0);
+  const elapsedMinutes = climb.elapsedMinutes + selected.advanceMinutes;
+  const detail = failedCheck
+    ? `${selected.detail} Навыка не хватило: решение выполнено плохо.`
+    : `${selected.detail}${selected.skill ? ' Работа выполнена уверенно.' : ''}`;
+  const decision = {
+    id: `participant-${climb.id}-${participant.totalActions + 1}`,
+    sceneId: scene.id,
+    nodeId: node.id,
+    optionId: selected.id,
+    optionTitle: selected.title,
+    tone: selected.tone,
+    success: !failedCheck,
+    detail,
+    elapsedMinutes,
+  } as const;
+  const nextParticipant = {
+    ...participant,
+    nodeActionIndex: participant.nodeActionIndex + 1,
+    totalActions: participant.totalActions + 1,
+    leaderTrust: clamp(participant.leaderTrust + signedEffect(selected.leaderTrustDelta) - (failedCheck ? 1 : 0)),
+    groupTrust: clamp(participant.groupTrust + signedEffect(selected.groupTrustDelta)),
+    discipline: participant.discipline + signedEffect(selected.disciplineDelta),
+    initiative: participant.initiative + signedEffect(selected.initiativeDelta),
+    care: participant.care + signedEffect(selected.careDelta),
+    competence: participant.competence + signedEffect(selected.competenceDelta) - (failedCheck ? 1 : 0),
+    rankPointsEarned: participant.rankPointsEarned + Math.max(0, selected.rankDelta + (failedCheck ? 0 : 1)),
+    ordersReceived,
+    ordersObeyed,
+    ordersRefused,
+    decisions: [...participant.decisions, decision],
+  };
+  const personalClimb: QualificationClimb = {
+    ...climb,
+    elapsedMinutes,
+    hoursAwake: climb.hoursAwake + selected.advanceMinutes / 60,
+    energy: clamp(climb.energy + selected.energyDelta * .55 - (failedCheck ? 1 : 0)),
+    condition: clamp(climb.condition + selected.conditionDelta - (failedCheck ? 1 : 0)),
+    teamCondition: clamp(climb.teamCondition + signedEffect(selected.teamDelta)),
+    supplies: climb.supplies,
+    participant: nextParticipant,
+    log: [...climb.log, `${clock(elapsedMinutes)} — ${scene.title}: ${selected.title}. ${detail}`],
+  };
+  let nextCareer: CareerState = { ...career, activeClimb: personalClimb };
+  if (personalClimb.energy <= 4 || personalClimb.condition <= 30) {
+    return {
+      career: { ...nextCareer, activeClimb: { ...personalClimb, phase: 'FAILED', log: [...personalClimb.log, `${clock(elapsedMinutes)} — личное состояние больше не позволяет продолжать.`] } },
+      headline: 'Ты больше не можешь продолжать',
+      detail: 'Экспедиция вынуждена организовать твой отход.',
+      severity: 'DANGER',
+    };
+  }
+  if (nextParticipant.nodeActionIndex < node.requiredActionCount) {
+    return { career: nextCareer, headline: selected.title, detail, severity: failedCheck ? 'WARNING' : selected.tone === 'REFUSE' ? 'WARNING' : 'CALM' };
+  }
+
+  const advanceParticipant = (target: CareerState, extra: Partial<QualificationClimb['participant']> = {}) => {
+    const active = target.activeClimb;
+    if (!active?.participant) return target;
+    return {
+      ...target,
+      activeClimb: {
+        ...active,
+        participant: {
+          ...active.participant,
+          graphNodeIndex: active.participant.graphNodeIndex + 1,
+          nodeActionIndex: 0,
+          ...extra,
+        },
+      },
+    };
+  };
+
+  const restParticipantGroup = (target: CareerState, recovery: number, label: string) => {
+    const active = target.activeClimb;
+    if (!active) return target;
+    const teamSize = Math.max(1, active.teamMemberIds.length + 1);
+    const restedStates = active.teamStates.map(state => state.status === 'ACTIVE' ? {
+      ...state,
+      condition: clamp(state.condition + Math.round(recovery * .32)),
+      fatigue: clamp(state.fatigue - recovery),
+      morale: clamp(state.morale + 2),
+    } : state);
+    const restMinutes = recovery >= 28 ? 6 * 60 : 3 * 60;
+    return {
+      ...target,
+      activeClimb: {
+        ...active,
+        elapsedMinutes: active.elapsedMinutes + restMinutes,
+        energy: clamp(active.energy + recovery),
+        condition: clamp(active.condition + Math.round(recovery * .12)),
+        teamStates: restedStates,
+        teamCondition: teamAverage(restedStates),
+        supplies: {
+          foodUnits: Math.max(0, active.supplies.foodUnits - Math.max(1, Math.ceil(teamSize / 2))),
+          waterUnits: Math.max(0, active.supplies.waterUnits - Math.max(1, Math.ceil(teamSize / 3))),
+          fuelUnits: Math.max(0, active.supplies.fuelUnits - (recovery >= 28 ? 1 : 0)),
+        },
+        hoursAwake: 0,
+        campEstablished: true,
+        log: [...active.log, `${clock(active.elapsedMinutes + restMinutes)} — ${label}. Группа отдохнула и проверила снаряжение.`],
+      },
+    };
+  };
+
+  if (node.phase === 'SUMMIT') {
+    nextCareer = beginDescent(nextCareer);
+    nextCareer = advanceParticipant(nextCareer);
+    return { career: nextCareer, headline: 'Начинается спуск', detail: 'Руководитель перестроил связки. Личные решения продолжаются на обратном пути.', severity: 'SUCCESS' };
+  }
+
+  if (node.phase === 'EXIT') {
+    const active = nextCareer.activeClimb!;
+    const successful = active.summitReached && !active.retreating;
+    const evaluation = evaluateParticipant(active.participant!, successful, active.casualties.length);
+    const evaluated = { ...active, participant: { ...active.participant!, routeComplete: true, evaluation } };
+    const finished = finishClimb({ ...nextCareer, activeClimb: evaluated }, evaluated);
+    return { career: finished, headline: evaluation.title, detail: evaluation.summary, severity: evaluation.grade === 'A' || evaluation.grade === 'B' ? 'SUCCESS' : evaluation.grade === 'E' ? 'DANGER' : 'WARNING' };
+  }
+
+  if (node.segmentId) {
+    const routeDecision = getCurrentRouteDecision(nextCareer);
+    if (routeDecision) {
+      const pace = leaderPace(nextCareer, selected.pace ?? 'STEADY');
+      const ordered = pace === 'CAUTIOUS'
+        ? routeDecision.options.find(optionValue => optionValue.tone === 'SAFE') ?? routeDecision.options[0]
+        : pace === 'FAST'
+          ? routeDecision.options.find(optionValue => optionValue.tone === 'BOLD') ?? routeDecision.options[0]
+          : routeDecision.options.find(optionValue => optionValue.tone === 'BALANCED') ?? routeDecision.options[0];
+      if (ordered) nextCareer = chooseRouteDecision(nextCareer, ordered.id).career;
+    }
+    if (node.campPossible && nextCareer.activeClimb && (nextCareer.activeClimb.hoursAwake >= 6 || nextCareer.activeClimb.energy <= 48)) {
+      nextCareer = restParticipantGroup(nextCareer, node.phase === 'CAMP' ? 32 : 24, `Лагерь на этапе «${node.label}»`);
+    }
+    const movement = resolveClimbStep(nextCareer, leaderPace(nextCareer, selected.pace ?? 'STEADY'));
+    const movementCareer = movement.career;
+    const advanced = movementCareer.activeClimb?.phase && !['FAILED', 'RETREATED', 'COMPLETE'].includes(movementCareer.activeClimb.phase)
+      ? advanceParticipant(movementCareer)
+      : movementCareer;
+    return { ...movement, career: advanced, detail: `${detail} ${movement.detail}`.trim() };
+  }
+
+  nextCareer = advanceParticipant(nextCareer);
+  if (node.phase === 'BASE_CAMP') nextCareer = restParticipantGroup(nextCareer, 24, 'Работа базового лагеря завершена');
+  if (node.phase === 'ACCLIMATIZATION') nextCareer = restParticipantGroup(nextCareer, 30, 'Акклиматизационный цикл завершён');
+  return { career: nextCareer, headline: `${node.label} завершён`, detail, severity: failedCheck ? 'WARNING' : 'CALM' };
+}
+
 export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbStepResult {
   const climb = career.activeClimb;
   if (!climb || (climb.phase !== 'ASCENT' && climb.phase !== 'DESCENT')) {
@@ -1650,6 +1872,14 @@ export function resolveClimbStep(career: CareerState, pace: ClimbPace): ClimbSte
       nextClimb.segmentIndex += 1;
     }
   } else if (climb.segmentIndex >= climb.route.length - 1) {
+    if (nextClimb.participant) {
+      nextClimb = {
+        ...nextClimb,
+        currentElevation: nextClimb.startElevation,
+        log: [...nextClimb.log, `${clock(elapsedMinutes)} — группа вышла к безопасному рельефу. Остался разбор и возвращение.`],
+      };
+      return { career: { ...career, activeClimb: nextClimb }, headline: 'Опасный спуск закончен', detail: 'Экспедиция ещё не закрыта. Руководитель собирает итоговый разбор.', severity: 'SUCCESS' };
+    }
     const completedCareer = finishClimb(career, nextClimb);
     return { career: completedCareer, headline: 'Группа вернулась', detail: nextClimb.summitReached && !nextClimb.retreating ? 'Восхождение засчитано после отдельного спуска.' : 'Отход завершён. Карьера продолжается.', severity: 'SUCCESS' };
   } else {

@@ -3,13 +3,17 @@
   "name": "Alpine Legacy",
   "short_name": "Alpine Legacy",
   "description": "Карьерная roguelike-RPG про альпинизм: клуб, подготовка и пошаговые восхождения.",
-  "start_url": "./?v=0.6.1",
+  "start_url": "./?v=0.6.2",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#eae7df",
   "theme_color": "#172025",
-  "categories": ["games", "sports", "simulation"],
+  "categories": [
+    "games",
+    "sports",
+    "simulation"
+  ],
   "icons": [
     {
       "src": "./icons/icon-192.png",

@@ -1,17 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { acceptExpeditionOffer, availableExpeditionOffers, beginDescent, chooseRouteDecision, createCareer, establishCamp, getCurrentRouteDecision, meltSnow, resolveClimbStep, startPlannedClimb } from '../career';
+import { acceptExpeditionOffer, availableExpeditionOffers, beginDescent, chooseRouteDecision, createCareer, establishCamp, getCurrentRouteDecision, meltSnow, resolveClimbStep, resolveParticipantAction, startPlannedClimb } from '../career';
 import { getEntryOrganizations } from '../ecosystem';
+import { getCurrentParticipantScene } from '../expeditionEngine';
 import { generateWorld } from '../generator';
-import type { CareerState, OriginId } from '../types';
+import type { CareerState, OriginId, ParticipantSceneOption } from '../types';
+
+function safestParticipantOption(options: ParticipantSceneOption[]) {
+  const order = ['CARE', 'OBEY', 'QUESTION', 'INITIATIVE', 'REFUSE'] as const;
+  return [...options].sort((a, b) => order.indexOf(a.tone) - order.indexOf(b.tone))[0]!;
+}
 
 function simulate(seed: string, originId: OriginId) {
   const world = generateWorld({ seed, eraId: 'EXPEDITION', startYear: 1968, difficulty: 'CLIMBER' });
   const organization = getEntryOrganizations(world)[0]!;
   let career: CareerState = createCareer(world, { name: 'Balance Test', age: 20, originId, entryMode: 'ORGANIZATION', organizationId: organization.id });
   career = startPlannedClimb(acceptExpeditionOffer(world, career, availableExpeditionOffers(world, career)[0]!.id));
-  for (let guard = 0; guard < 40; guard += 1) {
+  for (let guard = 0; guard < 180; guard += 1) {
     const climb = career.activeClimb;
     if (!climb || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) return climb?.phase;
+    if (climb.participant) {
+      const scene = getCurrentParticipantScene(career);
+      if (!scene) return climb.phase;
+      career = resolveParticipantAction(career, safestParticipantOption(scene.options).id).career;
+      continue;
+    }
     if (climb.phase === 'SUMMIT') { career = beginDescent(career); continue; }
     const decision = getCurrentRouteDecision(career);
     if (decision) {

@@ -29,6 +29,10 @@ export type WorldExpeditionOutcome = 'SUMMIT' | 'RETREAT' | 'FAILED' | 'TRAGEDY'
 export type MountainCharacterId = 'WEATHER' | 'TECHNICAL' | 'ENDURANCE' | 'ALTITUDE' | 'DESCENT';
 export type RouteChoiceTone = 'SAFE' | 'BALANCED' | 'BOLD';
 
+export type ParticipantActionTone = 'OBEY' | 'QUESTION' | 'REFUSE' | 'INITIATIVE' | 'CARE';
+export type ParticipantSceneKind = 'ORDER' | 'ROLE' | 'FIELD' | 'MORAL';
+export type ExpeditionApplicationStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
+
 export type RegionId = string;
 export type MountainId = string;
 export type RouteId = string;
@@ -523,6 +527,94 @@ export interface RouteChoiceRecord {
   elapsedMinutes: number;
 }
 
+
+export interface ExpeditionApplication {
+  id: string;
+  offerId: ExpeditionOfferId;
+  status: ExpeditionApplicationStatus;
+  score: number;
+  reason: string;
+  appliedYear: number;
+  appliedDay: number;
+}
+
+export interface ParticipantSceneOption {
+  id: string;
+  title: string;
+  detail: string;
+  tone: ParticipantActionTone;
+  energyDelta: number;
+  conditionDelta: number;
+  teamDelta: number;
+  leaderTrustDelta: number;
+  groupTrustDelta: number;
+  disciplineDelta: number;
+  initiativeDelta: number;
+  careDelta: number;
+  competenceDelta: number;
+  rankDelta: number;
+  advanceMinutes: number;
+  skill?: SkillId;
+  skillDifficulty?: number;
+  pace?: ClimbPace;
+}
+
+export interface ParticipantScene {
+  id: string;
+  kind: ParticipantSceneKind;
+  phase: ExpeditionPhaseNode;
+  nodeId: string;
+  nodeLabel: string;
+  title: string;
+  situation: string;
+  orderText: string | null;
+  leaderNpcId: NpcId | null;
+  leaderName: string;
+  roleLabel: string;
+  options: ParticipantSceneOption[];
+}
+
+export interface ParticipantDecisionRecord {
+  id: string;
+  sceneId: string;
+  nodeId: string;
+  optionId: string;
+  optionTitle: string;
+  tone: ParticipantActionTone;
+  success: boolean;
+  detail: string;
+  elapsedMinutes: number;
+}
+
+export interface ParticipantEvaluation {
+  grade: 'A' | 'B' | 'C' | 'D' | 'E';
+  title: string;
+  score: number;
+  rankPoints: number;
+  summary: string;
+  tags: string[];
+}
+
+export interface ParticipantExpeditionState {
+  graphNodeIndex: number;
+  nodeActionIndex: number;
+  totalActions: number;
+  targetActions: number;
+  leaderTrust: number;
+  groupTrust: number;
+  discipline: number;
+  initiative: number;
+  care: number;
+  competence: number;
+  ordersReceived: number;
+  ordersObeyed: number;
+  ordersRefused: number;
+  rankPointsEarned: number;
+  decisions: ParticipantDecisionRecord[];
+  routeComplete: boolean;
+  evaluation: ParticipantEvaluation | null;
+}
+
 export interface QualificationClimb {
   id: string;
   expeditionOfferId: ExpeditionOfferId | null;
@@ -572,6 +664,7 @@ export interface QualificationClimb {
   rescuedMemberIds: string[];
   earnedReputation: number;
   earnedMoney: number;
+  participant: ParticipantExpeditionState | null;
 }
 
 export interface ReputationProfile {
@@ -602,6 +695,7 @@ export interface ExpeditionReport {
   fixedRopes?: number;
   cachesRecovered?: number;
   playtest?: PlaytestReportData;
+  participantEvaluation?: ParticipantEvaluation;
 }
 
 
@@ -810,7 +904,7 @@ export interface CareerMembership {
 }
 
 export interface CareerState {
-  schemaVersion: 11;
+  schemaVersion: 12;
   id: string;
   worldId: string;
   rootSeed: string;
@@ -837,6 +931,7 @@ export interface CareerState {
   progression: CareerProgression;
   membership: CareerMembership;
   selectedOfferId: ExpeditionOfferId | null;
+  applications: ExpeditionApplication[];
   knownNpcIds: NpcId[];
 }
 

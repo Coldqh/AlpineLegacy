@@ -81,25 +81,31 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
   const canPlan = career.membership.permissions.canChooseRoute;
   const mountains = [...world.region.mountains].sort((a, b) => mountainScore(a) - mountainScore(b));
   const routes = routesForMountain(career, mountain.id);
+  const applicationFor = (offerId: string) => [...career.applications].reverse().find(application => application.offerId === offerId) ?? null;
 
   const chooseMountain = (id: string) => {
     onSelectMountain(id);
     setPickerOpen(false);
   };
 
+  const renderOffer = (offer: ExpeditionOffer) => {
+    const offerRoute = world.ecosystem.content.routes.byId[offer.routeId];
+    const offerMountain = offerRoute ? world.ecosystem.content.mountains.byId[offerRoute.mountainId] : null;
+    const leader = offer.leaderNpcId ? world.ecosystem.content.npcs.byId[offer.leaderNpcId] : null;
+    const application = applicationFor(offer.id);
+    const active = career.selectedOfferId === offer.id;
+    const status = active || application?.status === 'ACCEPTED' ? 'ПРИНЯТО' : application?.status === 'REJECTED' ? 'ОТКАЗ' : 'ОТКРЫТО';
+    return <button key={offer.id} className={`${active ? 'is-active' : ''} ${application?.status === 'REJECTED' ? 'is-rejected' : ''}`} onClick={() => onAcceptOffer(offer.id)}><div><small>{status} · {roleLabel[offer.playerRole]} · {offer.memberNpcIds.length + (offer.leaderNpcId ? 1 : 0)} чел.</small><strong>{offerMountain?.name ?? offerRoute?.mountainName ?? 'Неизвестная гора'}</strong><span>{offerRoute?.name ?? 'Маршрут'} · {offerRoute?.estimatedDecisionCount ?? 20} решений · ≈ {offerRoute?.expectedPlayMinutes ?? 20} мин</span>{leader && <em>Руководитель: {leader.name}</em>}{application && <i>{application.reason}</i>}</div><b>{active ? '✓' : application?.status === 'REJECTED' ? '↻' : '›'}</b></button>;
+  };
+
   if (!canPlan) {
     return <section className="m-screen m-screen--with-action">
-      <StepLine step="1/4" title="Экспедиции" value={EXPEDITION_RANK_LABELS[career.membership.rank]} />
-      <div className="m-status-line"><strong>{career.selectedOfferId ? 'Место подтверждено' : 'Выбери чужой поход'}</strong><span>роль участника</span></div>
-      <div className="m-offer-list">{offers.map(offer => {
-        const offerRoute = world.ecosystem.content.routes.byId[offer.routeId];
-        const offerMountain = offerRoute ? world.ecosystem.content.mountains.byId[offerRoute.mountainId] : null;
-        const active = career.selectedOfferId === offer.id;
-        return <button key={offer.id} className={active ? 'is-active' : ''} onClick={() => onAcceptOffer(offer.id)}><div><small>{roleLabel[offer.playerRole]} · {offer.memberNpcIds.length + (offer.leaderNpcId ? 1 : 0)} участников</small><strong>{offerMountain?.name ?? offerRoute?.mountainName ?? 'Неизвестная гора'}</strong><span>{offerRoute?.name ?? 'Маршрут'} · ≈ {offerRoute?.expectedPlayMinutes ?? 20} мин игры</span></div><b>{active ? '✓' : '›'}</b></button>;
-      })}</div>
-      {!offers.length && <div className="m-note">Сейчас нет доступных заявок. Продвигай время тренировками или начни независимую карьеру.</div>}
-      {career.selectedOfferId && <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>НАЗНАЧЕННАЯ ЦЕЛЬ</small><strong>{mountain.name}</strong><span>{route.name} · твоя роль: {roleLabel[career.expeditionPlan.playerRole]}</span></div><b>{mountain.elevation} м</b></footer></section>}
-      <button className="m-sticky-action" disabled={!career.selectedOfferId} onClick={onContinue}><span>{career.selectedOfferId ? 'Состав экспедиции' : 'Сначала выбери поход'}</span><b>→</b></button>
+      <StepLine step="1/4" title="Доска экспедиций" value={EXPEDITION_RANK_LABELS[career.membership.rank]} />
+      <div className="m-status-line"><strong>{career.selectedOfferId ? 'Место подтверждено' : 'Подай заявку на роль'}</strong><span>{career.applications.filter(item => item.status === 'REJECTED').length} отказов</span></div>
+      <div className="m-offer-list">{offers.map(renderOffer)}</div>
+      {!offers.length && <div className="m-note">Сейчас нет доступных заявок. Продвигай время тренировками.</div>}
+      {career.selectedOfferId && <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>НАЗНАЧЕННАЯ ЦЕЛЬ</small><strong>{mountain.name}</strong><span>{route.name} · роль: {roleLabel[career.expeditionPlan.playerRole]}</span></div><b>{route.estimatedDecisionCount ?? 20} реш.</b></footer></section>}
+      <button className="m-sticky-action" disabled={!career.selectedOfferId} onClick={onContinue}><span>{career.selectedOfferId ? 'Состав экспедиции' : 'Нужна принятая заявка'}</span><b>→</b></button>
     </section>;
   }
 
@@ -107,19 +113,11 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
 
   return <section className="m-screen m-screen--with-action">
     <StepLine step="1/4" title={career.selectedOfferId ? 'Чужая экспедиция' : career.membership.mode === 'INDEPENDENT' ? 'Одиночный выход' : 'Цель'} />
-    {career.membership.mode === 'INDEPENDENT' && foreignOffers.length > 0 && <details className="m-details m-details--flat m-foreign-offers"><summary>Присоединиться к чужому походу · {foreignOffers.length}</summary><div className="m-offer-list">{foreignOffers.map(offer => {
-      const offerRoute = world.ecosystem.content.routes.byId[offer.routeId];
-      const offerMountain = offerRoute ? world.ecosystem.content.mountains.byId[offerRoute.mountainId] : null;
-      const active = career.selectedOfferId === offer.id;
-      return <button key={offer.id} className={active ? 'is-active' : ''} onClick={() => onAcceptOffer(offer.id)}><div><small>{roleLabel[offer.playerRole]} · руководитель NPC</small><strong>{offerMountain?.name ?? offerRoute?.mountainName ?? 'Неизвестная гора'}</strong><span>{offerRoute?.name ?? 'Маршрут'} · ≈ {offerRoute?.expectedPlayMinutes ?? 20} мин</span></div><b>{active ? '✓' : '›'}</b></button>;
-    })}</div></details>}
+    {career.membership.mode === 'INDEPENDENT' && foreignOffers.length > 0 && <details className="m-details m-details--flat m-foreign-offers"><summary>Чужие походы · {foreignOffers.length}</summary><div className="m-offer-list">{foreignOffers.map(renderOffer)}</div></details>}
     <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>{career.selectedOfferId ? 'НАЗНАЧЕННАЯ ЦЕЛЬ' : mountain.characterTitle}</small><strong>{mountain.name}</strong><span>{career.selectedOfferId ? `${route.name} · роль: ${roleLabel[career.expeditionPlan.playerRole]}` : mountain.dangerProfile}</span></div><b>{mountain.elevation} м</b></footer></section>
-    <button className="m-picker-button" onClick={() => setPickerOpen(true)}><span>Сменить вершину</span><b>{mountains.length} доступно ›</b></button>
-    <div className="m-section-head"><h2>Маршрут</h2></div>
-    <div className="m-route-list">{routes.map(item => <button key={item.id} className={item.id === route.id ? 'is-active' : ''} onClick={() => onSelectRoute(item.id)}><div><small>{item.style}</small><strong>{item.name}</strong><span>{item.estimatedHours} ч · риск {level(item.objectiveRisk)} · ≈ {item.expectedPlayMinutes ?? 20} мин</span></div><b>{item.id === route.id ? '✓' : '○'}</b></button>)}</div>
-    <button className="m-sticky-action" onClick={onContinue}><span>{career.selectedOfferId ? 'Состав экспедиции' : career.membership.mode === 'INDEPENDENT' ? 'Подготовить соло-выход' : 'Команда'}</span><b>→</b></button>
-
-    {pickerOpen && <div className="m-modal-layer" onClick={() => setPickerOpen(false)}><section className="m-picker-sheet" onClick={event => event.stopPropagation()}><header><strong>Вершины</strong><button onClick={() => setPickerOpen(false)}>×</button></header><div className="m-list">{mountains.map((item, index) => <button key={item.id} className={item.id === mountain.id ? 'is-active' : ''} onClick={() => chooseMountain(item.id)}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{item.name}</strong><small>{item.characterTitle} · техника {level(item.technicality)}</small></div><b>{item.elevation} м</b></button>)}</div></section></div>}
+    {!career.selectedOfferId && <><button className="m-picker-button" onClick={() => setPickerOpen(true)}><span>Сменить вершину</span><b>{mountains.length} доступно ›</b></button><div className="m-section-head"><h2>Маршрут</h2></div><div className="m-route-list">{routes.map(item => <button key={item.id} className={item.id === route.id ? 'is-active' : ''} onClick={() => onSelectRoute(item.id)}><div><small>{item.style}</small><strong>{item.name}</strong><span>{item.estimatedDecisionCount ?? 20} решений · ≈ {item.expectedPlayMinutes ?? 20} мин · риск {level(item.objectiveRisk)}</span></div><b>{item.id === route.id ? '✓' : '○'}</b></button>)}</div></>}
+    <button className="m-sticky-action" onClick={onContinue}><span>{career.selectedOfferId ? 'Состав экспедиции' : 'Подготовить выход'}</span><b>→</b></button>
+    {pickerOpen && <div className="m-modal-layer" onClick={() => setPickerOpen(false)}><section className="m-picker-sheet" onClick={event => event.stopPropagation()}><header><div><small>РЕЕСТР ГОР</small><strong>Выбери вершину</strong></div><button onClick={() => setPickerOpen(false)}>×</button></header><div className="m-list">{mountains.map((item, index) => <button key={item.id} className={item.id === mountain.id ? 'is-active' : ''} onClick={() => chooseMountain(item.id)}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{item.name}</strong><small>{item.characterTitle} · техника {level(item.technicality)}</small></div><b>{item.elevation} м</b></button>)}</div></section></div>}
   </section>;
 }
 

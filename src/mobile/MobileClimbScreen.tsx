@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { RouteBlueprint } from '../components/RouteBlueprint';
 import { getCurrentRouteDecision, previewClimbAction, SKILL_LABELS } from '../core/career';
+import { getCurrentParticipantScene, nodeProgress, participantLeader } from '../core/expeditionEngine';
 import type { CareerState, ClimbOrderId, ClimbPace, ClimbStepResult, DifficultyId } from '../core/types';
 
 type Props = {
@@ -14,6 +15,7 @@ type Props = {
   onChooseDecision: (optionId: string) => ClimbStepResult;
   onFixRope: () => ClimbStepResult;
   onLeaveCache: () => ClimbStepResult;
+  onParticipantAction: (optionId: string) => ClimbStepResult;
   onBeginDescent: () => void;
   onRetreat: () => void;
   onClose: () => void;
@@ -38,13 +40,16 @@ function conditionLabel(value: number) {
   return 'критическая';
 }
 
-export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onBeginDescent, onRetreat, onClose }: Props) {
+export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onParticipantAction, onBeginDescent, onRetreat, onClose }: Props) {
   const climb = career.activeClimb!;
   const [feedback, setFeedback] = useState<Pick<ClimbStepResult, 'headline' | 'detail' | 'severity'> | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const terminal = ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase);
   const segment = climb.route[Math.max(0, Math.min(climb.route.length - 1, climb.segmentIndex))]!;
   const decision = getCurrentRouteDecision(career);
+  const participantScene = getCurrentParticipantScene(career);
+  const participantProgress = nodeProgress(career);
+  const leader = participantLeader(career);
   const previews = useMemo(() => (['CAUTIOUS', 'STEADY', 'FAST'] as ClimbPace[])
     .map(pace => previewClimbAction(career, pace))
     .filter(Boolean), [career]);
@@ -67,6 +72,7 @@ export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSn
           <div><span>Силы</span><strong>{Math.round(climb.energy)}%</strong></div>
           <div><span>Группа</span><strong>{Math.round(climb.teamCondition)}%</strong></div>
         </div>
+        {climb.participant?.evaluation && <section className="m-participant-evaluation"><header><span>ОЦЕНКА РУКОВОДИТЕЛЯ</span><b>{climb.participant.evaluation.grade}</b></header><h2>{climb.participant.evaluation.title}</h2><p>{climb.participant.evaluation.summary}</p><div>{climb.participant.evaluation.tags.map(tag => <span key={tag}>{tag}</span>)}</div><footer>+{climb.participant.evaluation.rankPoints} очков ранга</footer></section>}
         {(climb.injuries.length > 0 || climb.casualties.length > 0) && <div className="m-alert-card is-danger"><strong>Последствия</strong><span>{climb.injuries.length} травм · {climb.casualties.length} потерь</span></div>}
         <details className="m-details"><summary>Журнал экспедиции · {climb.log.length}</summary>{climb.log.map((line, index) => <p key={`${line}-${index}`}>{String(index + 1).padStart(2, '0')} · {line}</p>)}</details>
         <button className="m-primary-button" onClick={onClose}>Закрыть экспедицию <b>→</b></button>
@@ -74,7 +80,23 @@ export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSn
     );
   }
 
-  if (climb.phase === 'SUMMIT') {
+  if (climb.participant && participantScene) {
+    const node = participantProgress;
+    const toneLabel = { OBEY: 'ВЫПОЛНИТЬ', QUESTION: 'ВОЗРАЗИТЬ', REFUSE: 'ОТКАЗАТЬСЯ', INITIATIVE: 'ИНИЦИАТИВА', CARE: 'ПОМОЧЬ' } as const;
+    return (
+      <section className="m-screen m-screen--with-action m-participant-screen">
+        <header className="m-climb-head"><div><small>{participantScene.phase} · {climb.playerRole}</small><h1>{participantScene.nodeLabel}</h1><span>{climb.mountainName} · {climb.routeName}</span></div><strong>{climb.currentElevation} м</strong></header>
+        <div className="m-progress-line"><i style={{ width: `${node.overall}%` }} /></div>
+        <div className="m-participant-vitals"><span>Силы <b>{Math.round(climb.energy)}%</b></span><span>Руководитель <b>{climb.participant.leaderTrust}</b></span><span>Группа <b>{climb.participant.groupTrust}</b></span><span>Решения <b>{climb.participant.totalActions}/{climb.participant.targetActions}</b></span></div>
+        <section className="m-leader-order"><header><span>{leader?.name ?? participantScene.leaderName}</span><b>{participantScene.kind === 'ORDER' ? 'ПРИКАЗ' : participantScene.roleLabel}</b></header>{participantScene.orderText && <blockquote>«{participantScene.orderText}»</blockquote>}<h2>{participantScene.title}</h2><p>{participantScene.situation}</p><small>Действие {node.current + 1} из {node.required} на этом этапе</small></section>
+        {feedback && <div className={`m-alert-card is-${feedback.severity.toLowerCase()}`}><strong>{feedback.headline}</strong><span>{feedback.detail}</span></div>}
+        <div className="m-personal-choice-list">{participantScene.options.map(option => <button key={option.id} className={`is-${option.tone.toLowerCase()}`} onClick={() => resolve(() => onParticipantAction(option.id))}><header><small>{toneLabel[option.tone]}</small><strong>{option.title}</strong></header><p>{option.detail}</p><footer><span>{option.advanceMinutes} мин</span>{option.skill && <b>{SKILL_LABELS[option.skill]}</b>}<em>→</em></footer></button>)}</div>
+        <details className="m-details m-participant-status"><summary>Твоя работа в экспедиции</summary><div className="m-mini-grid"><span>Дисциплина <b>{Math.round(climb.participant.discipline)}</b></span><span>Инициатива <b>{Math.round(climb.participant.initiative)}</b></span><span>Помощь <b>{Math.round(climb.participant.care)}</b></span><span>Компетентность <b>{Math.round(climb.participant.competence)}</b></span></div><p>Приказы: {climb.participant.ordersObeyed}/{climb.participant.ordersReceived} выполнено · отказов {climb.participant.ordersRefused}</p></details>
+      </section>
+    );
+  }
+
+  if (climb.phase === 'SUMMIT' && !climb.participant) {
     return (
       <section className="m-screen m-summit-card">
         <p className="m-kicker">ВЕРШИНА · {climb.summitElevation} М</p>

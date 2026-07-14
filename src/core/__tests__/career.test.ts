@@ -91,7 +91,7 @@ describe('career and expedition module', () => {
     const organization = getEntryOrganizations(world)[0]!;
     const career = createCareer(world, { name: 'Test Climber', age: 20, originId: 'CLUB_SCHOOL', entryMode: 'ORGANIZATION', organizationId: organization.id });
     expect(career.worldId).toBe(world.id);
-    expect(career.schemaVersion).toBe(11);
+    expect(career.schemaVersion).toBe(12);
     expect(career.membership.rank).toBe('NOVICE');
     expect(career.membership.permissions.canChooseRoute).toBe(false);
     expect(career.expeditionPlan.teamMemberIds).toEqual([]);
