@@ -575,8 +575,56 @@ export interface PlaytestReportData {
   causeTags: string[];
 }
 
+export type CareerTier = 'NOVICE' | 'CLUB' | 'REGIONAL' | 'ELITE' | 'LEGEND';
+export type SeasonPhase = 'PREPARATION' | 'CLIMBING' | 'LATE';
+export type CareerMilestoneId = 'FIRST_SUMMIT' | 'FIVE_THOUSAND' | 'FIRST_ASCENT' | 'THREE_SUMMITS' | 'SEVEN_THOUSAND' | 'LEGACY';
+
+export interface CareerMilestone {
+  id: CareerMilestoneId;
+  title: string;
+  description: string;
+  completed: boolean;
+  completedYear: number | null;
+  rewardMoney: number;
+  rewardReputation: number;
+}
+
+export interface SeasonSummary {
+  year: number;
+  expeditions: number;
+  summits: number;
+  retreats: number;
+  highestElevation: number;
+  injuries: number;
+  losses: number;
+  moneyDelta: number;
+  reputationDelta: number;
+  worldRank: number;
+  milestoneIds: CareerMilestoneId[];
+}
+
+export interface SponsorDeal {
+  id: string;
+  name: string;
+  stipend: number;
+  summitBonus: number;
+  tier: CareerTier;
+}
+
+export interface CareerProgression {
+  tier: CareerTier;
+  seasonNumber: number;
+  seasonStartMoney: number;
+  seasonStartReputation: number;
+  seasonStartCompletedClimbs: number;
+  seasonStartReportCount: number;
+  seasonHistory: SeasonSummary[];
+  milestones: CareerMilestone[];
+  sponsor: SponsorDeal | null;
+}
+
 export interface CareerState {
-  schemaVersion: 9;
+  schemaVersion: 10;
   id: string;
   worldId: string;
   rootSeed: string;
@@ -600,6 +648,7 @@ export interface CareerState {
   reputationProfile: ReputationProfile;
   onboarding: OnboardingState;
   livingWorld: LivingWorldState;
+  progression: CareerProgression;
 }
 
 export interface CareerDraft {

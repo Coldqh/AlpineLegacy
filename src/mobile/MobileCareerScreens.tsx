@@ -12,6 +12,7 @@ import {
   routesForMountain,
   selectedTeam,
 } from '../core/career';
+import { CAREER_TIER_LABELS, SEASON_PHASE_LABELS, careerSeasonPhase, careerWorldRank, currentSeasonExpeditionCount, expeditionLimitForTier, nextCareerMilestone, normalizeCareerProgression } from '../core/progression';
 import type {
   CareerState,
   CareerTabId,
@@ -40,6 +41,12 @@ function StepLine({ step, title, value }: { step: string; title: string; value?:
 export function MobileOverview({ world, career, onTrain, onOpenExpedition }: { world: WorldState; career: CareerState; onTrain: (id: TrainingId) => void; onOpenExpedition: () => void; onOpenWorld: () => void }) {
   const route = getSelectedRoute(career);
   const expedition = expeditionReadiness(career);
+  const progression = normalizeCareerProgression(career);
+  const phase = careerSeasonPhase(career.seasonDay);
+  const expeditionCount = currentSeasonExpeditionCount(career);
+  const expeditionLimit = expeditionLimitForTier(progression.tier);
+  const milestone = nextCareerMilestone(career);
+  const worldRank = careerWorldRank(career);
   const primaryTraining = trainingOrder.slice(0, 4);
   const extraTraining = trainingOrder.slice(4);
 
@@ -57,6 +64,7 @@ export function MobileOverview({ world, career, onTrain, onOpenExpedition }: { w
 
   return <section className="m-screen" aria-label={`Штаб ${world.region.name}`}>
     <button className="m-focus-card m-focus-card--compact" onClick={onOpenExpedition}><div><small>СЕЙЧАС</small><strong>{career.activeClimb ? 'Вернуться на маршрут' : expedition.blockers.length ? 'Закончить подготовку' : 'Начать экспедицию'}</strong><span>{career.activeClimb ? 'Экспедиция продолжается' : expedition.blockers[0] ?? route.mountainName}</span></div><b>→</b></button>
+    <section className="m-season-card"><header><div><small>{SEASON_PHASE_LABELS[phase]}</small><strong>Сезон {progression.seasonNumber}</strong></div><span>{expeditionCount}/{expeditionLimit} выходов</span></header><div className="m-season-facts"><span>{CAREER_TIER_LABELS[progression.tier]}<b>уровень</b></span><span>№ {worldRank}<b>в мире</b></span><span>{progression.sponsor ? progression.sponsor.name : 'Без поддержки'}<b>партнёр</b></span></div>{milestone && <footer><small>СЛЕДУЮЩАЯ ЦЕЛЬ</small><strong>{milestone.title}</strong></footer>}</section>
     <div className="m-state-strip"><span>Здоровье <b>{Math.round(career.hero.health)}</b></span><span>Форма <b>{Math.round(career.hero.form)}</b></span><span>Усталость <b>{Math.round(career.hero.fatigue)}</b></span></div>
     <div className="m-section-head"><h2>Тренировки</h2></div>
     <div className="m-action-list">{primaryTraining.map(renderTraining)}</div>
@@ -180,8 +188,13 @@ export function MobilePeople({ career }: { career: CareerState }) {
 
 export function MobileJournal({ career }: { career: CareerState }) {
   const history = [...career.log].filter(entry => !['TRAINING', 'CLIMB', 'EXPEDITION'].includes(entry.type)).reverse();
+  const progression = normalizeCareerProgression(career);
+  const completedMilestones = progression.milestones.filter(item => item.completed);
   return <section className="m-screen">
+    {progression.seasonHistory.length > 0 && <><div className="m-section-head"><h2>Сезоны</h2><span>{progression.seasonHistory.length}</span></div><div className="m-season-history">{[...progression.seasonHistory].reverse().map(season => <article key={season.year}><strong>{season.year}</strong><span>{season.summits}/{season.expeditions} вершин</span><span>{season.highestElevation} м</span><b>№ {season.worldRank}</b></article>)}</div></>}
+    <details className="m-details m-career-milestones"><summary>Достижения · {completedMilestones.length}/{progression.milestones.length}</summary>{progression.milestones.map(item => <p key={item.id} className={item.completed ? 'is-complete' : ''}><b>{item.completed ? '✓' : '○'}</b> {item.title}</p>)}</details>
     {career.reports.length > 0 && <><div className="m-section-head"><h2>Экспедиции</h2><span>{career.reports.length}</span></div><div className="m-report-list">{[...career.reports].reverse().map(report => <article key={report.id}><div><small>{report.year} · день {report.seasonDay}</small><strong>{report.mountainName}</strong><span>{report.routeName}</span></div><b>{report.highestElevation} м</b></article>)}</div></>}
     {history.length > 0 && <><div className="m-section-head"><h2>Карьера</h2><span>{history.length}</span></div><div className="m-ledger-list">{history.map(entry => <article key={entry.id}><span>{entry.year}</span><div><small>{entry.type} · день {entry.seasonDay}</small><strong>{entry.title}</strong></div></article>)}</div></>}
   </section>;
 }
+

@@ -232,3 +232,108 @@
   html[data-device='phone'] .settings-update-card,
   html[data-device='phone'] .settings-diagnostics { margin-top: 6px !important; padding: 7px !important; }
 }
+
+/* Alpine Legacy 0.6.0 — career seasons and phone menu repair. */
+@media (max-width: 1024px) {
+  html[data-device='phone'] .m-menu {
+    min-height: 100dvh;
+    justify-content: flex-start;
+  }
+  html[data-device='phone'] .m-menu-actions {
+    margin-top: 16px;
+  }
+
+  html[data-device='phone'] .m-season-card {
+    margin-top: 5px;
+    border: 1px solid var(--m-line);
+    background: var(--m-surface);
+  }
+  html[data-device='phone'] .m-season-card header {
+    min-height: 39px;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border-bottom: 1px solid var(--m-line);
+  }
+  html[data-device='phone'] .m-season-card header small,
+  html[data-device='phone'] .m-season-card header strong { display: block; }
+  html[data-device='phone'] .m-season-card header small {
+    color: var(--m-muted);
+    font-size: 7px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+  html[data-device='phone'] .m-season-card header strong {
+    margin-top: 1px;
+    font: 15px/1 var(--serif);
+  }
+  html[data-device='phone'] .m-season-card header > span {
+    color: var(--m-muted);
+    font-size: 9px;
+    white-space: nowrap;
+  }
+  html[data-device='phone'] .m-season-facts {
+    display: grid;
+    grid-template-columns: .8fr .65fr 1.55fr;
+  }
+  html[data-device='phone'] .m-season-facts > span {
+    min-width: 0;
+    padding: 6px 7px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-right: 1px solid var(--m-line);
+    font: 12px/1 var(--serif);
+  }
+  html[data-device='phone'] .m-season-facts > span:last-child { border-right: 0; }
+  html[data-device='phone'] .m-season-facts b {
+    display: block;
+    margin-top: 2px;
+    color: var(--m-muted);
+    font: 7px/1.1 var(--sans);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  html[data-device='phone'] .m-season-card footer {
+    padding: 6px 8px;
+    border-top: 1px solid var(--m-line);
+  }
+  html[data-device='phone'] .m-season-card footer small,
+  html[data-device='phone'] .m-season-card footer strong { display: block; }
+  html[data-device='phone'] .m-season-card footer small {
+    color: var(--m-muted);
+    font-size: 7px;
+    letter-spacing: .1em;
+  }
+  html[data-device='phone'] .m-season-card footer strong {
+    margin-top: 2px;
+    font-size: 10px;
+  }
+
+  html[data-device='phone'] .m-season-history {
+    border-top: 1px solid var(--m-line);
+  }
+  html[data-device='phone'] .m-season-history article {
+    min-height: 38px;
+    padding: 5px 2px;
+    display: grid;
+    grid-template-columns: 44px 1fr auto auto;
+    align-items: center;
+    gap: 6px;
+    border-bottom: 1px solid var(--m-line);
+  }
+  html[data-device='phone'] .m-season-history article strong { font: 14px var(--serif); }
+  html[data-device='phone'] .m-season-history article span { color: var(--m-muted); font-size: 8px; }
+  html[data-device='phone'] .m-season-history article b { font-size: 9px; }
+  html[data-device='phone'] .m-career-milestones p {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    opacity: .55;
+  }
+  html[data-device='phone'] .m-career-milestones p.is-complete {
+    opacity: 1;
+  }
+}

@@ -57,7 +57,7 @@ describe('career and expedition module', () => {
     const world = generateWorld(config);
     const career = createCareer(world, draft);
     expect(career.worldId).toBe(world.id);
-    expect(career.schemaVersion).toBe(9);
+    expect(career.schemaVersion).toBe(10);
     expect(career.rootSeed).toBe(config.seed);
     expect(career.difficulty).toBe(config.difficulty);
     expect(career.onboarding.completed).toBe(false);

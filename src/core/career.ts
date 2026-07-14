@@ -1,6 +1,7 @@
 import { createRng } from './rng';
 import { buildExpeditionReport, createClimbTeamStates, enrichRoster, finalizeRosterAfterClimb, memory, teamAverage } from './people';
 import { advanceLivingWorld, createLivingWorld, registerHeroExpedition } from './worldSimulation';
+import { createCareerProgression, currentSeasonExpeditionCount, expeditionLimitForTier, hydrateCareerProgression, normalizeCareerProgression, rollCareerSeason, syncCareerProgression } from './progression';
 import type {
   CalendarEntry,
   CareerDraft,
@@ -590,7 +591,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = makeTeam(world, club);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,
@@ -630,11 +631,13 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     reputationProfile: { leadership: 8, reliability: 12, care: 10, ambition: 14 },
     onboarding: { dismissed: false, completed: false },
     livingWorld: createLivingWorld(world, teamRoster, club),
+    progression: null as unknown as CareerState['progression'],
   };
 
   career.log.push(careerLog(career, 'CAREER', 'Начало карьеры', `${career.hero.name}, ${career.hero.age} лет. Принят в «${club.name}», ${club.town}.`));
   career.log.push(careerLog(career, 'CLUB', 'Первый инструктор', `${club.mentorName}, ${club.mentorTitle}. Его правило: «${club.doctrine}»`));
-  return career;
+  career.progression = createCareerProgression(career);
+  return syncCareerProgression(career);
 }
 
 function migrateActiveClimbV8(active: any, routes: ExpeditionRoute[]): QualificationClimb | null {
@@ -676,9 +679,9 @@ export function migrateCareerV2(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   const teamRoster = makeTeam(world, career.club);
   const weatherWindows = makeWeatherWindows(world);
-  return {
+  return hydrateCareerProgression({
     ...career,
-    schemaVersion: 9,
+    schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
     onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
@@ -690,15 +693,15 @@ export function migrateCareerV2(career: any, world: WorldState): CareerState {
     reports: [],
     reputationProfile: { leadership: 8, reliability: 12, care: 10, ambition: 14 },
     livingWorld: createLivingWorld(world, teamRoster, career.club),
-  } as CareerState;
+  } as CareerState);
 }
 
 export function migrateCareerV3(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
-  return {
+  return hydrateCareerProgression({
     ...career,
-    schemaVersion: 9,
+    schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
     onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
@@ -709,15 +712,15 @@ export function migrateCareerV3(career: any, world: WorldState): CareerState {
     reports: career.reports ?? [],
     reputationProfile: career.reputationProfile ?? { leadership: 8, reliability: 12, care: 10, ambition: 14 },
     livingWorld: career.livingWorld ?? createLivingWorld(world, teamRoster, career.club),
-  } as CareerState;
+  } as CareerState);
 }
 
 export function migrateCareerV4(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
   const teamRoster = enrichRoster(career.teamRoster ?? makeTeam(world, career.club), world.config.seed, career.year, career.seasonDay);
-  return {
+  return hydrateCareerProgression({
     ...career,
-    schemaVersion: 9,
+    schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
     onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
@@ -726,63 +729,63 @@ export function migrateCareerV4(career: any, world: WorldState): CareerState {
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
     teamRoster,
     livingWorld: career.livingWorld ?? createLivingWorld(world, teamRoster, career.club),
-  } as CareerState;
+  } as CareerState);
 }
 
 export function migrateCareerV5(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
-  return {
+  return hydrateCareerProgression({
     ...career,
-    schemaVersion: 9,
+    schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
     onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
-  } as CareerState;
+  } as CareerState);
 }
 
 export function migrateCareerV6(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
-  return {
+  return hydrateCareerProgression({
     ...career,
-    schemaVersion: 9,
+    schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
     onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
-  } as CareerState;
+  } as CareerState);
 }
 
 export function migrateCareerV7(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
-  return {
+  return hydrateCareerProgression({
     ...career,
-    schemaVersion: 9,
+    schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
     onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
-  } as CareerState;
+  } as CareerState);
 }
 
 export function migrateCareerV8(career: any, world: WorldState): CareerState {
   const routes = makeRoutes(world);
-  return {
+  return hydrateCareerProgression({
     ...career,
-    schemaVersion: 9,
+    schemaVersion: 10,
     rootSeed: career.rootSeed ?? world.config.seed,
     difficulty: career.difficulty ?? world.config.difficulty,
     onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
-  } as CareerState;
+  } as CareerState);
 }
 
 export function dismissOnboarding(career: CareerState): CareerState {
@@ -824,7 +827,8 @@ export function applyTraining(career: CareerState, trainingId: TrainingId): Care
     },
   };
   next.log = [...career.log, careerLog(next, 'TRAINING', action.title, `${action.days} дней работы. ${cost < 0 ? `Заработано ${Math.abs(cost)} кр.` : `Расходы ${cost} кр.`}`)];
-  return advanceLivingWorld(next, action.days);
+  const advanced = advanceLivingWorld(next, action.days);
+  return timeline.year > career.year ? rollCareerSeason(career, advanced) : syncCareerProgression(advanced);
 }
 
 export function updateExpeditionPlan(career: CareerState, patch: Partial<ExpeditionPlan>): CareerState {
@@ -935,6 +939,8 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   if (career.hero.fatigue > 72) blockers.push('Герой слишком утомлён для выхода.');
   if (career.expeditionPlan.acclimatizationDays < 2) blockers.push('Акклиматизация сорвана.');
   if (expeditionCost(career) > career.hero.money) blockers.push('Не хватает средств на подготовку.');
+  const progression = normalizeCareerProgression(career);
+  if (currentSeasonExpeditionCount(career) >= expeditionLimitForTier(progression.tier)) blockers.push('Лимит экспедиций сезона исчерпан.');
   return { total: clamp(total, 0, 100), hero: heroBase, routeFit, team: teamScore, equipment, weather: weatherScore, acclimatization, blockers };
 }
 
@@ -1040,7 +1046,7 @@ export function startPlannedClimb(career: CareerState): CareerState {
     hero: { ...career.hero, money: career.hero.money - cost, age: career.hero.age + timeline.ageDelta },
   };
   next.log = [...career.log, careerLog(next, 'EXPEDITION', `Выход на ${route.mountainName}`, `${route.name}. Группа: ${team.length + 1}. Расходы: ${cost} кр. Готовность: ${readiness.total}/100.`)];
-  return next;
+  return timeline.year > career.year ? rollCareerSeason(career, next) : syncCareerProgression(next);
 }
 
 export function startQualificationClimb(career: CareerState, _world?: WorldState): CareerState {
@@ -1271,7 +1277,8 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     skillXp = progressed.skillXp;
   }
   const casualtyPenalty = climb.casualties.length * 18;
-  const reward = successful ? Math.max(0, 150 + Math.round(getSelectedRoute(career).objectiveRisk * 1.2) - casualtyPenalty * 3) : 0;
+  const sponsorBonus = successful ? (normalizeCareerProgression(career).sponsor?.summitBonus ?? 0) : 0;
+  const reward = successful ? Math.max(0, 150 + Math.round(getSelectedRoute(career).objectiveRisk * 1.2) - casualtyPenalty * 3 + sponsorBonus) : 0;
   const reputation = successful ? Math.max(-12, 8 + Math.round(getSelectedRoute(career).technicality / 12) - casualtyPenalty) : climb.retreating ? 1 : -4;
   const completed: QualificationClimb = {
     ...climb,
@@ -1789,6 +1796,7 @@ export function closeClimb(career: CareerState): CareerState {
     const report = finalized.reports[finalized.reports.length - 1];
     if (report) finalized = registerHeroExpedition(finalized, climb, report);
   }
+  finalized = syncCareerProgression(finalized);
   const timeline = advanceDays(finalized, 3);
   const closed: CareerState = {
     ...finalized,
@@ -1798,5 +1806,6 @@ export function closeClimb(career: CareerState): CareerState {
     hero: { ...finalized.hero, age: finalized.hero.age + timeline.ageDelta },
     activeClimb: null,
   };
-  return advanceLivingWorld(closed, 3);
+  const advanced = advanceLivingWorld(closed, 3);
+  return timeline.year > finalized.year ? rollCareerSeason(finalized, advanced) : syncCareerProgression(advanced);
 }
