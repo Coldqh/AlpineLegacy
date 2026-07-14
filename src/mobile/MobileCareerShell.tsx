@@ -63,33 +63,12 @@ export function MobileCareerShell({ world, career, activeTab, onTab, onExit, onA
         {primary.map(item => {
           const active = item.id === 'TEAM' ? isPrep(activeTab) : activeTab === item.id;
           const disabled = item.id === 'CLIMB' && !career.activeClimb;
-          return (
-            <button key={item.id} disabled={disabled} className={active ? 'is-active' : ''} onClick={() => navigate(item.id)}>
-              <b>{item.icon}</b><span>{item.label}</span>
-            </button>
-          );
+          return <button key={item.id} disabled={disabled} className={active ? 'is-active' : ''} onClick={() => navigate(item.id)}><b>{item.icon}</b><span>{item.label}</span></button>;
         })}
-        <button className={isMore(activeTab) || moreOpen ? 'is-active' : ''} onClick={() => setMoreOpen(value => !value)} aria-expanded={moreOpen}>
-          <b>•••</b><span>Ещё</span>
-        </button>
+        <button className={isMore(activeTab) || moreOpen ? 'is-active' : ''} onClick={() => setMoreOpen(value => !value)} aria-expanded={moreOpen}><b>•••</b><span>Ещё</span></button>
       </nav>
 
-      {moreOpen && (
-        <div className="m-more-layer" onClick={() => setMoreOpen(false)}>
-          <section className="m-more-sheet" onClick={event => event.stopPropagation()}>
-            <header><div><small>{world.region.name}</small><strong>Разделы</strong></div><button onClick={() => setMoreOpen(false)} aria-label="Закрыть">×</button></header>
-            <div className="m-more-menu">
-              <button onClick={() => navigate('WORLD')}><span>Живой мир</span><small>Обзор региона</small><b>›</b></button>
-              <button onClick={() => navigate('NEWS')}><span>Новости</span><small>События сезона</small><b>›</b></button>
-              <button onClick={() => navigate('RIVALS')}><span>Соперники</span><small>Активные альпинисты</small><b>›</b></button>
-              <button onClick={() => navigate('RECORDS')}><span>Рекорды</span><small>Лучшие результаты</small><b>›</b></button>
-              <button onClick={() => navigate('JOURNAL')}><span>Архив карьеры</span><small>Экспедиции и записи</small><b>›</b></button>
-              <button onClick={() => navigate('PEOPLE')}><span>Досье людей</span><small>Отношения и память</small><b>›</b></button>
-              <button onClick={() => { setMoreOpen(false); resetAppScroll(); onAtlas(); }}><span>Горный атлас</span><small>Все вершины региона</small><b>›</b></button>
-            </div>
-          </section>
-        </div>
-      )}
+      {moreOpen && <div className="m-more-layer" onClick={() => setMoreOpen(false)}><section className="m-more-sheet" onClick={event => event.stopPropagation()}><header><strong>Разделы</strong><button onClick={() => setMoreOpen(false)} aria-label="Закрыть">×</button></header><div className="m-more-menu"><button onClick={() => navigate('WORLD')}><span>Живой мир</span><b>›</b></button><button onClick={() => navigate('NEWS')}><span>Новости</span><b>›</b></button><button onClick={() => navigate('RIVALS')}><span>Соперники</span><b>›</b></button><button onClick={() => navigate('RECORDS')}><span>Рекорды</span><b>›</b></button><button onClick={() => navigate('JOURNAL')}><span>Архив</span><b>›</b></button><button onClick={() => navigate('PEOPLE')}><span>Досье</span><b>›</b></button><button onClick={() => { setMoreOpen(false); resetAppScroll(); onAtlas(); }}><span>Атлас</span><b>›</b></button></div></section></div>}
     </main>
   );
 }

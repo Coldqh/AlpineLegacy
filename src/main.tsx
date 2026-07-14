@@ -4,6 +4,7 @@ import App from './App';
 import { AppSettings } from './components/AppSettings';
 import './styles/global.css';
 import './styles/mobile-app.css';
+import './styles/mobile-compact.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

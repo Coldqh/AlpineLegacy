@@ -1,0 +1,234 @@
+/* Alpine Legacy 0.5.12 — phone density and information cleanup. */
+@media (max-width: 1024px) {
+  html[data-device='phone'] {
+    --m-top: 38px;
+    --m-bottom: 46px;
+  }
+
+  html[data-device='phone'] body { font-size: 12px; line-height: 1.28; }
+
+  html[data-device='phone'] .m-public-topbar,
+  html[data-device='phone'] .m-career-topbar { min-height: var(--m-top); height: var(--m-top); }
+  html[data-device='phone'] .m-public-topbar { padding-inline: 8px 44px; grid-template-columns: 28px 1fr auto; gap: 5px; }
+  html[data-device='phone'] .m-public-topbar button,
+  html[data-device='phone'] .m-career-topbar > button { width: 27px; height: 27px; font-size: 16px; }
+  html[data-device='phone'] .m-public-topbar strong,
+  html[data-device='phone'] .m-career-topbar strong { font-size: 13px; }
+  html[data-device='phone'] .m-public-topbar span,
+  html[data-device='phone'] .m-career-topbar small { font-size: 8px; }
+  html[data-device='phone'] .m-career-topbar { padding: 0 43px 0 7px; grid-template-columns: 28px minmax(0,1fr) auto; gap: 5px; }
+  html[data-device='phone'] .m-topbar-money { padding-left: 6px; }
+  html[data-device='phone'] .app-settings-trigger { top: 4px !important; right: 6px !important; width: 29px !important; height: 29px !important; }
+
+  html[data-device='phone'] .m-bottom-nav { height: calc(var(--m-bottom) + env(safe-area-inset-bottom)); }
+  html[data-device='phone'] .m-bottom-nav button { gap: 0; }
+  html[data-device='phone'] .m-bottom-nav button b { font-size: 15px; }
+  html[data-device='phone'] .m-bottom-nav button span { font-size: 7px; }
+  html[data-device='phone'] .m-subnav { top: var(--m-top); height: 32px; }
+  html[data-device='phone'] .m-subnav button { font-size: 10px; }
+
+  html[data-device='phone'] .m-wizard { padding: 9px 8px 66px; }
+  html[data-device='phone'] .m-wizard h1,
+  html[data-device='phone'] .m-region h1 { margin-bottom: 8px; font-size: 22px; }
+  html[data-device='phone'] .m-wizard-progress { gap: 3px; margin-bottom: 10px; }
+  html[data-device='phone'] .m-stack { gap: 7px; }
+  html[data-device='phone'] .m-seed-row { grid-template-columns: 1fr 42px; gap: 5px; }
+  html[data-device='phone'] .m-seed-row input,
+  html[data-device='phone'] .m-field input[type='text'],
+  html[data-device='phone'] .m-field input:not([type]) { height: 43px; padding-inline: 10px; font-size: 14px; }
+  html[data-device='phone'] .m-seed-row button { font-size: 18px; }
+  html[data-device='phone'] .m-option-list { gap: 5px; }
+  html[data-device='phone'] .m-option-list > button { min-height: 50px; padding: 8px 9px; }
+  html[data-device='phone'] .m-option-list strong { font-size: 17px; }
+  html[data-device='phone'] .m-option-list small { margin-top: 2px; font-size: 10px; }
+  html[data-device='phone'] .m-option-list b { font-size: 14px; }
+  html[data-device='phone'] .m-range-card { gap: 9px; padding: 11px; }
+  html[data-device='phone'] .m-range-card > strong { font-size: 38px; }
+  html[data-device='phone'] .m-range-card > div { font-size: 9px; }
+  html[data-device='phone'] .m-field { gap: 5px; margin-top: 10px; }
+  html[data-device='phone'] .m-field > span { font-size: 10px; }
+  html[data-device='phone'] .m-wizard-action { padding: 5px 8px calc(5px + env(safe-area-inset-bottom)); }
+  html[data-device='phone'] .m-wizard-action button,
+  html[data-device='phone'] .m-sticky-action { min-height: 41px; padding-inline: 11px; font-size: 15px; }
+  html[data-device='phone'] .m-review-card > div { min-height: 52px; padding: 7px; }
+  html[data-device='phone'] .m-review-card span { font-size: 8px; }
+  html[data-device='phone'] .m-review-card strong { margin-top: 4px; font-size: 17px; }
+  html[data-device='phone'] .m-skill-list { margin: 0; padding: 8px; gap: 6px; }
+  html[data-device='phone'] .m-origin-summary { margin-top: 7px; padding: 9px; }
+  html[data-device='phone'] .m-origin-summary > strong { font-size: 9px; }
+  html[data-device='phone'] .m-origin-summary > div { margin-top: 5px; gap: 12px; font-size: 11px; }
+
+  html[data-device='phone'] .m-menu { padding: calc(env(safe-area-inset-top) + 12px) 10px calc(env(safe-area-inset-bottom) + 10px); }
+  html[data-device='phone'] .m-menu-art { height: 112px; }
+  html[data-device='phone'] .m-menu h1 { margin: 8px 0 4px; font-size: 39px; }
+  html[data-device='phone'] .m-menu > p:not(.m-kicker) { margin-bottom: 12px; font-size: 14px; }
+  html[data-device='phone'] .m-menu-actions button { min-height: 45px; }
+  html[data-device='phone'] .m-menu-actions span { font-size: 16px; }
+  html[data-device='phone'] .m-menu-actions small { font-size: 9px; }
+  html[data-device='phone'] .m-generating { padding: calc(env(safe-area-inset-top) + 44px) 12px 20px; }
+  html[data-device='phone'] .m-generating .mountain-art { margin: 12px 0; }
+  html[data-device='phone'] .m-generating h1 { font-size: 27px; }
+
+  html[data-device='phone'] .m-region { padding: 9px 8px calc(16px + env(safe-area-inset-bottom)); }
+  html[data-device='phone'] .m-region .mountain-art { margin: 7px 0; }
+  html[data-device='phone'] .m-region .mountain-art svg,
+  html[data-device='phone'] .m-target-card .mountain-art svg { aspect-ratio: 3 / 1; }
+  html[data-device='phone'] .m-primary-card { min-height: 70px; margin: 8px 0; padding: 10px; }
+  html[data-device='phone'] .m-primary-card small { font-size: 7px; }
+  html[data-device='phone'] .m-primary-card strong { margin-top: 2px; font-size: 18px; }
+  html[data-device='phone'] .m-inline-meta { display: flex; gap: 5px 12px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--m-line); color: var(--m-muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+
+  html[data-device='phone'] .m-screen { padding: 6px 7px 11px; }
+  html[data-device='phone'] .m-screen--with-action { padding-bottom: 62px; }
+  html[data-device='phone'] .m-step-line { min-height: 31px; margin-bottom: 5px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 7px; border-bottom: 1px solid var(--m-strong-line); }
+  html[data-device='phone'] .m-step-line span { color: var(--m-muted); font-size: 8px; letter-spacing: .12em; }
+  html[data-device='phone'] .m-step-line strong { font: 600 17px/1 var(--serif); }
+  html[data-device='phone'] .m-step-line b { color: var(--m-muted); font-size: 10px; font-weight: 500; white-space: nowrap; }
+  html[data-device='phone'] .m-screen-title { margin-bottom: 5px; }
+  html[data-device='phone'] .m-screen-title h1,
+  html[data-device='phone'] .m-screen-title--compact h1 { font-size: 20px; }
+  html[data-device='phone'] .m-screen-title small { font-size: 7px; }
+  html[data-device='phone'] .m-screen-title p { font-size: 9px; }
+  html[data-device='phone'] .m-screen-title > span { font-size: 9px; }
+  html[data-device='phone'] .m-focus-card { min-height: 57px; padding: 8px 9px; }
+  html[data-device='phone'] .m-focus-card small { font-size: 7px; }
+  html[data-device='phone'] .m-focus-card strong { margin-top: 2px; font-size: 16px; }
+  html[data-device='phone'] .m-focus-card span { margin-top: 3px; font-size: 9px; }
+  html[data-device='phone'] .m-focus-card b { font-size: 18px; }
+  html[data-device='phone'] .m-state-strip { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); margin-top: 5px; border: 1px solid var(--m-line); background: var(--m-surface); }
+  html[data-device='phone'] .m-state-strip span { min-width: 0; padding: 5px 6px; border-right: 1px solid var(--m-line); color: var(--m-muted); font-size: 7px; text-transform: uppercase; letter-spacing: .05em; }
+  html[data-device='phone'] .m-state-strip span:last-child { border-right: 0; }
+  html[data-device='phone'] .m-state-strip b { display: block; margin-top: 2px; color: var(--m-text); font: 15px/1 var(--serif); }
+  html[data-device='phone'] .m-section-head { margin: 10px 0 4px; padding-bottom: 4px; }
+  html[data-device='phone'] .m-section-head h2 { font-size: 17px; }
+  html[data-device='phone'] .m-section-head span { font-size: 8px; }
+
+  html[data-device='phone'] .m-list > button,
+  html[data-device='phone'] .m-mountain-row { min-height: 46px; padding: 5px 2px; grid-template-columns: 23px minmax(0,1fr) auto; gap: 5px; }
+  html[data-device='phone'] .m-list > button > span,
+  html[data-device='phone'] .m-mountain-row > span { font-size: 13px; }
+  html[data-device='phone'] .m-list strong,
+  html[data-device='phone'] .m-mountain-row strong { font-size: 15px; }
+  html[data-device='phone'] .m-list small,
+  html[data-device='phone'] .m-mountain-row small { margin-top: 1px; font-size: 9px; }
+  html[data-device='phone'] .m-list > button > b,
+  html[data-device='phone'] .m-mountain-row > b { font-size: 13px; }
+  html[data-device='phone'] .m-details { margin-top: 6px; }
+  html[data-device='phone'] .m-details summary { padding: 9px; font-size: 10px; }
+  html[data-device='phone'] .m-details > p { padding: 7px 9px; font-size: 10px; }
+
+  html[data-device='phone'] .m-target-card { margin-top: 0; }
+  html[data-device='phone'] .m-target-card footer { padding: 5px 0; }
+  html[data-device='phone'] .m-target-card footer small { font-size: 7px; }
+  html[data-device='phone'] .m-target-card footer strong { font-size: 16px; }
+  html[data-device='phone'] .m-target-card footer span { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+  html[data-device='phone'] .m-target-card footer > b { font-size: 16px; }
+  html[data-device='phone'] .m-picker-button { min-height: 34px; margin-top: 3px; font-size: 10px; }
+  html[data-device='phone'] .m-route-list { gap: 4px; }
+  html[data-device='phone'] .m-route-list button { min-height: 56px; padding: 7px 8px; }
+  html[data-device='phone'] .m-route-list small { font-size: 8px; }
+  html[data-device='phone'] .m-route-list strong { margin-top: 1px; font-size: 16px; }
+  html[data-device='phone'] .m-route-list span { margin-top: 2px; font-size: 9px; }
+
+  html[data-device='phone'] .m-action-list > button,
+  html[data-device='phone'] .m-person-list > button,
+  html[data-device='phone'] .m-person-list > article,
+  html[data-device='phone'] .m-world-mountains article,
+  html[data-device='phone'] .m-report-list article { min-height: 43px; padding: 5px 2px; gap: 6px; }
+  html[data-device='phone'] .m-action-index { width: 27px; height: 27px; font-size: 11px; }
+  html[data-device='phone'] .m-action-list strong,
+  html[data-device='phone'] .m-person-list strong { font-size: 14px; }
+  html[data-device='phone'] .m-action-list small,
+  html[data-device='phone'] .m-person-list small { margin-top: 1px; font-size: 9px; }
+  html[data-device='phone'] .m-person-list > article > span,
+  html[data-device='phone'] .m-person-list > button > span { width: 30px; height: 30px; font-size: 12px; }
+  html[data-device='phone'] .m-status-line { min-height: 39px; padding: 6px 8px; margin-bottom: 5px; font-size: 10px; }
+  html[data-device='phone'] .m-preset-row { gap: 4px; margin-bottom: 5px; }
+  html[data-device='phone'] .m-preset-row button { min-height: 38px; font-size: 10px; }
+  html[data-device='phone'] .m-gear-list { margin-top: 5px; }
+  html[data-device='phone'] .m-gear-list article { min-height: 49px; padding: 5px 2px; }
+  html[data-device='phone'] .m-gear-list small { font-size: 7px; }
+  html[data-device='phone'] .m-gear-list strong { font-size: 14px; }
+  html[data-device='phone'] .m-gear-list span { font-size: 9px; }
+  html[data-device='phone'] .m-gear-list article > div:last-child { grid-template-columns: 27px 20px 27px; }
+  html[data-device='phone'] .m-gear-list article > div:last-child button { width: 27px; height: 27px; font-size: 15px; }
+  html[data-device='phone'] .m-range-line { gap: 4px; padding: 7px 9px; font-size: 10px; }
+
+  html[data-device='phone'] .m-weather-list { gap: 4px; }
+  html[data-device='phone'] .m-weather-list button { min-height: 44px; padding: 6px 8px; }
+  html[data-device='phone'] .m-weather-list strong { font-size: 14px; }
+  html[data-device='phone'] .m-weather-list small { margin-top: 1px; font-size: 9px; }
+  html[data-device='phone'] .m-range-card--small { margin-top: 5px; padding: 8px; }
+  html[data-device='phone'] .m-readiness-list { margin-top: 5px; }
+  html[data-device='phone'] .m-readiness-list button { min-height: 34px; grid-template-columns: 58px 1fr 42px; font-size: 9px; }
+  html[data-device='phone'] .m-blocker-list { margin-top: 5px; gap: 3px; }
+  html[data-device='phone'] .m-blocker-list button { min-height: 38px; padding: 5px 7px; font-size: 9px; }
+
+  html[data-device='phone'] .m-world-mountains article { grid-template-columns: 23px minmax(0,1fr) !important; }
+  html[data-device='phone'] .m-world-mountains strong { font-size: 14px; }
+  html[data-device='phone'] .m-world-mountains small { font-size: 9px; }
+  html[data-device='phone'] .m-chip-row { gap: 4px; padding-bottom: 5px; }
+  html[data-device='phone'] .m-chip-row button { min-height: 28px; padding-inline: 8px; font-size: 9px; }
+  html[data-device='phone'] .m-news-list article,
+  html[data-device='phone'] .m-record-list article { padding: 7px 2px; }
+  html[data-device='phone'] .m-news-list small,
+  html[data-device='phone'] .m-record-list small { font-size: 8px; }
+  html[data-device='phone'] .m-news-list strong,
+  html[data-device='phone'] .m-record-list strong { margin-top: 2px; font-size: 15px; }
+  html[data-device='phone'] .m-record-list b { margin-top: 3px; font-size: 18px; }
+  html[data-device='phone'] .m-record-list span { margin-top: 1px; font-size: 9px; }
+  html[data-device='phone'] .m-person-profile { margin-top: 3px; padding: 7px; }
+  html[data-device='phone'] .m-person-profile header { grid-template-columns: 35px 1fr; gap: 6px; }
+  html[data-device='phone'] .m-person-profile header > span { width: 35px; height: 35px; font-size: 14px; }
+  html[data-device='phone'] .m-person-profile header strong { font-size: 17px; }
+  html[data-device='phone'] .m-person-profile header small { font-size: 9px; }
+  html[data-device='phone'] .m-mini-grid > span { min-height: 39px; padding: 5px; font-size: 8px; }
+  html[data-device='phone'] .m-mini-grid b { margin-top: 2px; font-size: 14px; }
+  html[data-device='phone'] .m-report-list article > div strong { font-size: 14px; }
+  html[data-device='phone'] .m-report-list article > div small,
+  html[data-device='phone'] .m-report-list article > div span { font-size: 8px; }
+  html[data-device='phone'] .m-report-list article > b { font-size: 13px; }
+  html[data-device='phone'] .m-ledger-list article { padding: 6px 2px; grid-template-columns: 35px 1fr; gap: 5px; }
+  html[data-device='phone'] .m-ledger-list > article > span { font-size: 13px; }
+  html[data-device='phone'] .m-ledger-list small { font-size: 8px; }
+  html[data-device='phone'] .m-ledger-list strong { margin-top: 1px; font-size: 14px; }
+
+  html[data-device='phone'] .m-more-sheet { max-height: 66dvh; padding: 9px 8px calc(9px + env(safe-area-inset-bottom)); }
+  html[data-device='phone'] .m-more-sheet header { margin-bottom: 4px; }
+  html[data-device='phone'] .m-more-sheet header strong { font-size: 19px; }
+  html[data-device='phone'] .m-more-sheet header button { width: 30px; height: 30px; font-size: 18px; }
+  html[data-device='phone'] .m-more-sheet > div button { min-height: 43px; padding: 5px 2px; }
+  html[data-device='phone'] .m-more-sheet span { font-size: 15px; }
+  html[data-device='phone'] .m-picker-sheet { padding: 8px 7px calc(8px + env(safe-area-inset-bottom)); }
+  html[data-device='phone'] .m-picker-sheet > header { top: -8px; margin: -8px -7px 3px; padding: 8px 7px 5px; }
+  html[data-device='phone'] .m-picker-sheet header strong { font-size: 18px; }
+
+  html[data-device='phone'] .m-climb-head h1 { font-size: 19px; }
+  html[data-device='phone'] .m-climb-head > strong { font-size: 16px; }
+  html[data-device='phone'] .m-climb-vitals div { padding: 5px; }
+  html[data-device='phone'] .m-climb-vitals span { font-size: 7px; }
+  html[data-device='phone'] .m-climb-vitals strong { font-size: 9px; }
+  html[data-device='phone'] .m-alert-card { margin-top: 5px; padding: 6px 7px; }
+  html[data-device='phone'] .m-alert-card strong { font-size: 11px; }
+  html[data-device='phone'] .m-alert-card span { font-size: 8px; }
+  html[data-device='phone'] .m-segment-card { margin-top: 5px; padding: 7px; }
+  html[data-device='phone'] .m-segment-card h2 { font-size: 17px; }
+  html[data-device='phone'] .m-segment-card p { font-size: 9px; }
+  html[data-device='phone'] .m-climb-screen .route-blueprint svg { height: 82px !important; }
+  html[data-device='phone'] .m-pace-list button { min-height: 42px; padding: 5px 7px; }
+  html[data-device='phone'] .m-pace-list strong { font-size: 14px; }
+  html[data-device='phone'] .m-pace-list small { font-size: 8px; }
+  html[data-device='phone'] .m-tools-toggle { min-height: 34px; font-size: 9px; }
+  html[data-device='phone'] .m-field-tool-list button { min-height: 39px; padding: 5px 2px; }
+  html[data-device='phone'] .m-field-tool-list strong { font-size: 11px; }
+  html[data-device='phone'] .m-field-tool-list small { font-size: 8px; }
+  html[data-device='phone'] .m-order-grid button { min-height: 35px; font-size: 9px; }
+  html[data-device='phone'] .m-primary-button { min-height: 41px; margin-top: 7px; font-size: 15px; }
+
+  html[data-device='phone'] .app-settings-panel { padding: 9px 8px calc(9px + env(safe-area-inset-bottom)) !important; }
+  html[data-device='phone'] .app-settings-panel header h2 { font-size: 22px !important; }
+  html[data-device='phone'] .settings-group,
+  html[data-device='phone'] .settings-toggle,
+  html[data-device='phone'] .settings-update-card,
+  html[data-device='phone'] .settings-diagnostics { margin-top: 6px !important; padding: 7px !important; }
+}
