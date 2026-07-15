@@ -1,5 +1,5 @@
 import { hydrateCareerFoundation, migrateCareerV10, migrateCareerV2, migrateCareerV3, migrateCareerV4, migrateCareerV5, migrateCareerV6, migrateCareerV7, migrateCareerV8 } from './career';
-import { hydrateWorld } from './generator';
+import { generateWorld, hydrateWorld } from './generator';
 import type { CareerState, WorldState } from './types';
 
 const WORLD_KEY = 'alpine-legacy:world:v1';
@@ -47,21 +47,86 @@ function recordRecoveryMeta(source: string, reason: string) {
   localStorage.setItem(RECOVERY_META_KEY, JSON.stringify({ source, reason, recoveredAt: new Date().toISOString() }));
 }
 
+type WorldManifest = {
+  format: 'alpine-legacy-world-manifest';
+  version: 1;
+  worldSchemaVersion: WorldState['schemaVersion'];
+  id: string;
+  config: WorldState['config'];
+  createdAt: string;
+  worldAge: number;
+  contentFingerprint: string;
+};
+
+function worldManifest(world: WorldState): WorldManifest {
+  return {
+    format: 'alpine-legacy-world-manifest',
+    version: 1,
+    worldSchemaVersion: world.schemaVersion,
+    id: world.id,
+    config: world.config,
+    createdAt: world.createdAt,
+    worldAge: world.worldAge,
+    contentFingerprint: world.ecosystem.contentFingerprint,
+  };
+}
+
+function isWorldManifest(value: any): value is WorldManifest {
+  return Boolean(
+    value?.format === 'alpine-legacy-world-manifest'
+    && value?.version === 1
+    && value?.id
+    && value?.config?.seed
+    && value?.config?.eraId
+    && Number.isFinite(value?.config?.startYear),
+  );
+}
+
+function materializeWorld(manifest: WorldManifest): WorldState {
+  const generated = generateWorld(manifest.config);
+  return hydrateWorld({
+    ...generated,
+    id: manifest.id || generated.id,
+    createdAt: manifest.createdAt || generated.createdAt,
+    worldAge: Number.isFinite(manifest.worldAge) ? manifest.worldAge : generated.worldAge,
+  });
+}
+
+/**
+ * The generated ecosystem can be several megabytes. localStorage is intentionally
+ * limited and synchronous, so only the deterministic world manifest is persisted.
+ * Static content is rebuilt from the seed; mutable career history remains in its
+ * own save payload.
+ */
 export function saveWorld(world: WorldState) {
-  localStorage.setItem(WORLD_KEY, JSON.stringify(world));
+  localStorage.setItem(WORLD_KEY, JSON.stringify(worldManifest(world)));
 }
 
 export function loadWorld(): WorldState | null {
   const raw = localStorage.getItem(WORLD_KEY);
   if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as WorldState;
-    if (!parsed?.id || !parsed?.region?.mountains?.length) throw new Error('Invalid world save');
-    return hydrateWorld(parsed);
-  } catch {
+  const parsed = parseJson(raw);
+  if (!parsed) {
     localStorage.removeItem(WORLD_KEY);
     return null;
   }
+
+  try {
+    if (isWorldManifest(parsed)) return materializeWorld(parsed);
+
+    // One-time migration from v0.6.7 and older full-world localStorage payloads.
+    if (parsed?.id && parsed?.config && parsed?.region?.mountains?.length) {
+      const hydrated = hydrateWorld(parsed as WorldState);
+      saveWorld(hydrated);
+      return hydrated;
+    }
+  } catch (error) {
+    console.error('World save could not be loaded', error);
+    return null;
+  }
+
+  localStorage.removeItem(WORLD_KEY);
+  return null;
 }
 
 export function saveCareer(career: CareerState) {

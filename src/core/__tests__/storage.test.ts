@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createCareer } from '../career';
 import { getEntryOrganizations } from '../ecosystem';
 import { generateWorld } from '../generator';
-import { careerRecoveryStatus, loadCareer, restoreCareerBackup, saveCareer } from '../storage';
+import { careerRecoveryStatus, loadCareer, loadWorld, restoreCareerBackup, saveCareer, saveWorld } from '../storage';
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -41,5 +41,41 @@ describe('crash-safe expedition saves', () => {
     expect(recovered).toBeTruthy();
     expect(recovered?.seasonDay).toBe(career.seasonDay);
     expect(careerRecoveryStatus().lastRecovery).toBeTruthy();
+  });
+});
+
+
+describe('compact world persistence', () => {
+  beforeEach(() => { Object.defineProperty(globalThis, 'localStorage', { value: new MemoryStorage(), configurable: true }); });
+
+  it('stores only a small deterministic manifest instead of the full ecosystem', () => {
+    const world = generateWorld({ seed: 'WORLD-MANIFEST', eraId: 'EXPEDITION', startYear: 1968, difficulty: 'CLIMBER' });
+    const fullSize = JSON.stringify(world).length;
+
+    saveWorld(world);
+
+    const raw = localStorage.getItem('alpine-legacy:world:v1')!;
+    const stored = JSON.parse(raw);
+    expect(stored.format).toBe('alpine-legacy-world-manifest');
+    expect(raw.length).toBeLessThan(1_000);
+    expect(raw.length).toBeLessThan(fullSize / 20);
+
+    const restored = loadWorld();
+    expect(restored?.id).toBe(world.id);
+    expect(restored?.createdAt).toBe(world.createdAt);
+    expect(restored?.region.mountains.map(item => item.id)).toEqual(world.region.mountains.map(item => item.id));
+    expect(restored?.ecosystem.content.routes.allIds).toEqual(world.ecosystem.content.routes.allIds);
+  });
+
+  it('migrates an older full-world payload to the compact manifest', () => {
+    const world = generateWorld({ seed: 'WORLD-LEGACY', eraId: 'PIONEER', startYear: 1912, difficulty: 'EXPLORER' });
+    localStorage.setItem('alpine-legacy:world:v1', JSON.stringify(world));
+
+    const restored = loadWorld();
+    const migrated = JSON.parse(localStorage.getItem('alpine-legacy:world:v1')!);
+
+    expect(restored?.id).toBe(world.id);
+    expect(migrated.format).toBe('alpine-legacy-world-manifest');
+    expect(JSON.stringify(migrated).length).toBeLessThan(1_000);
   });
 });
