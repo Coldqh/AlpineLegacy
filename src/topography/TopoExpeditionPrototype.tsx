@@ -1,698 +1,780 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  TOPO_CAMP_SITES,
-  TOPO_CREVASSES,
-  TOPO_MAP_HEIGHT,
-  TOPO_MAP_WIDTH,
-  TOPO_START,
-  TOPO_START_ELEVATION,
-  TOPO_SUMMIT,
-  TOPO_SUMMIT_ELEVATION,
-  TOPO_TERRAIN_ZONES,
-  canPlaceCamp,
-  clamp,
-  decimateRoute,
-  distance,
-  elevationAt,
-  estimateRoute,
-  formatClock,
-  movementFactor,
-  pointAtDistance,
-  polylinePrefix,
-  polylineLength,
-  routeToPath,
-  terrainAt,
-  weatherAt,
-  type TopoPoint,
-} from './topoEngine';
+  cellAt,
+  cellCanHostCamp,
+  findGuidedRoute,
+  generateMountainGrid,
+  gridNeighbours,
+  hazardLabels,
+  isAdjacent,
+  isSamePoint,
+  moveCost,
+  pointLabel,
+  routeCost,
+  routeIndexOf,
+  slopeLabel,
+  terrainLabels,
+  weatherAtGrid,
+  type GridPoint,
+  type MountainGrid,
+  type MountainGridCell,
+} from './mountainGridEngine';
 
-type ToolId = 'ROUTE' | 'ROPE' | 'CAMP' | 'SCOUT' | 'MARKER';
+type Authority = 'COMMAND' | 'PARTICIPANT' | 'SPECIALIST';
+type ViewMode = 'MODEL' | 'MAP';
 type Phase = 'ASCENT' | 'DESCENT' | 'COMPLETE';
-type ParticipantId = 'lead' | 'middle' | 'rear';
+type MapTool = 'ROUTE' | 'INSPECT' | 'SCOUT';
+type TimeScale = 1 | 3 | 6;
 
 type Participant = {
-  id: ParticipantId;
+  id: string;
   name: string;
   specialty: string;
   energy: number;
   condition: number;
-  note: string;
 };
 
-type FixedRope = { id: string; a: TopoPoint; b: TopoPoint; metres: number; damaged: boolean };
-type Camp = { id: string; point: TopoPoint; label: string };
-type Marker = { id: string; point: TopoPoint; label: string };
-
-type SimState = {
+type SimulationState = {
   phase: Phase;
   paused: boolean;
-  timeScale: 1 | 2 | 4;
+  timeScale: TimeScale;
   elapsedMinutes: number;
-  position: TopoPoint;
-  route: TopoPoint[];
-  routeTravelled: number;
+  current: GridPoint;
+  route: GridPoint[];
+  trail: GridPoint[];
+  segmentProgress: number;
   participants: Participant[];
   roped: boolean;
-  ropeSpacing: number;
-  fixedRopes: FixedRope[];
+  ropeSpacing: 10 | 15 | 20;
   ropeMetres: number;
-  camps: Camp[];
-  markers: Marker[];
-  revealedCrevasseIds: string[];
-  blockedCrevasseIds: string[];
-  lastMessage: string;
+  fixedRopeCellIds: string[];
+  campCellIds: string[];
+  revealedHazardCellIds: string[];
   summitReached: boolean;
+  message: string;
+};
+
+type Props = {
+  onExit: () => void;
+  authority?: Authority;
+  seed?: string;
+  mountainName?: string;
+  startElevation?: number;
+  summitElevation?: number;
+  allowRegenerate?: boolean;
 };
 
 const initialParticipants: Participant[] = [
-  { id: 'lead', name: 'Илья Морен', specialty: 'Ледовик', energy: 100, condition: 100, note: 'Ведёт след' },
-  { id: 'middle', name: 'Нора Вальд', specialty: 'Навигатор', energy: 100, condition: 100, note: 'Контроль линии' },
-  { id: 'rear', name: 'Томас Рейн', specialty: 'Поддержка', energy: 100, condition: 100, note: 'Груз и замыкающий' },
+  { id: 'ilya', name: 'Илья Морен', specialty: 'Ледовик', energy: 100, condition: 100 },
+  { id: 'nora', name: 'Нора Вальд', specialty: 'Навигатор', energy: 100, condition: 100 },
+  { id: 'tomas', name: 'Томас Рейн', specialty: 'Поддержка', energy: 100, condition: 100 },
 ];
 
-const terrainCopy: Record<ReturnType<typeof terrainAt>, string> = {
-  VALLEY: 'Долина',
-  SCREE: 'Осыпь',
-  GLACIER: 'Ледник',
-  SNOW: 'Снежный склон',
-  RIDGE: 'Гребень',
-  ROCK: 'Скалы',
+const terrainColor: Record<MountainGridCell['terrain'], string> = {
+  APPROACH: '#7e8c74',
+  SCREE: '#8c7f6e',
+  GLACIER: '#9cc7d1',
+  SNOW: '#d8e1de',
+  RIDGE: '#c9c4b8',
+  ROCK: '#625e59',
 };
 
-const toolCopy: Array<{ id: ToolId; label: string; note: string }> = [
-  { id: 'ROUTE', label: 'Маршрут', note: 'Проведи линию' },
-  { id: 'ROPE', label: 'Верёвка', note: 'Две точки' },
-  { id: 'CAMP', label: 'Лагерь', note: 'Ровная площадка' },
-  { id: 'SCOUT', label: 'Разведка', note: 'Открыть район' },
-  { id: 'MARKER', label: 'Маркер', note: 'Пометить место' },
-];
-
-function statusFor(value: number) {
-  if (value >= 72) return 'Свежий';
-  if (value >= 46) return 'Рабочий';
-  if (value >= 24) return 'Устал';
-  return 'На пределе';
+function formatTime(minutes: number) {
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = Math.floor(minutes % 60);
+  if (days > 0) return `${days} д ${hours} ч ${mins} мин`;
+  if (hours > 0) return `${hours} ч ${mins} мин`;
+  return `${mins} мин`;
 }
 
-function contourLoops() {
-  return Array.from({ length: 15 }, (_, index) => {
-    const t = index / 14;
-    const rx = 450 - index * 24;
-    const ry = 315 - index * 17;
-    const centerX = 560 + index * 14;
-    const centerY = 410 - index * 20;
-    const points = Array.from({ length: 44 }, (_, step) => {
-      const angle = step / 43 * Math.PI * 2;
-      const noise = Math.sin(angle * 3 + index * 0.7) * (10 - t * 5) + Math.cos(angle * 5 - index) * 5;
+function clock(minutes: number) {
+  const total = 330 + minutes;
+  const day = Math.floor(total / 1440) + 1;
+  const value = total % 1440;
+  return `День ${day} · ${String(Math.floor(value / 60)).padStart(2, '0')}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
+}
+
+function statusLabel(value: number) {
+  if (value >= 75) return 'свежий';
+  if (value >= 50) return 'рабочий';
+  if (value >= 28) return 'устал';
+  return 'на пределе';
+}
+
+function cellId(point: GridPoint) {
+  return `${point.x}:${point.y}`;
+}
+
+function cellClass(cell: MountainGridCell, selected: boolean, current: boolean, route: boolean, travelled: boolean, camp: boolean, fixedRope: boolean, revealed: boolean) {
+  const classes = ['mg-cell', `terrain-${cell.terrain.toLowerCase()}`];
+  if (!cell.passable) classes.push('is-blocked');
+  if (selected) classes.push('is-selected');
+  if (current) classes.push('is-current');
+  if (route) classes.push('is-route');
+  if (travelled) classes.push('is-travelled');
+  if (camp) classes.push('has-camp');
+  if (fixedRope) classes.push('has-rope');
+  if (revealed && cell.hazard !== 'NONE') classes.push('has-hazard');
+  return classes.join(' ');
+}
+
+function MountainModelCanvas({
+  grid,
+  route,
+  trail,
+  current,
+  camps,
+  fixedRopes,
+}: {
+  grid: MountainGrid;
+  route: GridPoint[];
+  trail: GridPoint[];
+  current: GridPoint;
+  camps: string[];
+  fixedRopes: string[];
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const [camera, setCamera] = useState({ yaw: -0.72, pitch: 0.72, zoom: 1 });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.max(1, Math.round(rect.width * ratio));
+      canvas.height = Math.max(1, Math.round(rect.height * ratio));
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      draw(rect.width, rect.height);
+    };
+
+    const project = (x: number, y: number, elevation: number, width: number, height: number) => {
+      const centre = (grid.size - 1) / 2;
+      const px = (x - centre) * 20;
+      const pz = (y - centre) * 20;
+      const py = (elevation - grid.startElevation) / Math.max(1, grid.summitElevation - grid.startElevation) * 270;
+      const cos = Math.cos(camera.yaw);
+      const sin = Math.sin(camera.yaw);
+      const rx = px * cos - pz * sin;
+      const rz = px * sin + pz * cos;
+      const pitchCos = Math.cos(camera.pitch);
+      const pitchSin = Math.sin(camera.pitch);
+      const ry = py * pitchCos - rz * pitchSin;
+      const depth = py * pitchSin + rz * pitchCos;
+      const perspective = 1 / Math.max(0.55, 1 + depth / 1050);
       return {
-        x: centerX + Math.cos(angle) * (rx + noise),
-        y: centerY + Math.sin(angle) * (ry + noise * 0.55),
+        x: width * 0.5 + rx * camera.zoom * perspective,
+        y: height * 0.73 - ry * camera.zoom * perspective,
+        depth,
       };
-    });
-    return { id: `contour-${index}`, path: `${routeToPath(points)} Z`, major: index % 3 === 0 };
-  });
+    };
+
+    const draw = (width: number, height: number) => {
+      context.clearRect(0, 0, width, height);
+      const gradient = context.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, '#182326');
+      gradient.addColorStop(1, '#d7d3c9');
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, width, height);
+
+      const quads: Array<{ points: Array<{ x: number; y: number }>; depth: number; cell: MountainGridCell }> = [];
+      for (let y = 0; y < grid.size - 1; y += 1) {
+        for (let x = 0; x < grid.size - 1; x += 1) {
+          const a = cellAt(grid, { x, y })!;
+          const b = cellAt(grid, { x: x + 1, y })!;
+          const c = cellAt(grid, { x: x + 1, y: y + 1 })!;
+          const d = cellAt(grid, { x, y: y + 1 })!;
+          const projected = [
+            project(a.x, a.y, a.elevation, width, height),
+            project(b.x, b.y, b.elevation, width, height),
+            project(c.x, c.y, c.elevation, width, height),
+            project(d.x, d.y, d.elevation, width, height),
+          ];
+          quads.push({ points: projected, depth: projected.reduce((sum, point) => sum + point.depth, 0) / 4, cell: a });
+        }
+      }
+      quads.sort((a, b) => b.depth - a.depth);
+
+      for (const quad of quads) {
+        context.beginPath();
+        context.moveTo(quad.points[0]!.x, quad.points[0]!.y);
+        for (const point of quad.points.slice(1)) context.lineTo(point.x, point.y);
+        context.closePath();
+        const shade = Math.round(quad.cell.normalizedHeight * 26);
+        context.fillStyle = terrainColor[quad.cell.terrain];
+        context.globalAlpha = quad.cell.passable ? 0.78 + shade / 180 : 0.34;
+        context.fill();
+        context.globalAlpha = 1;
+        context.strokeStyle = 'rgba(21, 30, 31, .18)';
+        context.lineWidth = 0.7;
+        context.stroke();
+      }
+
+      const drawRoute = (points: GridPoint[], stroke: string, widthValue: number, dash: number[] = []) => {
+        if (points.length < 2) return;
+        context.save();
+        context.beginPath();
+        points.forEach((point, index) => {
+          const cell = cellAt(grid, point)!;
+          const projected = project(point.x, point.y, cell.elevation + 22, width, height);
+          if (index === 0) context.moveTo(projected.x, projected.y);
+          else context.lineTo(projected.x, projected.y);
+        });
+        context.strokeStyle = stroke;
+        context.lineWidth = widthValue;
+        context.setLineDash(dash);
+        context.lineJoin = 'round';
+        context.lineCap = 'round';
+        context.stroke();
+        context.restore();
+      };
+
+      drawRoute(trail, 'rgba(244, 194, 88, .7)', 2.5, [5, 5]);
+      drawRoute(route, '#f2ce71', 4);
+
+      const drawMarker = (point: GridPoint, fill: string, radius: number, label?: string) => {
+        const cell = cellAt(grid, point)!;
+        const projected = project(point.x, point.y, cell.elevation + 30, width, height);
+        context.beginPath();
+        context.arc(projected.x, projected.y, radius, 0, Math.PI * 2);
+        context.fillStyle = fill;
+        context.fill();
+        context.strokeStyle = '#132023';
+        context.lineWidth = 2;
+        context.stroke();
+        if (label) {
+          context.fillStyle = '#eef2ec';
+          context.font = '700 11px sans-serif';
+          context.fillText(label, projected.x + 10, projected.y - 8);
+        }
+      };
+
+      drawMarker(grid.start, '#d6d3c6', 5, `${grid.startElevation} м`);
+      drawMarker(grid.summit, '#f1c862', 7, `${grid.summitElevation} м`);
+      camps.forEach(id => {
+        const [x, y] = id.split(':').map(Number);
+        drawMarker({ x, y }, '#d88e54', 5, 'Лагерь');
+      });
+      fixedRopes.forEach(id => {
+        const [x, y] = id.split(':').map(Number);
+        drawMarker({ x, y }, '#75b6c0', 4);
+      });
+      drawMarker(current, '#f5f1e6', 8, 'Группа');
+
+      context.fillStyle = 'rgba(8, 16, 18, .66)';
+      context.fillRect(16, 16, 220, 56);
+      context.fillStyle = '#edf0e8';
+      context.font = '700 12px sans-serif';
+      context.fillText('Вращение: перетащи модель', 30, 39);
+      context.font = '11px sans-serif';
+      context.fillStyle = '#bdc8c4';
+      context.fillText('Колесо / жест: приблизить', 30, 58);
+    };
+
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+    resize();
+    return () => observer.disconnect();
+  }, [camera, camps, current, fixedRopes, grid, route, trail]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="mg-model-canvas"
+      onPointerDown={event => {
+        dragRef.current = { x: event.clientX, y: event.clientY };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={event => {
+        if (!dragRef.current) return;
+        const dx = event.clientX - dragRef.current.x;
+        const dy = event.clientY - dragRef.current.y;
+        dragRef.current = { x: event.clientX, y: event.clientY };
+        setCamera(value => ({
+          ...value,
+          yaw: value.yaw + dx * 0.008,
+          pitch: Math.max(0.34, Math.min(1.14, value.pitch + dy * 0.006)),
+        }));
+      }}
+      onPointerUp={event => {
+        dragRef.current = null;
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={() => { dragRef.current = null; }}
+      onWheel={event => {
+        event.preventDefault();
+        setCamera(value => ({ ...value, zoom: Math.max(0.62, Math.min(1.72, value.zoom - event.deltaY * 0.0012)) }));
+      }}
+    />
+  );
 }
 
-function polygonPoints(points: TopoPoint[]) {
-  return points.map(point => `${point.x},${point.y}`).join(' ');
-}
-
-function pointToLineDistance(point: TopoPoint, a: TopoPoint, b: TopoPoint) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lengthSq = dx * dx + dy * dy;
-  if (lengthSq <= 0.001) return distance(point, a);
-  const t = clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSq, 0, 1);
-  return distance(point, { x: a.x + dx * t, y: a.y + dy * t });
-}
-
-function hasFixedRopeNear(point: TopoPoint, ropes: FixedRope[]) {
-  return ropes.some(rope => !rope.damaged && pointToLineDistance(point, rope.a, rope.b) <= 28);
-}
-
-function mapPoint(event: React.PointerEvent<SVGSVGElement>): TopoPoint {
-  const rect = event.currentTarget.getBoundingClientRect();
+function makeInitialState(grid: MountainGrid, authority: Authority): SimulationState {
+  const guided = authority !== 'COMMAND' ? findGuidedRoute(grid) : [grid.start];
+  const visibleHazards = grid.cells.filter(cell => cell.hazard === 'CREVASSE_VISIBLE').map(cell => cell.id);
   return {
-    x: clamp((event.clientX - rect.left) / rect.width * TOPO_MAP_WIDTH, 0, TOPO_MAP_WIDTH),
-    y: clamp((event.clientY - rect.top) / rect.height * TOPO_MAP_HEIGHT, 0, TOPO_MAP_HEIGHT),
-  };
-}
-
-function shortTime(minutes: number) {
-  if (minutes < 60) return `${Math.round(minutes)} мин`;
-  return `${Math.floor(minutes / 60)} ч ${Math.round(minutes % 60)} мин`;
-}
-
-function routeEnd(route: TopoPoint[]) {
-  return route[route.length - 1] ?? null;
-}
-
-export function TopoExpeditionPrototype({ onExit }: { onExit: () => void }) {
-  const contours = useMemo(contourLoops, []);
-  const [tool, setTool] = useState<ToolId>('ROUTE');
-  const [drawing, setDrawing] = useState(false);
-  const [draftRoute, setDraftRoute] = useState<TopoPoint[]>([]);
-  const [ropeStart, setRopeStart] = useState<TopoPoint | null>(null);
-  const [sim, setSim] = useState<SimState>({
     phase: 'ASCENT',
     paused: true,
     timeScale: 1,
     elapsedMinutes: 0,
-    position: TOPO_START,
-    route: [],
-    routeTravelled: 0,
-    participants: initialParticipants,
-    roped: false,
-    ropeSpacing: 18,
-    fixedRopes: [],
+    current: grid.start,
+    route: guided,
+    trail: [grid.start],
+    segmentProgress: 0,
+    participants: initialParticipants.map(item => ({ ...item })),
+    roped: authority !== 'COMMAND',
+    ropeSpacing: 15,
     ropeMetres: 120,
-    camps: [],
-    markers: [],
-    revealedCrevasseIds: TOPO_CREVASSES.filter(item => !item.hidden).map(item => item.id),
-    blockedCrevasseIds: [],
-    lastMessage: 'Пауза. Изучи рельеф и проведи первую линию от группы.',
+    fixedRopeCellIds: [],
+    campCellIds: [],
+    revealedHazardCellIds: visibleHazards,
     summitReached: false,
-  });
+    message: authority !== 'COMMAND'
+      ? 'Руководитель выдал готовый путь. Ты управляешь связкой, порядком людей и локальной безопасностью.'
+      : 'Осмотри 3D-модель, затем открой карту и проложи путь по соседним квадратам.',
+  };
+}
+
+export function TopoExpeditionPrototype({
+  onExit,
+  authority = 'COMMAND',
+  seed = 'ALPINE-GRID-01',
+  mountainName = 'Кайрн-Валь',
+  startElevation = 620,
+  summitElevation = 3480,
+  allowRegenerate = true,
+}: Props) {
+  const [variant, setVariant] = useState(0);
+  const grid = useMemo(
+    () => generateMountainGrid(`${seed}:grid:${variant}`, startElevation, summitElevation, mountainName),
+    [mountainName, seed, startElevation, summitElevation, variant],
+  );
+  const [view, setView] = useState<ViewMode>('MODEL');
+  const [tool, setTool] = useState<MapTool>('ROUTE');
+  const [selected, setSelected] = useState<GridPoint>(grid.start);
+  const [mapZoom, setMapZoom] = useState(1);
+  const draggingRouteRef = useRef(false);
+  const [sim, setSim] = useState<SimulationState>(() => makeInitialState(grid, authority));
   const simRef = useRef(sim);
-  const lastTickRef = useRef<number | null>(null);
+  const lastFrameRef = useRef<number | null>(null);
+
+  useEffect(() => { simRef.current = sim; }, [sim]);
+
+  const reset = useCallback((nextGrid = grid) => {
+    const state = makeInitialState(nextGrid, authority);
+    setSim(state);
+    setSelected(nextGrid.start);
+    setTool('ROUTE');
+    setView('MODEL');
+  }, [authority, grid]);
 
   useEffect(() => {
-    simRef.current = sim;
-  }, [sim]);
+    reset(grid);
+  }, [grid, reset]);
 
-  const weather = weatherAt(sim.elapsedMinutes);
-  const routeEstimate = useMemo(() => estimateRoute(sim.route, sim.elapsedMinutes), [sim.route, sim.elapsedMinutes]);
-  const currentTerrain = terrainAt(sim.position);
-  const currentElevation = elevationAt(sim.position);
-  const target = sim.phase === 'ASCENT' ? TOPO_SUMMIT : TOPO_START;
-  const targetLabel = sim.phase === 'ASCENT' ? 'вершины' : 'старта';
-  const nearCamp = sim.camps.find(camp => distance(camp.point, sim.position) <= 42) ?? null;
-  const totalRouteLength = polylineLength(sim.route);
+  const weather = weatherAtGrid(sim.elapsedMinutes);
+  const currentCell = cellAt(grid, sim.current)!;
+  const selectedCell = cellAt(grid, selected)!;
+  const nextCell = sim.route.length > 1 ? cellAt(grid, sim.route[1]!) : null;
+  const routeSummary = routeCost(grid, sim.route, sim.elapsedMinutes);
+  const routeIds = useMemo(() => new Set(sim.route.map(cellId)), [sim.route]);
+  const trailIds = useMemo(() => new Set(sim.trail.map(cellId)), [sim.trail]);
+  const currentId = cellId(sim.current);
+  const atCamp = sim.campCellIds.includes(currentId);
+  const canBuildCamp = cellCanHostCamp(currentCell) && !atCamp;
+  const canFixRope = (currentCell.terrain === 'ROCK' || currentCell.terrain === 'RIDGE')
+    && !sim.fixedRopeCellIds.includes(currentId)
+    && sim.ropeMetres >= 20;
+
+  const applyCellArrival = useCallback((state: SimulationState, destination: GridPoint, energyCost: number) => {
+    const destinationCell = cellAt(grid, destination)!;
+    const liveWeather = weatherAtGrid(state.elapsedMinutes);
+    const id = destinationCell.id;
+    const leaderLoss = energyCost;
+    const participants = state.participants.map((participant, index) => ({
+      ...participant,
+      energy: Math.max(0, participant.energy - Math.max(1, Math.round(leaderLoss * (index === 0 ? 1 : 0.62)))),
+    }));
+    let paused = false;
+    let message = `${terrainLabels[destinationCell.terrain]} ${pointLabel(destination)} пройден. Набор до ${destinationCell.elevation} м.`;
+    let revealed = state.revealedHazardCellIds;
+    let current = destination;
+    let route = state.route.slice(1);
+    let phase = state.phase;
+    let summitReached = state.summitReached;
+    let trail = [...state.trail, destination];
+
+    if (destinationCell.hazard === 'CREVASSE_HIDDEN' && !revealed.includes(id)) {
+      revealed = [...revealed, id];
+      paused = true;
+      if (state.roped) {
+        message = 'Связка обнаружила скрытую трещину и удержала ведущего. Пауза: измени путь или продолжи после проверки.';
+        participants[0] = { ...participants[0]!, energy: Math.max(0, participants[0]!.energy - 5) };
+      } else {
+        message = 'Ведущий провалился в скрытую трещину. Без связки состояние группы ухудшилось.';
+        participants[0] = {
+          ...participants[0]!,
+          energy: Math.max(0, participants[0]!.energy - 14),
+          condition: Math.max(0, participants[0]!.condition - 18),
+        };
+      }
+    } else if (destinationCell.hazard === 'AVALANCHE' && liveWeather.snowSoftness >= 72) {
+      paused = true;
+      message = 'Снег просел под нагрузкой. Склон размягчён солнцем: группа остановлена до изменения пути или похолодания.';
+      participants.forEach((participant, index) => {
+        participants[index] = { ...participant, energy: Math.max(0, participant.energy - 5) };
+      });
+    } else if (destinationCell.hazard === 'ROCKFALL' && liveWeather.windKmh >= 42) {
+      paused = true;
+      message = 'На квадрат сошла каменная осыпь. Нужно переждать или изменить будущий маршрут.';
+      participants[0] = { ...participants[0]!, condition: Math.max(0, participants[0]!.condition - 7) };
+    }
+
+    if (isSamePoint(destination, grid.summit) && state.phase === 'ASCENT') {
+      paused = true;
+      phase = 'DESCENT';
+      summitReached = true;
+      message = authority !== 'COMMAND'
+        ? 'Вершина достигнута. Руководитель ведёт группу обратно по подготовленной линии.'
+        : 'Вершина достигнута. Теперь проложи спуск до стартовой клетки.';
+      route = authority !== 'COMMAND' ? [...trail].reverse() : [grid.summit];
+      trail = [...trail];
+    } else if (isSamePoint(destination, grid.start) && state.phase === 'DESCENT') {
+      paused = true;
+      phase = 'COMPLETE';
+      route = [grid.start];
+      message = 'Группа вернулась к старту. Экспедиция завершена физическим спуском.';
+    } else if (route.length <= 1 && phase !== 'COMPLETE') {
+      paused = true;
+      message = phase === 'ASCENT'
+        ? 'Проведённая линия закончилась. Поставь паузу и продолжи маршрут к вершине.'
+        : 'Линия спуска закончилась. Продолжи путь к старту.';
+    }
+
+    return {
+      ...state,
+      phase,
+      paused,
+      elapsedMinutes: state.elapsedMinutes,
+      current,
+      route: route.length ? route : [current],
+      trail,
+      segmentProgress: 0,
+      participants,
+      revealedHazardCellIds: revealed,
+      summitReached,
+      message,
+    };
+  }, [authority, grid]);
 
   useEffect(() => {
     let frame = 0;
     const tick = (now: number) => {
-      const previous = lastTickRef.current ?? now;
-      const realSeconds = Math.min(0.12, (now - previous) / 1000);
+      const previous = lastFrameRef.current ?? now;
+      const deltaSeconds = Math.min(0.12, (now - previous) / 1000);
+      lastFrameRef.current = now;
       const current = simRef.current;
-      if (realSeconds >= 0.045) lastTickRef.current = now;
-      if (realSeconds >= 0.045 && !current.paused && current.phase !== 'COMPLETE' && current.route.length >= 2) {
-        const gameMinutes = realSeconds * 2.4 * current.timeScale;
-        setSim(state => {
-          if (state.paused || state.route.length < 2) return state;
-          const routeLength = polylineLength(state.route);
-          const here = pointAtDistance(state.route, state.routeTravelled);
-          const ahead = pointAtDistance(state.route, Math.min(routeLength, state.routeTravelled + 12));
-          const fixedRope = hasFixedRopeNear(here, state.fixedRopes);
-          const liveWeather = weatherAt(state.elapsedMinutes);
-          const leader = state.participants[0]!;
-          const exhaustion = clamp(0.42 + leader.energy / 115, 0.38, 1.08);
-          const ropePenalty = state.roped ? 0.91 : 1;
-          const factor = movementFactor(here, ahead, liveWeather, fixedRope) * exhaustion * ropePenalty;
-          const movement = gameMinutes * 1.16 * factor;
-          const nextTravelled = Math.min(routeLength, state.routeTravelled + movement);
-          const nextPosition = pointAtDistance(state.route, nextTravelled);
-          const terrain = terrainAt(nextPosition);
-
-          const newlyVisible = TOPO_CREVASSES
-            .filter(crevasse => !state.revealedCrevasseIds.includes(crevasse.id))
-            .filter(crevasse => liveWeather.visibility >= 42 && pointToLineDistance(nextPosition, crevasse.a, crevasse.b) <= 34)
-            .map(crevasse => crevasse.id);
-
-          const crossed = TOPO_CREVASSES.find(crevasse => {
-            if (state.blockedCrevasseIds.includes(crevasse.id)) return false;
-            const was = pointToLineDistance(here, crevasse.a, crevasse.b);
-            const nowDistance = pointToLineDistance(nextPosition, crevasse.a, crevasse.b);
-            return Math.min(was, nowDistance) <= 7;
-          });
-
-          const terrainLoad = terrain === 'SNOW' ? 1.35 + liveWeather.snowSoftness / 140
-            : terrain === 'SCREE' ? 1.3
-              : terrain === 'ROCK' ? 1.45
-                : terrain === 'GLACIER' ? 1.18
-                  : terrain === 'RIDGE' ? 1.15 + liveWeather.windKmh / 120
-                    : 0.82;
-          const participants = state.participants.map((participant, index) => ({
-            ...participant,
-            energy: clamp(participant.energy - gameMinutes * terrainLoad * (index === 0 ? 0.052 : 0.034), 0, 100),
-          }));
-
-          let paused: boolean = state.paused;
-          let lastMessage = state.lastMessage;
-          let blockedCrevasseIds = state.blockedCrevasseIds;
-          let revealedCrevasseIds = [...state.revealedCrevasseIds, ...newlyVisible];
-          let position = nextPosition;
-          let travelled = nextTravelled;
-          let route = state.route;
-
-          if (crossed) {
-            paused = true;
-            revealedCrevasseIds = [...revealedCrevasseIds, crossed.id];
-            blockedCrevasseIds = [...blockedCrevasseIds, crossed.id];
-            position = here;
-            travelled = 0;
-            route = [here];
-            if (state.roped) {
-              lastMessage = 'Связка остановилась у разлома. Линию нужно изменить или провести разведку.';
-            } else {
-              participants[0] = { ...participants[0]!, condition: clamp(participants[0]!.condition - 14), energy: clamp(participants[0]!.energy - 9) };
-              lastMessage = 'Ведущий провалился по колено в скрытый разлом. Без связки ошибка ударила по состоянию.';
-            }
-          }
-
-          const reachedRouteEnd = nextTravelled >= routeLength - 0.5;
-          if (!crossed && reachedRouteEnd) {
-            const reachedTarget = distance(nextPosition, target) <= 42;
-            paused = true;
-            if (reachedTarget && state.phase === 'ASCENT') {
-              lastMessage = 'Вершина достигнута. Проведи обратную линию к старту. Подъём ещё не закончен.';
-              return {
-                ...state,
-                phase: 'DESCENT',
-                paused: true,
-                elapsedMinutes: state.elapsedMinutes + gameMinutes,
-                position: TOPO_SUMMIT,
-                route: [],
-                routeTravelled: 0,
-                participants,
-                summitReached: true,
-                revealedCrevasseIds,
-                blockedCrevasseIds,
-                lastMessage,
-              };
-            }
-            if (reachedTarget && state.phase === 'DESCENT') {
-              lastMessage = 'Группа вернулась к старту. Экспедиция завершена физическим возвращением.';
-              return {
-                ...state,
-                phase: 'COMPLETE',
-                paused: true,
-                elapsedMinutes: state.elapsedMinutes + gameMinutes,
-                position: TOPO_START,
-                route: [],
-                routeTravelled: 0,
-                participants,
-                revealedCrevasseIds,
-                blockedCrevasseIds,
-                lastMessage,
-              };
-            }
-            lastMessage = `Линия закончилась до ${targetLabel}. Пауза: продолжи маршрут от текущей точки.`;
-          }
-
-          if (participants[0]!.energy <= 8 && !paused) {
-            paused = true;
-            lastMessage = 'Ведущий больше не держит темп. Поменяй порядок или поставь лагерь.';
-          }
-
-          return {
-            ...state,
-            paused,
-            elapsedMinutes: state.elapsedMinutes + gameMinutes,
-            position,
-            route,
-            routeTravelled: travelled,
-            participants,
-            revealedCrevasseIds,
-            blockedCrevasseIds,
-            lastMessage,
-          };
+      if (!current.paused && current.phase !== 'COMPLETE' && current.route.length > 1) {
+        const next = current.route[1]!;
+        const fixedRope = current.fixedRopeCellIds.includes(cellId(next));
+        const cost = moveCost(grid, current.current, next, weatherAtGrid(current.elapsedMinutes), {
+          roped: current.roped,
+          fixedRope,
+          leaderEnergy: current.participants[0]!.energy,
         });
+        const gameMinutes = deltaSeconds * 3.2 * current.timeScale;
+        const progress = current.segmentProgress + gameMinutes / Math.max(1, cost.minutes);
+        if (progress >= 1) {
+          setSim(state => applyCellArrival(state, next, cost.energy));
+        } else {
+          setSim(state => ({ ...state, elapsedMinutes: state.elapsedMinutes + gameMinutes, segmentProgress: progress }));
+        }
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [target, targetLabel]);
+  }, [applyCellArrival, grid]);
 
-  function beginRoute(event: React.PointerEvent<SVGSVGElement>) {
-    if (!sim.paused || tool !== 'ROUTE' || sim.phase === 'COMPLETE') return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const point = mapPoint(event);
-    setDrawing(true);
-    setDraftRoute([sim.position, point]);
-  }
-
-  function extendRoute(event: React.PointerEvent<SVGSVGElement>) {
-    if (!drawing || tool !== 'ROUTE') return;
-    const point = mapPoint(event);
-    setDraftRoute(current => distance(current[current.length - 1]!, point) >= 5 ? [...current, point] : current);
-  }
-
-  function finishRoute(event: React.PointerEvent<SVGSVGElement>) {
-    if (!drawing || tool !== 'ROUTE') return;
-    event.currentTarget.releasePointerCapture(event.pointerId);
-    const route = decimateRoute(draftRoute, 9);
-    setDrawing(false);
-    setDraftRoute([]);
-    if (route.length < 2 || polylineLength(route) < 18) return;
-    setSim(state => ({
-      ...state,
-      route,
-      routeTravelled: 0,
-      paused: true,
-      lastMessage: `Новая линия построена: ${estimateRoute(route, state.elapsedMinutes).distance} м. Запусти движение, когда готов.`,
-    }));
-  }
-
-  function handleMapClick(event: React.PointerEvent<SVGSVGElement>) {
-    if (!sim.paused || drawing || tool === 'ROUTE' || sim.phase === 'COMPLETE') return;
-    const point = mapPoint(event);
-    if (tool === 'ROPE') {
-      if (!ropeStart) {
-        setRopeStart(point);
-        setSim(state => ({ ...state, lastMessage: 'Выбрана первая точка верёвки. Укажи вторую.' }));
-        return;
-      }
-      const metres = Math.max(8, Math.round(distance(ropeStart, point) * 0.42));
-      if (metres > sim.ropeMetres) {
-        setRopeStart(null);
-        setSim(state => ({ ...state, lastMessage: `Нужно ${metres} м верёвки, осталось ${state.ropeMetres} м.` }));
-        return;
-      }
-      setSim(state => ({
-        ...state,
-        fixedRopes: [...state.fixedRopes, { id: `rope-${Date.now()}`, a: ropeStart, b: point, metres, damaged: false }],
-        ropeMetres: state.ropeMetres - metres,
-        elapsedMinutes: state.elapsedMinutes + 24,
-        lastMessage: `Закреплён участок ${metres} м. Он останется для повторного прохода и спуска.`,
-      }));
-      setRopeStart(null);
+  const appendRoutePoint = (point: GridPoint) => {
+    if (authority !== 'COMMAND' || !sim.paused || sim.phase === 'COMPLETE' || tool !== 'ROUTE') return;
+    const cell = cellAt(grid, point);
+    if (!cell?.passable) {
+      setSim(state => ({ ...state, message: 'Этот квадрат непроходим: выбери соседний участок рельефа.' }));
       return;
     }
-    if (tool === 'CAMP') {
-      if (!canPlaceCamp(point)) {
-        setSim(state => ({ ...state, lastMessage: 'Здесь нет ровной защищённой площадки. Ищи террасу по форме рельефа.' }));
-        return;
-      }
-      if (sim.camps.some(camp => distance(camp.point, point) < 75)) {
-        setSim(state => ({ ...state, lastMessage: 'На этой площадке лагерь уже существует.' }));
-        return;
-      }
-      const site = TOPO_CAMP_SITES.find(item => distance(point, item) <= item.radius)!;
-      setSim(state => ({
-        ...state,
-        camps: [...state.camps, { id: `camp-${Date.now()}`, point, label: site.label }],
-        elapsedMinutes: state.elapsedMinutes + 95,
-        lastMessage: `Лагерь установлен: ${site.label}. Сюда можно вернуться и восстановиться.`,
-      }));
+    setSim(state => {
+      const route = state.route.length ? state.route : [state.current];
+      const existing = routeIndexOf(route, point);
+      if (existing >= 0) return { ...state, route: route.slice(0, existing + 1), segmentProgress: 0, message: 'Будущий маршрут сокращён до выбранной клетки.' };
+      const last = route[route.length - 1]!;
+      if (!isAdjacent(last, point)) return state;
+      return { ...state, route: [...route, point], message: `${pointLabel(point)} добавлен в план. Можно продолжать линию по соседним квадратам.` };
+    });
+  };
+
+  const handleCell = (point: GridPoint, fromDrag = false) => {
+    setSelected(point);
+    if (tool === 'ROUTE') {
+      if (!fromDrag || draggingRouteRef.current) appendRoutePoint(point);
       return;
     }
     if (tool === 'SCOUT') {
-      const discovered = TOPO_CREVASSES
-        .filter(crevasse => pointToLineDistance(point, crevasse.a, crevasse.b) <= 125)
-        .map(crevasse => crevasse.id);
+      if (!sim.paused) return;
+      const neighbours = [point, ...gridNeighbours(grid, point)];
+      const ids = neighbours.map(cellId);
       setSim(state => ({
         ...state,
-        elapsedMinutes: state.elapsedMinutes + 22,
-        revealedCrevasseIds: [...new Set([...state.revealedCrevasseIds, ...discovered])],
-        lastMessage: discovered.length ? `Разведка открыла ${discovered.length} разлома в выбранном районе.` : 'Разведка не нашла явной угрозы. Время потрачено.',
-      }));
-      return;
-    }
-    if (tool === 'MARKER') {
-      setSim(state => ({
-        ...state,
-        markers: [...state.markers, { id: `marker-${Date.now()}`, point, label: `М${state.markers.length + 1}` }],
-        lastMessage: 'Точка отмечена на карте.',
+        elapsedMinutes: state.elapsedMinutes + 35,
+        revealedHazardCellIds: [...new Set([...state.revealedHazardCellIds, ...ids])],
+        message: `Разведан квадрат ${pointLabel(point)} и соседний рельеф. Потрачено 35 минут.`,
       }));
     }
-  }
+  };
 
-  function toggleMovement() {
+  const reorder = (index: number, direction: -1 | 1) => {
+    if (!sim.paused) return;
+    setSim(state => {
+      const target = index + direction;
+      if (target < 0 || target >= state.participants.length) return state;
+      const participants = [...state.participants];
+      [participants[index], participants[target]] = [participants[target]!, participants[index]!];
+      return { ...state, participants, message: `${participants[0]!.name} теперь идёт первым и прокладывает след.` };
+    });
+  };
+
+  const toggleMovement = () => {
     setSim(state => {
       if (state.phase === 'COMPLETE') return state;
-      if (state.route.length < 2) return { ...state, paused: true, lastMessage: 'Сначала проведи маршрут от текущей позиции.' };
-      return { ...state, paused: !state.paused, lastMessage: state.paused ? 'Группа начала движение по проведённой линии.' : 'Активная пауза. Маршрут и команды можно менять.' };
+      if (state.route.length < 2) return { ...state, paused: true, message: 'Сначала добавь хотя бы одну соседнюю клетку маршрута.' };
+      return { ...state, paused: !state.paused, message: state.paused ? 'Группа начала движение по запланированным клеткам.' : 'Активная пауза. Маршрут и команды можно изменить.' };
     });
-  }
+  };
 
-  function reorder(index: number, direction: -1 | 1) {
-    setSim(state => {
-      const nextIndex = index + direction;
-      if (nextIndex < 0 || nextIndex >= state.participants.length) return state;
-      const participants = [...state.participants];
-      [participants[index], participants[nextIndex]] = [participants[nextIndex]!, participants[index]!];
-      return { ...state, participants, paused: true, lastMessage: `${participants[0]!.name} теперь ведёт группу.` };
-    });
-  }
-
-  function restAtCamp() {
-    if (!nearCamp) {
-      setSim(state => ({ ...state, lastMessage: 'Для полноценного отдыха нужно физически дойти до установленного лагеря.' }));
-      return;
-    }
+  const buildCamp = () => {
+    if (!sim.paused || !canBuildCamp) return;
     setSim(state => ({
       ...state,
-      paused: true,
-      elapsedMinutes: state.elapsedMinutes + 360,
-      participants: state.participants.map(participant => ({ ...participant, energy: clamp(participant.energy + 58), condition: clamp(participant.condition + 5) })),
-      lastMessage: `Шесть часов в лагере «${nearCamp.label}». Люди восстановились, но погода продолжила меняться.`,
+      elapsedMinutes: state.elapsedMinutes + 95,
+      campCellIds: [...state.campCellIds, currentId],
+      participants: state.participants.map(item => ({ ...item, energy: Math.min(100, item.energy + 8) })),
+      message: `Лагерь поставлен на ${pointLabel(state.current)}. Площадка остаётся опорной точкой подъёма и спуска.`,
     }));
-  }
+  };
 
-  function resetPrototype() {
-    setTool('ROUTE');
-    setDraftRoute([]);
-    setRopeStart(null);
-    setSim({
-      phase: 'ASCENT', paused: true, timeScale: 1, elapsedMinutes: 0, position: TOPO_START, route: [], routeTravelled: 0,
-      participants: initialParticipants, roped: false, ropeSpacing: 18, fixedRopes: [], ropeMetres: 120, camps: [], markers: [],
-      revealedCrevasseIds: TOPO_CREVASSES.filter(item => !item.hidden).map(item => item.id), blockedCrevasseIds: [],
-      lastMessage: 'Пауза. Изучи рельеф и проведи первую линию от группы.', summitReached: false,
-    });
-  }
+  const restAtCamp = () => {
+    if (!sim.paused || !atCamp) return;
+    setSim(state => ({
+      ...state,
+      elapsedMinutes: state.elapsedMinutes + 360,
+      participants: state.participants.map(item => ({ ...item, energy: Math.min(100, item.energy + 54), condition: Math.min(100, item.condition + 4) })),
+      message: 'Шесть часов сна восстановили рабочий резерв. Погода продолжала меняться.',
+    }));
+  };
 
-  const lineOpacity = weather.visibility < 45 ? 0.42 : weather.visibility < 65 ? 0.68 : 0.92;
-  const groupRoute = sim.route.length ? sim.route : [sim.position];
-  const groupDots = sim.participants.map((participant, index) => ({
-    participant,
-    point: pointAtDistance(groupRoute, Math.max(0, sim.routeTravelled - index * (sim.roped ? sim.ropeSpacing : 11))),
-  }));
+  const fixRope = () => {
+    if (!sim.paused || !canFixRope) return;
+    setSim(state => ({
+      ...state,
+      elapsedMinutes: state.elapsedMinutes + 50,
+      ropeMetres: state.ropeMetres - 20,
+      fixedRopeCellIds: [...state.fixedRopeCellIds, currentId],
+      message: `На ${pointLabel(state.current)} закреплено 20 м верёвки. Повторное прохождение станет быстрее и надёжнее.`,
+    }));
+  };
+
+  const routeTarget = sim.phase === 'ASCENT' ? grid.summit : grid.start;
+  const routeReady = sim.route.length > 1;
 
   return (
-    <main className="topo-expedition">
-      <header className="topo-header">
-        <button className="topo-exit" onClick={onExit}>← Карьера</button>
+    <main className="mg-shell">
+      <header className="mg-header">
+        <button className="mg-exit" onClick={onExit}>← Выйти</button>
         <div>
-          <span>0.7.0 / TOPOGRAPHIC PROTOTYPE</span>
-          <strong>Караульный пик · {TOPO_SUMMIT_ELEVATION} м</strong>
+          <span>ALPINE LEGACY · MOUNTAIN GRID 0.7.1</span>
+          <h1>{grid.name}</h1>
         </div>
-        <div className="topo-header__weather">
-          <span>{formatClock(sim.elapsedMinutes)}</span>
-          <b>{weather.temperatureC}° · ветер {weather.windKmh} км/ч · видимость {weather.visibility}%</b>
+        <div className="mg-header-state">
+          <strong>{sim.phase === 'ASCENT' ? 'Подъём' : sim.phase === 'DESCENT' ? 'Спуск' : 'Завершено'}</strong>
+          <span>{currentCell.elevation} м · {clock(sim.elapsedMinutes)}</span>
         </div>
       </header>
 
-      <section className="topo-workspace">
-        <div className="topo-map-column">
-          <div className="topo-map-head">
-            <div>
-              <span>{sim.phase === 'ASCENT' ? 'ПОДЪЁМ' : sim.phase === 'DESCENT' ? 'СПУСК' : 'ЭКСПЕДИЦИЯ ЗАВЕРШЕНА'}</span>
-              <strong>{currentElevation} м</strong>
-              <small>{terrainCopy[currentTerrain]} · до {targetLabel} {Math.round(distance(sim.position, target) * 3.2)} м по карте</small>
+      <nav className="mg-view-tabs" aria-label="Режим просмотра">
+        <button className={view === 'MODEL' ? 'is-active' : ''} onClick={() => setView('MODEL')}>3D-модель</button>
+        <button className={view === 'MAP' ? 'is-active' : ''} onClick={() => setView('MAP')}>Карта этапов</button>
+      </nav>
+
+      {view === 'MODEL' ? (
+        <section className="mg-model-screen">
+          <div className="mg-model-stage">
+            <MountainModelCanvas
+              grid={grid}
+              route={sim.route}
+              trail={sim.trail}
+              current={sim.current}
+              camps={sim.campCellIds}
+              fixedRopes={sim.fixedRopeCellIds}
+            />
+            <div className="mg-model-overlay">
+              <span>ПРОЦЕДУРНАЯ 3D-МОДЕЛЬ</span>
+              <h2>{grid.startElevation} → {grid.summitElevation} м</h2>
+              <p>Осмотри форму массива, гребни, ледник и крутые стены. Затем открой квадратную развёртку и задай реальный путь.</p>
+              <button onClick={() => setView('MAP')}>Открыть карту этапов →</button>
             </div>
-            <div className="topo-map-head__route">
-              <span>Текущая линия</span>
-              <strong>{routeEstimate.distance || 0} м · {routeEstimate.gain || 0} м набора</strong>
-              <small>{routeEstimate.minutes ? `около ${shortTime(routeEstimate.minutes)}` : 'линия не построена'}</small>
+          </div>
+          <aside className="mg-model-aside">
+            <section>
+              <span>КАК ЧИТАТЬ МОДЕЛЬ</span>
+              <p>Светлые поверхности — снег и ледник. Тёмные — скалы. Высокий узкий рельеф образует гребни. Проведённый маршрут появляется на модели жёлтой линией.</p>
+            </section>
+            <section className="mg-terrain-legend">
+              {(Object.keys(terrainLabels) as Array<keyof typeof terrainLabels>).map(id => <div key={id}><i style={{ background: terrainColor[id] }} /><span>{terrainLabels[id]}</span></div>)}
+            </section>
+            {allowRegenerate && (
+              <button className="mg-secondary" onClick={() => setVariant(value => value + 1)}>Сгенерировать другую форму</button>
+            )}
+          </aside>
+        </section>
+      ) : (
+        <section className="mg-map-screen">
+          <div className="mg-map-column">
+            <div className="mg-map-summary">
+              <div><span>Сейчас</span><strong>{pointLabel(sim.current)} · {currentCell.elevation} м</strong></div>
+              <div><span>Цель</span><strong>{pointLabel(routeTarget)} · {sim.phase === 'ASCENT' ? grid.summitElevation : grid.startElevation} м</strong></div>
+              <div><span>Будущий путь</span><strong>{Math.max(0, sim.route.length - 1)} этапов · {formatTime(routeSummary.minutes)}</strong></div>
+              <div><span>Погода</span><strong>{weather.windKmh} км/ч · обзор {weather.visibility}%</strong></div>
+            </div>
+
+            <div className="mg-map-toolbar">
+              <div className="mg-tools">
+                <button className={tool === 'ROUTE' ? 'is-active' : ''} onClick={() => setTool('ROUTE')} disabled={authority !== 'COMMAND' || !sim.paused}>Маршрут</button>
+                <button className={tool === 'INSPECT' ? 'is-active' : ''} onClick={() => setTool('INSPECT')}>Осмотр</button>
+                <button className={tool === 'SCOUT' ? 'is-active' : ''} onClick={() => setTool('SCOUT')} disabled={!sim.paused}>Разведка</button>
+              </div>
+              <div className="mg-zoom-controls">
+                <button onClick={() => setMapZoom(value => Math.max(0.72, value - 0.1))}>−</button>
+                <span>{Math.round(mapZoom * 100)}%</span>
+                <button onClick={() => setMapZoom(value => Math.min(1.35, value + 0.1))}>+</button>
+              </div>
+            </div>
+
+            <div className="mg-grid-viewport">
+              <div
+                className="mg-grid"
+                style={{ '--grid-size': grid.size, '--map-zoom': mapZoom } as React.CSSProperties}
+                onPointerLeave={() => { draggingRouteRef.current = false; }}
+                onPointerUp={() => { draggingRouteRef.current = false; }}
+                onPointerCancel={() => { draggingRouteRef.current = false; }}
+              >
+                {grid.cells.map(cell => {
+                  const point = { x: cell.x, y: cell.y };
+                  const id = cell.id;
+                  const revealed = sim.revealedHazardCellIds.includes(id) || cell.hazard !== 'CREVASSE_HIDDEN';
+                  const route = routeIds.has(id);
+                  const travelled = trailIds.has(id);
+                  const current = id === currentId;
+                  const selectedValue = isSamePoint(selected, point);
+                  const camp = sim.campCellIds.includes(id);
+                  const fixedRope = sim.fixedRopeCellIds.includes(id);
+                  const heightShade = Math.round(cell.normalizedHeight * 30);
+                  return (
+                    <button
+                      type="button"
+                      key={id}
+                      className={cellClass(cell, selectedValue, current, route, travelled, camp, fixedRope, revealed)}
+                      style={{ '--height-shade': `${heightShade}%` } as React.CSSProperties}
+                      onPointerDown={event => {
+                        event.preventDefault();
+                        draggingRouteRef.current = tool === 'ROUTE';
+                        handleCell(point);
+                      }}
+                      onPointerEnter={() => handleCell(point, true)}
+                      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') handleCell(point); }}
+                      aria-label={`${pointLabel(point)}, ${terrainLabels[cell.terrain]}, ${cell.elevation} метров`}
+                    >
+                      {cell.x % 5 === 0 && cell.y % 5 === 0 && <small>{cell.elevation}</small>}
+                      {route && <i className="mg-route-node" />}
+                      {current && <b className="mg-group-marker">3</b>}
+                      {camp && <b className="mg-camp-marker">▲</b>}
+                      {fixedRope && <b className="mg-rope-marker">≋</b>}
+                      {revealed && cell.hazard !== 'NONE' && <b className="mg-hazard-marker">!</b>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mg-timebar">
+              <button className="mg-play" onClick={toggleMovement} disabled={sim.phase === 'COMPLETE'}>{sim.paused ? '▶ Запустить' : 'Ⅱ Пауза'}</button>
+              {[1, 3, 6].map(value => <button key={value} className={sim.timeScale === value ? 'is-active' : ''} onClick={() => setSim(state => ({ ...state, timeScale: value as TimeScale }))}>×{value}</button>)}
+              <div className="mg-segment-progress"><span style={{ width: `${Math.round(sim.segmentProgress * 100)}%` }} /></div>
+              <strong>{sim.paused ? 'Активная пауза' : nextCell ? `Движение к ${pointLabel(nextCell)}` : 'Нет следующего этапа'}</strong>
             </div>
           </div>
 
-          <div className={`topo-map-frame tool-${tool.toLowerCase()} ${sim.paused ? 'is-paused' : 'is-running'}`}>
-            <svg
-              className="topo-map"
-              viewBox={`0 0 ${TOPO_MAP_WIDTH} ${TOPO_MAP_HEIGHT}`}
-              role="application"
-              aria-label="Интерактивная топографическая карта"
-              onPointerDown={beginRoute}
-              onPointerMove={extendRoute}
-              onPointerUp={finishRoute}
-              onPointerCancel={() => { setDrawing(false); setDraftRoute([]); }}
-              onClick={handleMapClick}
-            >
-              <defs>
-                <linearGradient id="topo-ground" x1="0" y1="1" x2="1" y2="0">
-                  <stop offset="0" stopColor="#52624f" />
-                  <stop offset="0.42" stopColor="#82907d" />
-                  <stop offset="1" stopColor="#d7d9cf" />
-                </linearGradient>
-                <pattern id="scree-pattern" width="18" height="18" patternUnits="userSpaceOnUse">
-                  <circle cx="4" cy="5" r="1.8" fill="#302f2a" opacity=".34" />
-                  <circle cx="13" cy="12" r="2.3" fill="#302f2a" opacity=".22" />
-                </pattern>
-                <pattern id="ice-pattern" width="32" height="32" patternUnits="userSpaceOnUse" patternTransform="rotate(-18)">
-                  <path d="M0 16 H32" stroke="#dff5f7" strokeWidth="8" opacity=".25" />
-                </pattern>
-                <filter id="group-shadow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feDropShadow dx="0" dy="3" stdDeviation="3" floodOpacity=".45" />
-                </filter>
-              </defs>
-
-              <rect width={TOPO_MAP_WIDTH} height={TOPO_MAP_HEIGHT} fill="url(#topo-ground)" />
-
-              {TOPO_TERRAIN_ZONES.map(zone => (
-                <g key={zone.id} className={`terrain terrain-${zone.type.toLowerCase()}`}>
-                  <polygon points={polygonPoints(zone.points)} />
-                  {zone.type === 'SCREE' && <polygon points={polygonPoints(zone.points)} fill="url(#scree-pattern)" />}
-                  {zone.type === 'GLACIER' && <polygon points={polygonPoints(zone.points)} fill="url(#ice-pattern)" />}
-                </g>
-              ))}
-
-              <g className="topo-contours">
-                {contours.map(loop => <path key={loop.id} d={loop.path} className={loop.major ? 'major' : ''} />)}
-              </g>
-
-              <g className="topo-camp-terrain">
-                {TOPO_CAMP_SITES.map(site => <ellipse key={site.id} cx={site.x} cy={site.y} rx={site.radius} ry={site.radius * 0.44} />)}
-              </g>
-
-              <g className="topo-crevasses">
-                {TOPO_CREVASSES.filter(crevasse => sim.revealedCrevasseIds.includes(crevasse.id)).map(crevasse => (
-                  <g key={crevasse.id} className={crevasse.hidden ? 'is-discovered' : 'is-known'}>
-                    <line x1={crevasse.a.x} y1={crevasse.a.y} x2={crevasse.b.x} y2={crevasse.b.y} />
-                    <line x1={crevasse.a.x + 6} y1={crevasse.a.y + 5} x2={crevasse.b.x + 6} y2={crevasse.b.y + 5} />
-                  </g>
-                ))}
-              </g>
-
-              <g className="topo-fixed-ropes">
-                {sim.fixedRopes.map(rope => (
-                  <g key={rope.id} className={rope.damaged ? 'is-damaged' : ''}>
-                    <line x1={rope.a.x} y1={rope.a.y} x2={rope.b.x} y2={rope.b.y} />
-                    <circle cx={rope.a.x} cy={rope.a.y} r="6" />
-                    <circle cx={rope.b.x} cy={rope.b.y} r="6" />
-                  </g>
-                ))}
-                {ropeStart && <circle className="rope-pending" cx={ropeStart.x} cy={ropeStart.y} r="9" />}
-              </g>
-
-              <g className="topo-camps">
-                {sim.camps.map(camp => (
-                  <g key={camp.id} transform={`translate(${camp.point.x} ${camp.point.y})`}>
-                    <path d="M-17 10 L0 -15 L17 10 Z" />
-                    <text y="27">{camp.label}</text>
-                  </g>
-                ))}
-              </g>
-
-              <g className="topo-markers">
-                {sim.markers.map(marker => (
-                  <g key={marker.id} transform={`translate(${marker.point.x} ${marker.point.y})`}>
-                    <path d="M0 0 V-25 H18 L12-17 H0" />
-                    <text x="8" y="14">{marker.label}</text>
-                  </g>
-                ))}
-              </g>
-
-              <g className="topo-route" opacity={lineOpacity}>
-                {sim.route.length >= 2 && <path d={routeToPath(sim.route)} />}
-                {draftRoute.length >= 2 && <path className="draft" d={routeToPath(draftRoute)} />}
-                {sim.route.length >= 2 && <path className="travelled" d={routeToPath(polylinePrefix(sim.route, sim.routeTravelled))} />}
-              </g>
-
-              <g className="topo-objectives">
-                <g transform={`translate(${TOPO_START.x} ${TOPO_START.y})`} className="start-marker">
-                  <circle r="13" /><text x="20" y="5">СТАРТ {TOPO_START_ELEVATION} м</text>
-                </g>
-                <g transform={`translate(${TOPO_SUMMIT.x} ${TOPO_SUMMIT.y})`} className="summit-marker">
-                  <path d="M0 -18 L16 12 L-16 12 Z" /><text x="22" y="5">ВЕРШИНА {TOPO_SUMMIT_ELEVATION} м</text>
-                </g>
-              </g>
-
-              <g className="topo-group" filter="url(#group-shadow)">
-                {groupDots.slice().reverse().map(({ participant, point }, index) => (
-                  <g key={participant.id} transform={`translate(${point.x} ${point.y})`} className={index === groupDots.length - 1 ? 'is-leader' : ''}>
-                    <circle r={index === groupDots.length - 1 ? 12 : 9} />
-                    <text x="14" y="4">{participant.name.split(' ')[0]}</text>
-                  </g>
-                ))}
-                {sim.roped && groupDots.length >= 2 && groupDots.slice(1).map((item, index) => (
-                  <line key={item.participant.id} x1={groupDots[index]!.point.x} y1={groupDots[index]!.point.y} x2={item.point.x} y2={item.point.y} />
-                ))}
-              </g>
-
-              <rect className="topo-weather-mask" width={TOPO_MAP_WIDTH} height={TOPO_MAP_HEIGHT} opacity={clamp((65 - weather.visibility) / 80, 0, 0.52)} />
-              {weather.windKmh >= 38 && (
-                <g className="topo-wind" opacity={clamp((weather.windKmh - 30) / 40, 0.18, 0.7)}>
-                  {Array.from({ length: 12 }, (_, index) => <path key={index} d={`M ${40 + index * 78} ${90 + (index % 4) * 150} l 72 -24`} />)}
-                </g>
-              )}
-            </svg>
-
-            <div className="topo-map-message">
+          <aside className="mg-side">
+            <section className="mg-message">
               <span>{sim.paused ? 'ПАУЗА' : `ДВИЖЕНИЕ ×${sim.timeScale}`}</span>
-              <p>{sim.lastMessage}</p>
-            </div>
-          </div>
+              <p>{sim.message}</p>
+            </section>
 
-          <div className="topo-toolbar">
-            <div className="topo-tools" aria-label="Инструменты карты">
-              {toolCopy.map(item => (
-                <button key={item.id} className={tool === item.id ? 'is-active' : ''} onClick={() => { setTool(item.id); setRopeStart(null); }} disabled={!sim.paused || sim.phase === 'COMPLETE'}>
-                  <strong>{item.label}</strong><small>{item.note}</small>
-                </button>
-              ))}
-            </div>
-            <div className="topo-time-controls">
-              <button className="topo-play" onClick={toggleMovement} disabled={sim.phase === 'COMPLETE'}>{sim.paused ? '▶' : 'Ⅱ'}</button>
-              {[1, 2, 4].map(value => <button key={value} className={sim.timeScale === value ? 'is-active' : ''} onClick={() => setSim(state => ({ ...state, timeScale: value as 1 | 2 | 4 }))}>×{value}</button>)}
-            </div>
-          </div>
-        </div>
+            <section className="mg-panel">
+              <div className="mg-panel-head"><span>ВЫБРАННЫЙ КВАДРАТ</span><strong>{pointLabel(selected)}</strong></div>
+              <div className="mg-cell-card">
+                <strong>{terrainLabels[selectedCell.terrain]}</strong>
+                <span>{selectedCell.elevation} м · склон {slopeLabel(selectedCell.slope)}</span>
+                <p>{sim.revealedHazardCellIds.includes(selectedCell.id) || selectedCell.hazard !== 'CREVASSE_HIDDEN' ? hazardLabels[selectedCell.hazard] : 'Данных об опасности нет.'}</p>
+                <small>{cellCanHostCamp(selectedCell) ? 'Подходит для лагеря.' : 'Площадка для лагеря плохая.'}</small>
+              </div>
+              {authority === 'COMMAND' && tool === 'ROUTE' && <p className="mg-hint">Зажми и веди по соседним квадратам. Нажатие на уже выбранную клетку обрезает будущий маршрут.</p>}
+              {authority !== 'COMMAND' && <p className="mg-hint">Общий путь задан руководителем. Ты управляешь порядком людей, связкой и инфраструктурой на текущей клетке.</p>}
+            </section>
 
-        <aside className="topo-side">
-          <section className="topo-panel topo-team-panel">
-            <div className="topo-panel__head"><span>ЭКСПЕДИЦИЯ</span><strong>{sim.roped ? `Связка · ${sim.ropeSpacing} м` : 'Группа без связки'}</strong></div>
-            <div className="topo-team-list">
-              {sim.participants.map((participant, index) => (
-                <article key={participant.id}>
-                  <div className="topo-order-index">{String(index + 1).padStart(2, '0')}</div>
-                  <div>
-                    <strong>{participant.name}</strong>
-                    <span>{index === 0 ? 'Ведущий' : index === sim.participants.length - 1 ? 'Замыкающий' : participant.specialty}</span>
-                    <small>{statusFor(participant.energy)} · состояние {statusFor(participant.condition).toLowerCase()}</small>
-                  </div>
-                  <div className="topo-order-buttons">
-                    <button onClick={() => reorder(index, -1)} disabled={!sim.paused || index === 0}>↑</button>
-                    <button onClick={() => reorder(index, 1)} disabled={!sim.paused || index === sim.participants.length - 1}>↓</button>
-                  </div>
-                </article>
-              ))}
-            </div>
-            <button className={`topo-wide-button ${sim.roped ? 'is-active' : ''}`} onClick={() => setSim(state => ({ ...state, paused: true, roped: !state.roped, lastMessage: state.roped ? 'Связка распущена.' : 'Участники объединены основной верёвкой.' }))} disabled={!sim.paused || sim.phase === 'COMPLETE'}>
-              {sim.roped ? 'Распустить связку' : 'Создать связку'}
-            </button>
-          </section>
+            <section className="mg-panel">
+              <div className="mg-panel-head"><span>ГРУППА</span><strong>{sim.roped ? `Связка ${sim.ropeSpacing} м` : 'Без связки'}</strong></div>
+              <div className="mg-team">
+                {sim.participants.map((participant, index) => (
+                  <article key={participant.id}>
+                    <b>{index + 1}</b>
+                    <div><strong>{participant.name}</strong><span>{index === 0 ? 'Ведущий' : participant.specialty} · {statusLabel(participant.energy)}</span></div>
+                    <div><button onClick={() => reorder(index, -1)} disabled={!sim.paused || index === 0}>↑</button><button onClick={() => reorder(index, 1)} disabled={!sim.paused || index === sim.participants.length - 1}>↓</button></div>
+                  </article>
+                ))}
+              </div>
+              <div className="mg-rope-controls">
+                <button className={sim.roped ? 'is-active' : ''} onClick={() => setSim(state => ({ ...state, paused: true, roped: !state.roped, message: state.roped ? 'Связка распущена.' : 'Участники соединены основной верёвкой.' }))}>{sim.roped ? 'Распустить' : 'Создать связку'}</button>
+                <select value={sim.ropeSpacing} onChange={event => setSim(state => ({ ...state, ropeSpacing: Number(event.target.value) as 10 | 15 | 20 }))} disabled={!sim.paused || !sim.roped}>
+                  <option value={10}>10 м</option><option value={15}>15 м</option><option value={20}>20 м</option>
+                </select>
+              </div>
+            </section>
 
-          <section className="topo-panel topo-resources-panel">
-            <div className="topo-panel__head"><span>ИНФРАСТРУКТУРА</span><strong>на карте</strong></div>
-            <div className="topo-resource-grid">
-              <div><span>Верёвка</span><strong>{sim.ropeMetres} м</strong></div>
-              <div><span>Закреплено</span><strong>{sim.fixedRopes.length}</strong></div>
-              <div><span>Лагеря</span><strong>{sim.camps.length}</strong></div>
-              <div><span>Разведано</span><strong>{sim.revealedCrevasseIds.length}/{TOPO_CREVASSES.length}</strong></div>
-            </div>
-            <button className="topo-wide-button" onClick={restAtCamp} disabled={!sim.paused || !nearCamp || sim.phase === 'COMPLETE'}>Отдых 6 часов</button>
-          </section>
+            <section className="mg-panel">
+              <div className="mg-panel-head"><span>ТЕКУЩАЯ КЛЕТКА</span><strong>{terrainLabels[currentCell.terrain]}</strong></div>
+              <div className="mg-action-grid">
+                <button onClick={buildCamp} disabled={!sim.paused || !canBuildCamp}>Поставить лагерь</button>
+                <button onClick={restAtCamp} disabled={!sim.paused || !atCamp}>Отдых 6 часов</button>
+                <button onClick={fixRope} disabled={!sim.paused || !canFixRope}>Закрепить 20 м</button>
+                <button onClick={() => setTool('SCOUT')} disabled={!sim.paused}>Разведать район</button>
+              </div>
+              <div className="mg-resource-line"><span>Верёвка</span><strong>{sim.ropeMetres} м</strong><span>Лагеря</span><strong>{sim.campCellIds.length}</strong></div>
+            </section>
 
-          <section className="topo-panel topo-observation-panel">
-            <div className="topo-panel__head"><span>НАБЛЮДЕНИЕ</span><strong>{terrainCopy[currentTerrain]}</strong></div>
-            <ul>
-              <li>Контуры расположены {currentElevation > 2400 ? 'плотно: склон крутой' : 'умеренно: есть место для траверса'}.</li>
-              <li>{weather.snowSoftness > 66 ? 'Солнце заметно размягчило снег.' : 'Снег пока держит утренний холод.'}</li>
-              <li>{weather.visibility < 48 ? 'Облака закрывают ориентиры и часть проведённой линии.' : 'Форма рельефа читается уверенно.'}</li>
-              <li>{weather.windKmh > 42 ? 'На гребне ветер будет сильнее текущего.' : 'Ветер пока не определяет маршрут.'}</li>
-            </ul>
-          </section>
-
-          <section className="topo-panel topo-goal-panel">
-            <div className="topo-panel__head"><span>ЗАДАЧА ПРОТОТИПА</span><strong>{sim.phase === 'COMPLETE' ? 'выполнена' : sim.phase === 'DESCENT' ? 'вернуться' : 'взойти'}</strong></div>
-            <p>Проведи группу до вершины и физически верни её к старту. Игра не строит путь и не выбирает действия вместо тебя.</p>
-            {sim.phase === 'COMPLETE' ? <button className="topo-wide-button is-active" onClick={resetPrototype}>Пройти другой линией</button> : <button className="topo-wide-button" onClick={resetPrototype}>Сбросить прототип</button>}
-          </section>
-        </aside>
-      </section>
+            <section className="mg-panel mg-goal-panel">
+              <div className="mg-panel-head"><span>ЗАДАЧА</span><strong>{sim.phase}</strong></div>
+              <p>{sim.phase === 'ASCENT' ? 'Проложить путь к вершине.' : sim.phase === 'DESCENT' ? 'Вернуть всю группу к старту.' : 'Экспедиция закончена.'}</p>
+              <button className="mg-secondary" onClick={() => reset(grid)}>Начать заново</button>
+              {!routeReady && <small>Движение недоступно, пока нет следующей клетки.</small>}
+            </section>
+          </aside>
+        </section>
+      )}
     </main>
   );
 }

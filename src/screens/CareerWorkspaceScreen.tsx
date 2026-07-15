@@ -93,7 +93,15 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   const navigate = (next: CareerTabId) => { if (!expeditionLocked || next === 'CLIMB') onTab(next); };
   useScrollReset(tab);
   if (tab === 'CLIMB' && career.activeClimb) {
-    return <TopoExpeditionPrototype onExit={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }} />;
+    return <TopoExpeditionPrototype
+      authority={career.activeClimb.authorityMode}
+      seed={career.activeClimb.id}
+      mountainName={career.activeClimb.mountainName}
+      startElevation={career.activeClimb.startElevation}
+      summitElevation={career.activeClimb.summitElevation}
+      allowRegenerate={false}
+      onExit={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }}
+    />;
   }
   function renderMobileTab() {
     if (tab === 'OVERVIEW') return <MobileOverview world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} />;
@@ -164,7 +172,15 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
       );
     }
     if (tab === 'CLIMB' && career.activeClimb) {
-      return <TopoExpeditionPrototype onExit={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }} />;
+      return <TopoExpeditionPrototype
+      authority={career.activeClimb.authorityMode}
+      seed={career.activeClimb.id}
+      mountainName={career.activeClimb.mountainName}
+      startElevation={career.activeClimb.startElevation}
+      summitElevation={career.activeClimb.summitElevation}
+      allowRegenerate={false}
+      onExit={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }}
+    />;
     }
     return <JournalScreen career={career} world={world} />;
   }
