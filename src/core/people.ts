@@ -186,7 +186,7 @@ export function finalizeRosterAfterClimb(career: CareerState, climb: Qualificati
 
 export function buildExpeditionReport(career: CareerState, climb: QualificationClimb, reputationDelta: number, moneyDelta: number): ExpeditionReport {
   const outcome: ExpeditionReport['outcome'] = climb.summitReached && !climb.retreating ? 'SUMMIT' : climb.phase === 'FAILED' ? 'FAILED' : 'RETREAT';
-  const casualtyNames = climb.casualties.map(id => memberById(career, id)?.name ?? id);
+  const casualtyNames = climb.casualties.map(id => memberById(career, id)?.name ?? (id === career.hero.id ? career.hero.name : id));
   const clubReaction = casualtyNames.length
     ? `Клуб требует полный разбор решений. Погибли: ${casualtyNames.join(', ')}.`
     : outcome === 'SUMMIT'
@@ -217,7 +217,7 @@ export function buildExpeditionReport(career: CareerState, climb: QualificationC
     mountainName: climb.mountainName,
     routeName: climb.routeName,
     outcome,
-    highestElevation: climb.summitReached ? climb.summitElevation : climb.currentElevation,
+    highestElevation: climb.topo?.highestElevation ?? (climb.summitReached ? climb.summitElevation : climb.currentElevation),
     elapsedMinutes: climb.elapsedMinutes,
     teamMemberIds: climb.teamMemberIds,
     casualties: casualtyNames,

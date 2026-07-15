@@ -1,3 +1,4 @@
+import type { IntegratedExpeditionState } from './expedition/state';
 export type EraId = 'PIONEER' | 'EXPEDITION' | 'MODERN';
 export type DifficultyId = 'EXPLORER' | 'CLIMBER' | 'EXPEDITION';
 export type ScreenId =
@@ -931,6 +932,7 @@ export interface QualificationClimb {
   participant: ParticipantExpeditionState | null;
   simulation: ExpeditionSimulationState | null;
   strategic: StrategicExpeditionState | null;
+  topo: IntegratedExpeditionState | null;
 }
 
 export interface ReputationProfile {
@@ -1170,7 +1172,7 @@ export interface CareerMembership {
 }
 
 export interface CareerState {
-  schemaVersion: 15;
+  schemaVersion: 16;
   id: string;
   worldId: string;
   rootSeed: string;

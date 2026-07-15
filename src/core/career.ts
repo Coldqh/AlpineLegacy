@@ -8,6 +8,15 @@ import { createCareerProgression, currentSeasonExpeditionCount, expeditionLimitF
 import { createParticipantExpeditionState, evaluateParticipant, getCurrentParticipantNode, getCurrentParticipantScene, leaderPace, resolveParticipantSkill } from './expeditionEngine';
 import { beginSimulationDescent, beginSimulationRetreat, createExpeditionSimulation, hydrateExpeditionSimulation, resolveExpeditionEventChoice, resolveExpeditionFieldAction as resolveSimulationFieldAction } from './simulationEngine';
 import { beginStrategicDescent, beginStrategicRetreat, createStrategicExpedition, hydrateStrategicExpedition, resolveStrategicRest, resolveStrategicSector } from './strategicEngine';
+import {
+  createIntegratedExpeditionState,
+  integratedTeamCondition,
+  integratedTeamEnergy,
+  integratedWeatherAt,
+  type IntegratedExpeditionState,
+  type IntegratedParticipantState,
+  type IntegratedSkills,
+} from './expedition';
 export { currentExpeditionStage, previewExpeditionActions } from './simulationEngine';
 import type {
   CalendarEntry,
@@ -442,6 +451,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     participant: career.activeClimb.participant ?? null,
     simulation: career.activeClimb.simulation ?? null,
     strategic: career.activeClimb.strategic ?? null,
+    topo: career.activeClimb.topo ?? null,
   } as QualificationClimb : null;
   const activeRoute = activeClimbBase ? routes.find((route: ExpeditionRoute) => route.id === activeClimbBase.routeId) ?? routes[0] : null;
   const activeRelative = activeClimbBase
@@ -461,7 +471,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
   const activeClimb = normalizedActiveClimb && activeRoute ? { ...normalizedActiveClimb, simulation: normalizedActiveClimb.simulation ? hydrateExpeditionSimulation(normalizedActiveClimb, activeRoute) : null, strategic: hydrateStrategicExpedition(normalizedActiveClimb, activeRoute) } : normalizedActiveClimb;
   return hydrateCareerProgression({
     ...career,
-    schemaVersion: 15,
+    schemaVersion: 16,
     club,
     routes,
     teamRoster,
@@ -489,7 +499,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = rosterForOrganization(world, membership.organizationId);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 15,
+    schemaVersion: 16,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,
@@ -572,6 +582,7 @@ function migrateActiveClimbV8(active: any, routes: ExpeditionRoute[]): Qualifica
     rescuedMemberIds: active.rescuedMemberIds ?? [],
     participant: active.participant ?? null,
     simulation: active.simulation ?? null,
+    topo: active.topo ?? null,
   } as QualificationClimb;
 }
 
@@ -985,6 +996,105 @@ function packWeight(career: CareerState) {
   return expeditionWeight(career);
 }
 
+
+function integratedSkillsFromHero(skills: SkillSet): IntegratedSkills {
+  return {
+    ENDURANCE: skills.ENDURANCE,
+    ROCK: skills.ROCK,
+    ICE: skills.ICE,
+    NAVIGATION: skills.NAVIGATION,
+    MEDICINE: skills.MEDICINE,
+    LEADERSHIP: skills.LEADERSHIP,
+  };
+}
+
+function integratedSkillsFromMember(member: TeamMember): IntegratedSkills {
+  const technicalBase = clamp(member.skill - 2, 1, 8);
+  const skills: IntegratedSkills = {
+    ENDURANCE: clamp(member.endurance, 1, 10),
+    ROCK: technicalBase,
+    ICE: technicalBase,
+    NAVIGATION: clamp(Math.round((member.skill + member.endurance) / 2) - 1, 1, 9),
+    MEDICINE: member.role === 'MEDIC' ? member.skill : clamp(member.skill - 3, 1, 7),
+    LEADERSHIP: member.role === 'LEADER' ? member.skill : clamp(Math.round(member.trust / 18), 1, 7),
+  };
+  skills[member.specialty] = clamp(member.skill, 1, 10);
+  return skills;
+}
+
+function integratedParticipants(career: CareerState, team: TeamMember[], startEnergy: number): IntegratedParticipantState[] {
+  const hero: IntegratedParticipantState = {
+    id: career.hero.id,
+    memberId: null,
+    name: career.hero.name,
+    role: career.expeditionPlan.authorityMode === 'COMMAND' ? 'Ведущий' : career.expeditionPlan.authorityMode === 'SPECIALIST' ? 'Специалист' : 'Участник',
+    specialty: SKILL_LABELS[Object.entries(career.hero.skills).sort((a, b) => b[1] - a[1])[0]![0] as SkillId],
+    energy: startEnergy,
+    condition: career.hero.health,
+    fatigue: career.hero.fatigue,
+    morale: career.hero.morale,
+    trust: 100,
+    skills: integratedSkillsFromHero(career.hero.skills),
+    status: 'ACTIVE',
+    injury: career.hero.injuries.at(-1) ?? null,
+  };
+  const members = team.map((member): IntegratedParticipantState => ({
+    id: `topo-${member.id}`,
+    memberId: member.id,
+    name: member.name,
+    role: member.role === 'LEADER' ? 'Ведущий' : member.role === 'MEDIC' ? 'Медик' : member.role === 'NAVIGATOR' ? 'Навигатор' : member.role === 'ROPE_LEAD' ? 'Первый в связке' : 'Участник',
+    specialty: SKILL_LABELS[member.specialty],
+    energy: clamp(74 + member.endurance * 3 - Math.max(0, 80 - member.condition) * .35, 45, 100),
+    condition: member.condition,
+    fatigue: clamp(24 - member.endurance * 2, 3, 28),
+    morale: member.morale,
+    trust: member.trust,
+    skills: integratedSkillsFromMember(member),
+    status: member.status === 'DEAD' ? 'DEAD' : member.status === 'INJURED' ? 'INJURED' : 'ACTIVE',
+    injury: member.injuries.at(-1) ?? null,
+  }));
+  if (career.expeditionPlan.authorityMode === 'COMMAND') return [hero, ...members].map((participant, index, list) => ({ ...participant, role: index === 0 ? 'Ведущий' : index === list.length - 1 ? 'Замыкающий' : participant.role }));
+  const leaderIndex = members.findIndex(participant => participant.memberId === career.expeditionPlan.leaderNpcId || participant.role === 'Ведущий');
+  const ordered = leaderIndex >= 0 ? [members[leaderIndex]!, hero, ...members.filter((_, index) => index !== leaderIndex)] : [members[0] ?? hero, ...(members.length ? [hero, ...members.slice(1)] : [])];
+  return ordered.map((participant, index, list) => ({ ...participant, role: index === 0 ? 'Ведущий' : index === list.length - 1 ? 'Замыкающий' : participant.role }));
+}
+
+function createCareerIntegratedExpedition(
+  career: CareerState,
+  climbId: string,
+  route: ExpeditionRoute,
+  window: WeatherWindow,
+  team: TeamMember[],
+  supplies: QualificationClimb['supplies'],
+  startEnergy: number,
+  ropeMeters = career.expeditionPlan.ropeMeters,
+) {
+  const gear = career.expeditionPlan.gear;
+  return createIntegratedExpeditionState({
+    seed: climbId,
+    difficulty: career.difficulty,
+    authority: career.expeditionPlan.authorityMode,
+    ropeMeters,
+    campKits: Math.max(0, (gear.tent ?? 0) + (gear.bivy ?? 0)),
+    participants: integratedParticipants(career, team, startEnergy),
+    supplies,
+    packWeightKg: packWeight(career),
+    acclimatizationDays: career.expeditionPlan.acclimatizationDays,
+    hasMedkit: (gear.medkit ?? 0) > 0,
+    hasStove: (gear.stove ?? 0) > 0,
+    hasBivy: (gear.bivy ?? 0) > 0 || (gear.tent ?? 0) > 0,
+    weatherWindow: {
+      temperatureC: window.temperatureC,
+      windKmh: window.windKmh,
+      snowfallCm: window.snowfallCm,
+      stability: window.stability,
+      durationHours: window.durationHours,
+    },
+    startElevation: route.startElevation,
+    summitElevation: route.summitElevation,
+  });
+}
+
 function weatherLabel(temperatureC: number, windKmh: number, visibility: number) {
   const sky = visibility < 35 ? 'Белая мгла' : visibility < 60 ? 'Снег и облачность' : visibility < 80 ? 'Переменная облачность' : 'Чистое небо';
   return `${sky} · ${temperatureC}°C · ветер ${windKmh} км/ч`;
@@ -1060,7 +1170,9 @@ export function startPlannedClimb(career: CareerState): CareerState {
     participant: career.expeditionPlan.authorityMode === 'PARTICIPANT' ? createParticipantExpeditionState(route) : null,
     simulation,
     strategic,
+    topo: null,
   };
+  climb.topo = createCareerIntegratedExpedition(career, climb.id, route, window, team, climb.supplies, startEnergy, climb.ropeMetersRemaining);
   if (climb.participant && climb.strategic) {
     climb.participant.targetActions = climb.strategic.ascentSectors.length + climb.strategic.descentSectors.length;
   }
@@ -1079,6 +1191,78 @@ export function startPlannedClimb(career: CareerState): CareerState {
 
 export function startQualificationClimb(career: CareerState, _world?: WorldState): CareerState {
   return startPlannedClimb(career);
+}
+
+
+export function ensureIntegratedExpedition(career: CareerState): CareerState {
+  const climb = career.activeClimb;
+  if (!climb || climb.topo || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) return career;
+  const route = career.routes.find(item => item.id === climb.routeId) ?? getSelectedRoute(career);
+  const window = getSelectedWeather(career);
+  const team = career.teamRoster.filter(member => climb.teamMemberIds.includes(member.id));
+  const source: CareerState = {
+    ...career,
+    expeditionPlan: {
+      ...career.expeditionPlan,
+      authorityMode: climb.authorityMode,
+      playerRole: climb.playerRole,
+      leaderNpcId: climb.leaderNpcId,
+      teamMemberIds: climb.teamMemberIds,
+      ropeMeters: climb.ropeMetersRemaining,
+    },
+  };
+  const topo = createCareerIntegratedExpedition(source, climb.id, route, window, team, climb.supplies, climb.energy, climb.ropeMetersRemaining);
+  return { ...career, activeClimb: { ...climb, topo } };
+}
+
+export function persistIntegratedExpedition(career: CareerState, topo: IntegratedExpeditionState): CareerState {
+  const climb = career.activeClimb;
+  if (!climb || climb.id !== topo.seed) return career;
+  const weather = integratedWeatherAt(topo);
+  const heroState = topo.participants.find(participant => participant.memberId === null) ?? topo.participants[0];
+  const teamByMemberId = new Map(topo.participants.filter(participant => participant.memberId).map(participant => [participant.memberId!, participant]));
+  const teamStates = climb.teamStates.map(state => {
+    const participant = teamByMemberId.get(state.memberId);
+    if (!participant) return state;
+    return {
+      ...state,
+      condition: participant.condition,
+      fatigue: participant.fatigue,
+      morale: participant.morale,
+      status: participant.status === 'DEAD' ? 'DEAD' as const : participant.status === 'INCAPACITATED' ? 'INCAPACITATED' as const : 'ACTIVE' as const,
+      visibleInjury: participant.injury,
+      summitReached: topo.summitReached,
+    };
+  });
+  const fixedRopeSegmentIds = Object.entries(topo.infrastructure).flatMap(([stageId, infra]) => infra.ropes.map(point => `${stageId}:${point}`));
+  const nextClimb: QualificationClimb = {
+    ...climb,
+    topo,
+    phase: topo.phase,
+    summitReached: topo.summitReached,
+    retreating: topo.retreating,
+    currentElevation: topo.currentElevation,
+    elapsedMinutes: topo.elapsedMinutes,
+    moveCount: topo.actionSerial,
+    energy: heroState?.energy ?? integratedTeamEnergy(topo),
+    condition: heroState?.condition ?? integratedTeamCondition(topo),
+    teamCondition: integratedTeamCondition(topo),
+    teamStates,
+    supplies: { ...topo.supplies },
+    hoursAwake: topo.elapsedMinutes / 60,
+    campEstablished: Object.values(topo.infrastructure).some(infra => infra.camps.length > 0),
+    ropeMetersRemaining: topo.ropeMeters,
+    fixedRopeSegmentIds,
+    weather: weatherLabel(weather.temperatureC, weather.windKmh, weather.visibility),
+    temperatureC: weather.temperatureC,
+    windKmh: weather.windKmh,
+    visibility: weather.visibility,
+    weatherStep: Math.floor(topo.elapsedMinutes / 60),
+    injuries: [...topo.injuries],
+    casualties: [...topo.casualties],
+    rescuedMemberIds: [...topo.rescuedMemberIds],
+  };
+  return { ...career, activeClimb: nextClimb };
 }
 
 function paceData(pace: ClimbPace) {
@@ -1323,6 +1507,10 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
   };
   const roster = finalizeRosterAfterClimb(career, completed, successful);
   const report = { ...buildExpeditionReport(career, completed, reputation, reward), participantEvaluation: participantEvaluation ?? undefined };
+  const heroExpeditionState = completed.topo?.participants.find(participant => participant.memberId === null);
+  const heroInjuries = heroExpeditionState?.injury && !career.hero.injuries.includes(heroExpeditionState.injury)
+    ? [heroExpeditionState.injury]
+    : [];
   const careDelta = completed.rescuedMemberIds.length * 7 + (completed.retreating ? 3 : 0) - completed.casualties.length * 12;
   const reliabilityDelta = successful ? 5 : completed.retreating ? 2 : -5;
   const leadershipDelta = Math.round(completed.decisions.filter(item => item.accepted).length * 1.5) - completed.decisions.filter(item => !item.accepted).length * 2;
@@ -1330,7 +1518,7 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
   const next: CareerState = {
     ...career,
     completedClimbs: career.completedClimbs + (successful ? 1 : 0),
-    highestElevation: Math.max(career.highestElevation, climb.summitReached ? climb.summitElevation : climb.currentElevation),
+    highestElevation: Math.max(career.highestElevation, climb.topo?.highestElevation ?? (climb.summitReached ? climb.summitElevation : climb.currentElevation)),
     activeClimb: completed,
     membership,
     teamRoster: roster,
@@ -1347,9 +1535,9 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
       reputation: Math.max(0, career.hero.reputation + reputation),
       money: career.hero.money + reward,
       form: clamp(career.hero.form - 5, 0, 100),
-      fatigue: clamp(career.hero.fatigue + 25 + Math.round(climb.elapsedMinutes / 400), 0, 100),
-      health: clamp(career.hero.health - climb.injuries.length * 4, 0, 100),
-      injuries: [...career.hero.injuries, ...climb.injuries],
+      fatigue: heroExpeditionState ? clamp(heroExpeditionState.fatigue + 12, 0, 100) : clamp(career.hero.fatigue + 25 + Math.round(climb.elapsedMinutes / 400), 0, 100),
+      health: heroExpeditionState ? clamp(heroExpeditionState.condition, 0, 100) : clamp(career.hero.health - climb.injuries.length * 4, 0, 100),
+      injuries: [...career.hero.injuries, ...(heroExpeditionState ? heroInjuries : climb.injuries)],
       skills,
       skillXp,
     },

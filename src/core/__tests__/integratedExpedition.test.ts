@@ -1,0 +1,209 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  acceptExpeditionOffer,
+  applyEquipmentPreset,
+  availableExpeditionOffers,
+  createCareer,
+  closeClimb,
+  persistIntegratedExpedition,
+  startPlannedClimb,
+} from '../career';
+import {
+  integratedStepPreview,
+  integratedWeatherAt,
+  reduceIntegratedExpedition,
+  type IntegratedExpeditionContext,
+  type IntegratedExpeditionState,
+} from '../expedition';
+import { getEntryOrganizations } from '../ecosystem';
+import { generateWorld } from '../generator';
+import { loadCareer, saveCareer } from '../storage';
+import {
+  buildMountainRouteOptions,
+  buildMountainStages,
+  findLocalGuidedRoute,
+  generateLocalStageMap,
+  generateMountainGrid,
+  type GridPoint,
+} from '../../topography/mountainGridEngine';
+import type { CareerState, DifficultyId } from '../types';
+
+class MemoryStorage implements Storage {
+  private values = new Map<string, string>();
+  get length() { return this.values.size; }
+  clear() { this.values.clear(); }
+  getItem(key: string) { return this.values.get(key) ?? null; }
+  key(index: number) { return [...this.values.keys()][index] ?? null; }
+  removeItem(key: string) { this.values.delete(key); }
+  setItem(key: string, value: string) { this.values.set(key, String(value)); }
+}
+
+function startCareer(difficulty: DifficultyId = 'CLIMBER', seed = `INTEGRATED-${difficulty}`) {
+  const world = generateWorld({ seed, eraId: 'EXPEDITION', startYear: 1968, difficulty });
+  const organization = getEntryOrganizations(world)[0]!;
+  let career = createCareer(world, {
+    name: 'Integrated Tester',
+    age: 20,
+    originId: 'CLUB_SCHOOL',
+    entryMode: 'ORGANIZATION',
+    organizationId: organization.id,
+  });
+  career = acceptExpeditionOffer(world, career, availableExpeditionOffers(world, career)[0]!.id);
+  career = applyEquipmentPreset(career, 'RECOMMENDED');
+  career = startPlannedClimb(career);
+  expect(career.activeClimb?.topo).toBeTruthy();
+  return { world, career };
+}
+
+function firstStage(topo: IntegratedExpeditionState) {
+  const grid = generateMountainGrid(`${topo.seed}:v${topo.variant}`, topo.startElevation, topo.summitElevation);
+  const options = buildMountainRouteOptions(grid, topo.entrySide);
+  const route = options.find(option => option.id === topo.routeChoice) ?? options[0]!;
+  const stages = buildMountainStages(grid, topo.entrySide, route.route, route.profile);
+  const stage = stages[Math.min(topo.stageIndex, stages.length - 1)]!;
+  const localMap = generateLocalStageMap(stage, grid.seed);
+  const path = findLocalGuidedRoute(localMap, route.localProfile);
+  const context: IntegratedExpeditionContext = {
+    stageId: stage.id,
+    stageTitle: stage.title,
+    stageCount: stages.length,
+    localMap,
+    weather: integratedWeatherAt(topo),
+  };
+  return { context, path };
+}
+
+function initializedTopo(career: CareerState) {
+  const topo = career.activeClimb!.topo!;
+  const { context, path } = firstStage(topo);
+  const withPath = reduceIntegratedExpedition(topo, {
+    type: 'ENSURE_STAGE_PATH',
+    stageId: context.stageId,
+    path,
+    currentElevation: context.localMap.minElevation,
+  }, context);
+  return { topo: withPath, context, path };
+}
+
+describe('integrated expedition career loop', () => {
+  beforeEach(() => {
+    Object.defineProperty(globalThis, 'localStorage', { value: new MemoryStorage(), configurable: true });
+  });
+
+  it('builds the tactical expedition from the actual career team and loadout', () => {
+    const { career } = startCareer();
+    const climb = career.activeClimb!;
+    const topo = climb.topo!;
+    const expectedNames = [career.hero.name, ...career.teamRoster
+      .filter(member => climb.teamMemberIds.includes(member.id))
+      .map(member => member.name)];
+
+    expect(topo.participants.map(participant => participant.name).sort()).toEqual(expectedNames.sort());
+    expect(topo.ropeMeters).toBe(climb.ropeMetersRemaining);
+    expect(topo.packWeightKg).toBe(climb.packWeightKg);
+    expect(topo.supplies).toEqual(climb.supplies);
+    expect(topo.hasMedkit).toBe(true);
+    expect(topo.hasStove).toBe(true);
+  });
+
+  it('writes tactical actions back into the career climb and restores them after reload', () => {
+    const { world, career } = startCareer('CLIMBER', 'INTEGRATED-SAVE');
+    const { topo, context } = initializedTopo(career);
+    const started = reduceIntegratedExpedition(topo, { type: 'START' }, context);
+    const scouted = reduceIntegratedExpedition(started, {
+      type: 'SCOUT',
+      point: context.localMap.start,
+      radius: 1,
+      minutes: 25,
+    }, context);
+    const persisted = persistIntegratedExpedition(career, scouted);
+
+    saveCareer(persisted);
+    const restored = loadCareer(world)!;
+
+    expect(restored.activeClimb?.topo?.started).toBe(true);
+    expect(restored.activeClimb?.topo?.actionSerial).toBe(1);
+    expect(restored.activeClimb?.topo?.elapsedMinutes).toBe(25);
+    expect(restored.activeClimb?.elapsedMinutes).toBe(25);
+    expect(restored.activeClimb?.topo?.infrastructure[context.stageId]?.revealed.length).toBeGreaterThan(1);
+  });
+
+  it('treats a voluntary retreat as a normal outcome instead of forcing rescue', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-RETREAT');
+    const { topo, context } = initializedTopo(career);
+    const started = reduceIntegratedExpedition(topo, { type: 'START' }, context);
+    const retreated = reduceIntegratedExpedition(started, { type: 'BEGIN_RETREAT' }, context);
+
+    expect(retreated.phase).toBe('RETREATED');
+    expect(retreated.retreating).toBe(true);
+    expect(retreated.forcedRetreat).toBe(false);
+  });
+
+  it('closes a forced rescue with an incident and rescued participant ids', () => {
+    const { career } = startCareer('EXPEDITION', 'INTEGRATED-RESCUE');
+    const { topo, context } = initializedTopo(career);
+    const victim = topo.participants.find(participant => participant.memberId)!;
+    const stranded: IntegratedExpeditionState = {
+      ...topo,
+      started: true,
+      forcedRetreat: true,
+      phase: 'DESCENT',
+      participants: topo.participants.map(participant => participant.id === victim.id
+        ? { ...participant, status: 'INCAPACITATED', energy: 0, condition: 12 }
+        : participant),
+    };
+    const rescued = reduceIntegratedExpedition(stranded, { type: 'REQUEST_RESCUE' }, context);
+
+    expect(rescued.phase).toBe('RETREATED');
+    expect(rescued.incidents.at(-1)?.type).toBe('RESCUE');
+    expect(rescued.rescuedMemberIds).toContain(victim.memberId);
+    expect(rescued.elapsedMinutes).toBe(360);
+  });
+
+  it('applies team casualties and hero injuries to the correct career records', () => {
+    const { career } = startCareer('EXPEDITION', 'INTEGRATED-CONSEQUENCES');
+    const topo = career.activeClimb!.topo!;
+    const victim = topo.participants.find(participant => participant.memberId)!;
+    const hero = topo.participants.find(participant => participant.memberId === null)!;
+    const terminal: IntegratedExpeditionState = {
+      ...topo,
+      started: true,
+      phase: 'RETREATED',
+      retreating: true,
+      currentElevation: topo.startElevation,
+      highestElevation: topo.startElevation + 640,
+      injuries: [`${victim.name}: серьёзная травма после срыва`, `${hero.name}: обморожение`],
+      casualties: [victim.memberId!],
+      participants: topo.participants.map(participant => {
+        if (participant.id === victim.id) return { ...participant, status: 'DEAD', condition: 0, injury: `${victim.name}: серьёзная травма после срыва` };
+        if (participant.id === hero.id) return { ...participant, status: 'INJURED', condition: 71, fatigue: 46, injury: `${hero.name}: обморожение` };
+        return participant;
+      }),
+    };
+
+    const persisted = persistIntegratedExpedition(career, terminal);
+    const closed = closeClimb(persisted);
+    const victimAfter = closed.teamRoster.find(member => member.id === victim.memberId)!;
+
+    expect(victimAfter.status).toBe('DEAD');
+    expect(closed.hero.health).toBe(71);
+    expect(closed.hero.injuries).toContain(`${hero.name}: обморожение`);
+    expect(closed.hero.injuries).not.toContain(`${victim.name}: серьёзная травма после срыва`);
+    expect(closed.reports.at(-1)?.highestElevation).toBe(terminal.highestElevation);
+    expect(closed.reports.at(-1)?.casualties).toContain(victim.name);
+  });
+
+  it('makes the same technical step harsher on expedition difficulty', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-BALANCE');
+    const { topo, context, path } = initializedTopo(career);
+    const from = path[0] as GridPoint;
+    const to = path[1] as GridPoint;
+    const explorer = integratedStepPreview({ ...topo, difficulty: 'EXPLORER' }, context.localMap, from, to, context.weather, false);
+    const expedition = integratedStepPreview({ ...topo, difficulty: 'EXPEDITION' }, context.localMap, from, to, context.weather, false);
+
+    expect(expedition.score).toBeGreaterThanOrEqual(explorer.score);
+    expect(expedition.energy).toBeGreaterThanOrEqual(explorer.energy);
+    expect(expedition.incidentChance).toBeGreaterThanOrEqual(explorer.incidentChance);
+    expect(expedition.conditionMultiplier).toBeGreaterThan(explorer.conditionMultiplier);
+  });
+});

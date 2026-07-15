@@ -389,6 +389,7 @@ export function advanceLivingWorld(career: CareerState, elapsedDays: number): Ca
     state = simulateTick(career, state, career.year, stepDay);
   }
   const syncedRoster = career.teamRoster.map(member => {
+    if (member.status === 'DEAD' || member.status === 'RETIRED') return member;
     const athlete = state.athletes.find(item => item.id === member.id);
     if (!athlete) return member;
     const status: MemberStatus = athlete.status === 'DEAD' || athlete.status === 'MISSING' ? 'DEAD' : athlete.status === 'RETIRED' ? 'RETIRED' : athlete.status === 'INJURED' ? 'INJURED' : athlete.clubId !== career.club.id ? 'LEFT' : member.status === 'LEFT' ? 'LEFT' : 'ACTIVE';

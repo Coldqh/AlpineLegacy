@@ -555,3 +555,34 @@ button:disabled { cursor: not-allowed; opacity: .42; }
   .mg-rope-recommended-mark { left: 1px; top: 1px; min-width: 10px; height: 10px; font-size: 6px; }
   .mg-map-legend b { width: 10px; height: 10px; }
 }
+
+/* 0.8.5 — persistent consequences and terminal expedition states */
+.mg-message.is-danger {
+  border-color: #a64f3c;
+  background: rgba(77, 30, 23, .55);
+  box-shadow: inset 3px 0 #cb5a42;
+}
+.mg-message.is-danger p { color: #f0c1b4; }
+.mg-team-list article.is-critical {
+  border-color: #9d4939;
+  background: rgba(73, 29, 23, .58);
+  box-shadow: inset 3px 0 #c94f38;
+}
+.mg-team-list article.is-critical small { color: #e9a994; }
+.mg-incident-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mg-incident-list li {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid #684137;
+  border-radius: 8px;
+  background: rgba(62, 31, 25, .52);
+}
+.mg-incident-list strong { font-size: 11px; }
+.mg-incident-list small { color: #d7aaa0; font-size: 9px; line-height: 1.4; }

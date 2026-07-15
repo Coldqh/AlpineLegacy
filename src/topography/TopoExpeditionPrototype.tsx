@@ -1,18 +1,28 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import type { CareerState, QualificationClimb } from '../core/types';
+import { ensureIntegratedExpedition, persistIntegratedExpedition } from '../core/career';
+import {
+  EMPTY_INTEGRATED_INFRASTRUCTURE,
+  integratedStepPreview,
+  integratedWeatherAt,
+  reduceIntegratedExpedition,
+  type IntegratedExpeditionCommand,
+  type IntegratedExpeditionContext,
+  type IntegratedExpeditionState,
+  type IntegratedRestMode,
+  type IntegratedTool,
+} from '../core/expedition';
 import {
   buildMountainRouteOptions,
   buildMountainStages,
   cellAt,
   evaluateLocalRoute,
-  evaluateLocalStepRisk,
   findLocalGuidedRoute,
   generateLocalStageMap,
   generateMountainGrid,
   isAdjacent,
   isSamePoint,
   localCellAt,
-  localMoveCost,
-  weatherAtGrid,
   type EntrySide,
   type GridPoint,
   type LocalRouteProfile,
@@ -23,19 +33,12 @@ import {
   type StageDefinition,
 } from './mountainGridEngine';
 
-type Participant = { id: string; name: string; role: string; energy: number; specialty: string };
 type Tool = 'ROUTE' | 'ROPE' | 'CAMP' | 'SCOUT';
-type RestMode = 'BREAK' | 'BIVOUAC' | 'SLEEP';
-type Authority = 'COMMAND' | 'PARTICIPANT' | 'SPECIALIST';
-type StageInfrastructure = { camps: string[]; ropes: string[]; revealed: string[] };
 
 type Props = {
-  onExit: () => void;
-  authority?: Authority;
-  seed?: string;
-  mountainName?: string;
-  startElevation?: number;
-  summitElevation?: number;
+  career: CareerState;
+  onPersist: (career: CareerState) => void;
+  onExit: (terminal: boolean) => void;
   allowRegenerate?: boolean;
 };
 
@@ -75,14 +78,6 @@ function slopeBand(slope: number) {
 const TERRAIN_CLASS: Record<MountainTerrain, string> = {
   VALLEY: 'terrain-valley', SCREE: 'terrain-scree', GLACIER: 'terrain-glacier', SNOW: 'terrain-snow', ROCK: 'terrain-rock', RIDGE: 'terrain-ridge', SUMMIT: 'terrain-summit',
 };
-
-const initialParticipants: Participant[] = [
-  { id: 'p1', name: 'Илья Морен', role: 'Ведущий', energy: 100, specialty: 'Техника' },
-  { id: 'p2', name: 'Нора Вальд', role: 'Навигатор', energy: 100, specialty: 'Навигация' },
-  { id: 'p3', name: 'Томас Рейн', role: 'Замыкающий', energy: 100, specialty: 'Выносливость' },
-];
-
-const EMPTY_INFRA: StageInfrastructure = { camps: [], ropes: [], revealed: [] };
 
 function pointKey(point: GridPoint) { return `${point.x}:${point.y}`; }
 function formatMinutes(minutes: number) { return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`; }
@@ -349,365 +344,208 @@ function localProfileFor(option?: MountainRouteOption): LocalRouteProfile {
   return option?.localProfile ?? 'SAFE';
 }
 
-export function TopoExpeditionPrototype({
-  onExit,
-  authority = 'COMMAND',
-  seed = 'ALPINE-LOCAL-STAGES',
-  mountainName = 'Кайрн-Валь',
-  startElevation = 620,
-  summitElevation = 3480,
-  allowRegenerate = true,
-}: Props) {
-  const [variant, setVariant] = useState(0);
-  const participantMode = authority !== 'COMMAND';
-  const [entrySide, setEntrySide] = useState<EntrySide>('SOUTH');
-  const grid = useMemo(() => generateMountainGrid(`${seed}:v${variant}`, startElevation, summitElevation), [seed, variant, startElevation, summitElevation]);
-  const routeOptions = useMemo(() => buildMountainRouteOptions(grid, entrySide), [grid, entrySide]);
-  const [routeChoice, setRouteChoice] = useState('MANUAL');
-  const selectedRoute = routeOptions.find(option => option.id === routeChoice);
-  const globalRoute = selectedRoute?.route ?? routeOptions[0]!.route;
-  const routeName = selectedRoute?.name ?? 'Авторская линия по локальным картам';
-  const stages = useMemo(
-    () => buildMountainStages(grid, entrySide, globalRoute, selectedRoute?.profile ?? 'CUSTOM'),
-    [grid, entrySide, globalRoute, selectedRoute?.profile],
-  );
-  const [started, setStarted] = useState(false);
-  const [phase, setPhase] = useState<'ASCENT' | 'DESCENT' | 'COMPLETE'>('ASCENT');
-  const [stageIndex, setStageIndex] = useState(0);
-  const stage = stages[Math.min(stageIndex, stages.length - 1)]!;
-  const localMap = useMemo(() => {
-    const base = generateLocalStageMap(stage, grid.seed);
-    return phase === 'DESCENT' ? { ...base, start: base.goal, goal: base.start } : base;
-  }, [stage, grid.seed, phase]);
-  const guidedLocalRoute = useMemo(() => findLocalGuidedRoute(localMap, localProfileFor(selectedRoute)), [localMap, selectedRoute]);
-  const [path, setPath] = useState<GridPoint[]>([localMap.start]);
-  const [completedStagePaths, setCompletedStagePaths] = useState<Record<string, GridPoint[]>>({});
-  const [positionIndex, setPositionIndex] = useState(0);
-  const [selectedPoint, setSelectedPoint] = useState<GridPoint>(localMap.start);
-  const [stepAttempts, setStepAttempts] = useState<Record<string, number>>({});
-  const [paused, setPaused] = useState(true);
-  const [speed, setSpeed] = useState<1 | 2 | 4>(1);
-  const [elapsedMinutes, setElapsedMinutes] = useState(0);
-  const [tool, setTool] = useState<Tool>('ROUTE');
-  const [infrastructure, setInfrastructure] = useState<Record<string, StageInfrastructure>>({});
-  const [ropeMetres, setRopeMetres] = useState(140);
-  const [campKits, setCampKits] = useState(2);
-  const [participants, setParticipants] = useState(initialParticipants);
-  const [message, setMessage] = useState('Выбери сторону захода и маршрут, затем открой первый локальный этап.');
-  const completed = phase === 'COMPLETE';
-  const infra = infrastructure[stage.id] ?? EMPTY_INFRA;
-  const canChangePlan = !started;
+export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegenerate = false }: Props) {
+  const integratedCareer = useMemo(() => ensureIntegratedExpedition(career), [career]);
+  const climb = integratedCareer.activeClimb;
+  const topo = climb?.topo;
 
   useEffect(() => {
-    if (participantMode && routeChoice === 'MANUAL') setRouteChoice(routeOptions[0]!.id);
-  }, [participantMode, routeChoice, routeOptions]);
+    if (integratedCareer !== career) onPersist(integratedCareer);
+  }, [career, integratedCareer, onPersist]);
 
-  useEffect(() => {
-    setStarted(false);
-    setPhase('ASCENT');
-    setStageIndex(0);
-    setElapsedMinutes(0);
-    setCompletedStagePaths({});
-    setInfrastructure({});
-    setRopeMetres(140);
-    setCampKits(2);
-    setParticipants(initialParticipants);
-    setPaused(true);
-    setStepAttempts({});
-  }, [grid.seed, entrySide, routeChoice]);
-
-  useEffect(() => {
-    const previousAscentPath = completedStagePaths[stage.id];
-    const initialPath = phase === 'DESCENT' && previousAscentPath
-      ? [...previousAscentPath].reverse()
-      : participantMode || selectedRoute
-        ? guidedLocalRoute
-        : [localMap.start];
-    setPath(initialPath);
-    setPositionIndex(0);
-    setSelectedPoint(localMap.start);
-    setPaused(true);
-    setTool('ROUTE');
-    setInfrastructure(current => {
-      const previous = current[stage.id] ?? EMPTY_INFRA;
-      const startKnown = localMap.cells.filter(cell => Math.max(Math.abs(cell.x - localMap.start.x), Math.abs(cell.y - localMap.start.y)) <= 1).map(pointKey);
-      return { ...current, [stage.id]: { ...previous, revealed: [...new Set([...previous.revealed, ...startKnown])] } };
-    });
-    setMessage(
-      phase === 'DESCENT' && previousAscentPath
-        ? 'На спуске используется подготовленная линия подъёма. Проверь, что верёвки и проходы сохранились.'
-        : participantMode
-          ? 'Руководитель выбрал готовую линию. Запусти движение и реагируй на участок.'
-          : selectedRoute
-            ? 'Готовая линия нанесена. Её можно скорректировать до запуска.'
-            : 'Построй собственную линию от старта к выходу этапа.',
+  if (!climb || !topo) {
+    return (
+      <main className="mg-app">
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.8.5</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+      </main>
     );
-  }, [localMap, guidedLocalRoute, participantMode, selectedRoute, phase, stage.id, completedStagePaths]);
-
-  function updateInfra(updater: (value: StageInfrastructure) => StageInfrastructure) {
-    setInfrastructure(current => ({ ...current, [stage.id]: updater(current[stage.id] ?? EMPTY_INFRA) }));
   }
 
-  const weather = weatherAtGrid(elapsedMinutes);
-  const currentPoint = path[Math.min(positionIndex, Math.max(0, path.length - 1))] ?? localMap.start;
+  return <ActiveTopoExpedition integratedCareer={integratedCareer} climb={climb} topo={topo} onPersist={onPersist} onExit={onExit} allowRegenerate={allowRegenerate} />;
+}
+
+type ActiveTopoProps = Omit<Props, 'career'> & {
+  integratedCareer: CareerState;
+  climb: QualificationClimb;
+  topo: IntegratedExpeditionState;
+};
+
+function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit, allowRegenerate = false }: ActiveTopoProps) {
+  const [paused, setPaused] = useState(true);
+  const [speed, setSpeed] = useState<1 | 2 | 4>(1);
+  const [tool, setTool] = useState<IntegratedTool>('ROUTE');
+  const [selectedPoint, setSelectedPoint] = useState<GridPoint>({ x: 0, y: 0 });
+
+  const participantMode = topo.authority !== 'COMMAND';
+  const grid = useMemo(
+    () => generateMountainGrid(`${topo.seed}:v${topo.variant}`, topo.startElevation, topo.summitElevation),
+    [topo.seed, topo.variant, topo.startElevation, topo.summitElevation],
+  );
+  const routeOptions = useMemo(() => buildMountainRouteOptions(grid, topo.entrySide), [grid, topo.entrySide]);
+  const selectedRoute = routeOptions.find(option => option.id === topo.routeChoice)
+    ?? (participantMode || topo.routeChoice === 'AUTO' ? routeOptions[0] : undefined);
+  const globalRoute = selectedRoute?.route ?? routeOptions[0]!.route;
+  const routeName = selectedRoute?.name ?? climb.routeName ?? 'Авторская линия по локальным картам';
+  const stages = useMemo(
+    () => buildMountainStages(grid, topo.entrySide, globalRoute, selectedRoute?.profile ?? 'CUSTOM'),
+    [grid, topo.entrySide, globalRoute, selectedRoute?.profile],
+  );
+  const stageIndex = Math.min(topo.stageIndex, Math.max(0, stages.length - 1));
+  const stage = stages[stageIndex]!;
+  const descending = topo.phase === 'DESCENT' || topo.phase === 'COMPLETE' || topo.phase === 'RETREATED';
+  const localMap = useMemo(() => {
+    const base = generateLocalStageMap(stage, grid.seed);
+    return descending ? { ...base, start: base.goal, goal: base.start } : base;
+  }, [stage, grid.seed, descending]);
+  const guidedLocalRoute = useMemo(() => findLocalGuidedRoute(localMap, localProfileFor(selectedRoute)), [localMap, selectedRoute]);
+  const previousAscentPath = topo.completedStagePaths[stage.id];
+  const defaultPath = descending && previousAscentPath
+    ? [...previousAscentPath].reverse()
+    : participantMode || selectedRoute
+      ? guidedLocalRoute
+      : [localMap.start];
+  const storedPath = topo.paths[stage.id];
+  const needsDescentPath = Boolean(
+    descending
+    && previousAscentPath?.length
+    && storedPath?.length
+    && isSamePoint(storedPath[0]!, previousAscentPath[0]!)
+  );
+  const path = needsDescentPath ? defaultPath : storedPath ?? defaultPath;
+  const infra = topo.infrastructure[stage.id] ?? EMPTY_INTEGRATED_INFRASTRUCTURE;
+  const weather = integratedWeatherAt(topo);
+  const completed = ['COMPLETE', 'RETREATED', 'FAILED'].includes(topo.phase);
+  const canChangePlan = !topo.started;
+  const currentPoint = path[Math.min(topo.positionIndex, Math.max(0, path.length - 1))] ?? localMap.start;
   const currentCell = localCellAt(localMap, currentPoint)!;
   const selectedCell = localCellAt(localMap, selectedPoint) ?? currentCell;
   const selectedId = pointKey(selectedCell);
   const selectedKnown = infra.revealed.includes(selectedId) || isSamePoint(selectedCell, currentCell) || isSamePoint(selectedCell, localMap.start);
   const selectedProtected = infra.ropes.includes(selectedId);
-  const selectedRisk = evaluateLocalStepRisk(localMap, currentPoint, selectedCell, weatherAtGrid(elapsedMinutes), { fixedRope: selectedProtected, leaderEnergy: participants[0]?.energy ?? 100 });
+  const selectedRisk = integratedStepPreview(topo, localMap, currentPoint, selectedCell, weather, selectedProtected);
   const routeReady = path.length > 1 && isSamePoint(path[path.length - 1]!, localMap.goal);
   const routeMetrics = useMemo(
     () => evaluateLocalRoute(localMap, path, weather, new Set(infra.ropes)),
     [localMap, path, weather, infra.ropes],
   );
+  const context: IntegratedExpeditionContext = { stageId: stage.id, stageTitle: stage.title, stageCount: stages.length, localMap, weather };
 
-  function hazardBlockReason(cell: NonNullable<ReturnType<typeof localCellAt>>, protectedByRope: boolean) {
-    if (cell.hazard === 'CREVASSE' && !protectedByRope) return 'Трещина открыта. Нужна закреплённая верёвка или обход.';
-    if (cell.hazard === 'AVALANCHE' && weather.snowSoftness >= 54) return 'Снег размягчён. Лавинный склон сейчас закрыт для движения.';
-    if (cell.hazard === 'ROCKFALL' && weather.temperatureC >= 0) return 'Прогрев усилил камнепад. Нужен обход или ожидание холода.';
-    if (cell.hazard === 'CORNICE') return 'Карниз нельзя пересекать. Перестрой линию ниже гребня.';
-    return null;
+  useEffect(() => {
+    if (!topo.paths[stage.id]?.length || needsDescentPath) {
+      const nextTopo = reduceIntegratedExpedition(topo, { type: 'ENSURE_STAGE_PATH', stageId: stage.id, path: defaultPath, currentElevation: localCellAt(localMap, defaultPath[0] ?? localMap.start)?.elevation ?? topo.currentElevation, replace: needsDescentPath }, context);
+      onPersist(persistIntegratedExpedition(integratedCareer, nextTopo));
+    }
+    setSelectedPoint(path[Math.min(topo.positionIndex, Math.max(0, path.length - 1))] ?? localMap.start);
+    setPaused(true);
+    setTool('ROUTE');
+  }, [stage.id, descending]);
+
+  function commit(command: IntegratedExpeditionCommand) {
+    const nextTopo = reduceIntegratedExpedition(topo!, command, context);
+    if (nextTopo !== topo) onPersist(persistIntegratedExpedition(integratedCareer, nextTopo));
+    if (nextTopo.lastEvent.kind !== 'INFO') setPaused(true);
+    return nextTopo;
   }
 
   useEffect(() => {
-    if (!started || paused || completed || path.length < 2 || positionIndex >= path.length - 1) return;
+    if (!topo.started || paused || completed || path.length < 2 || topo.positionIndex >= path.length - 1) return;
     const delay = Math.max(140, 820 / speed);
     const timer = window.setTimeout(() => {
-      const nextIndex = positionIndex + 1;
-      const previous = path[nextIndex - 1]!;
-      const next = path[nextIndex]!;
-      const cell = localCellAt(localMap, next)!;
-      const id = pointKey(next);
-      const hazardKnown = infra.revealed.includes(id);
-      const protectedByRope = infra.ropes.includes(id);
-
-      if (cell.hazard !== 'NONE' && !hazardKnown) {
-        setPaused(true);
-        updateInfra(value => ({ ...value, revealed: [...new Set([...value.revealed, id])] }));
-        setMessage(`Ведущий обнаружил: ${HAZARD_COPY[cell.hazard]}. Оцени клетку и перестрой путь.`);
-        return;
-      }
-      const blocked = hazardBlockReason(cell, protectedByRope);
-      if (blocked) {
-        setPaused(true);
-        setMessage(blocked);
-        return;
-      }
-
-      const leaderEnergy = participants[0]?.energy ?? 0;
-      const attemptKey = `${stage.id}:${id}`;
-      const attempt = stepAttempts[attemptKey] ?? 0;
-      const stepRisk = evaluateLocalStepRisk(localMap, previous, next, weather, { fixedRope: protectedByRope, leaderEnergy, attempt });
-      const cost = localMoveCost(localMap, previous, next, weather, { fixedRope: protectedByRope, leaderEnergy, unprotectedTechnical: cell.ropeRequired && !protectedByRope });
-      if (leaderEnergy < cost.energy) {
-        setPaused(true);
-        setMessage('Ведущий больше не держит темп. Смени ведущего, отдохни в лагере или начни отход.');
-        return;
-      }
-
-      if (stepRisk.willRollback) {
-        const rollbackTo = Math.max(0, positionIndex - stepRisk.rollbackCells);
-        setPositionIndex(rollbackTo);
-        setSelectedPoint(path[rollbackTo] ?? localMap.start);
-        setStepAttempts(current => ({ ...current, [attemptKey]: attempt + 1 }));
-        setElapsedMinutes(value => value + cost.minutes + 25);
-        setParticipants(current => current.map((member, index) => ({
-          ...member,
-          energy: Math.max(0, member.energy - Math.max(2, Math.round(cost.energy * (index === 0 ? 1.35 : 0.85)))),
-        })));
-        setPaused(true);
-        setMessage(`Срыв на участке ${cell.slope}°. Группа откатилась на ${positionIndex - rollbackTo + 1} клеток. Закрепи верёвку на красной точке или выбери обход.`);
-        return;
-      }
-
-      setPositionIndex(nextIndex);
-      setSelectedPoint(next);
-      updateInfra(value => ({ ...value, revealed: [...new Set([...value.revealed, id])] }));
-      setElapsedMinutes(value => value + cost.minutes);
-      setParticipants(current => current.map((member, index) => ({
-        ...member,
-        energy: Math.max(0, member.energy - Math.max(1, Math.round(cost.energy * (index === 0 ? 1 : index === current.length - 1 ? 0.72 : 0.62)))),
-      })));
-
-      if (nextIndex >= path.length - 1) {
-        setPaused(true);
-        if (isSamePoint(next, localMap.goal)) {
-          if (phase === 'ASCENT') setCompletedStagePaths(current => ({ ...current, [stage.id]: path }));
-          if (phase === 'ASCENT' && stageIndex >= stages.length - 1) {
-            setPhase('DESCENT');
-            setMessage('Вершина достигнута. Начинается спуск по созданной инфраструктуре.');
-          } else if (phase === 'ASCENT') {
-            setMessage(`Этап «${stage.title}» пройден. Открыт следующий участок.`);
-            window.setTimeout(() => setStageIndex(value => value + 1), 220);
-          } else if (stageIndex <= 0) {
-            setPhase('COMPLETE');
-            setMessage('Группа вернулась к старту. Полный подъём и спуск завершены.');
-          } else {
-            setMessage(`Спуск через «${stage.title}» завершён.`);
-            window.setTimeout(() => setStageIndex(value => value - 1), 220);
-          }
-        } else {
-          setMessage('План закончился до выхода. Продолжи линию с текущей клетки.');
-        }
-      }
+      const next = commit({ type: 'STEP' });
+      if (next.lastEvent.kind !== 'INFO') setPaused(true);
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [started, paused, completed, path, positionIndex, speed, localMap, infra.revealed, infra.ropes, stageIndex, stages.length, stage.title, stage.id, phase, weather, participants, stepAttempts]);
+  }, [topo, paused, completed, path, speed, context.stageId, weather.temperatureC, weather.windKmh, weather.visibility, weather.snowSoftness]);
 
   function changeEntry(side: EntrySide) {
     if (!canChangePlan) return;
-    setEntrySide(side);
     const nextOptions = buildMountainRouteOptions(grid, side);
-    setRouteChoice(participantMode ? nextOptions[0]!.id : 'MANUAL');
+    commit({ type: 'SET_ENTRY', side, routeChoice: participantMode ? nextOptions[0]!.id : 'MANUAL' });
   }
 
   function chooseRoute(choice: string) {
     if (!canChangePlan) return;
-    setRouteChoice(choice);
+    commit({ type: 'SET_ROUTE', routeChoice: choice });
   }
 
   function regenerate() {
-    if (started) return;
-    setVariant(value => value + 1);
-    setRouteChoice('MANUAL');
+    if (topo!.started) return;
+    commit({ type: 'REGENERATE' });
   }
 
   function handleCell(point: GridPoint) {
     setSelectedPoint(point);
-    if (!started || !paused || completed) return;
+    if (!topo!.started || !paused || completed) return;
     const cell = localCellAt(localMap, point);
     if (!cell?.passable) return;
-    const id = pointKey(point);
     const distanceFromGroup = Math.max(Math.abs(point.x - currentPoint.x), Math.abs(point.y - currentPoint.y));
 
     if (tool === 'SCOUT') {
-      if (distanceFromGroup > (authority === 'SPECIALIST' ? 3 : 2)) {
-        setMessage('Эта клетка слишком далеко. Сначала подведи группу ближе.');
-        return;
-      }
-      const radius = authority === 'SPECIALIST' ? 2 : 1;
-      const around = localMap.cells
-        .filter(item => Math.max(Math.abs(item.x - point.x), Math.abs(item.y - point.y)) <= radius)
-        .map(pointKey);
-      updateInfra(value => ({ ...value, revealed: [...new Set([...value.revealed, ...around])] }));
-      setElapsedMinutes(value => value + (authority === 'SPECIALIST' ? 12 : 20));
-      setMessage('Разведаны клетка и ближайший рельеф.');
+      commit({ type: 'SCOUT', point, radius: topo!.authority === 'SPECIALIST' ? 2 : 1, minutes: topo!.authority === 'SPECIALIST' ? 12 : 20 });
       return;
     }
-
     if (tool === 'CAMP') {
-      if (!isSamePoint(point, currentPoint)) { setMessage('Лагерь можно поставить только там, где находится группа.'); return; }
-      if (!cell.campPossible) { setMessage('Площадка слишком крутая, открытая или опасная.'); return; }
-      if (infra.camps.includes(id)) { setMessage('Лагерь уже стоит в этой клетке.'); return; }
-      if (campKits <= 0) { setMessage('Свободных комплектов лагеря больше нет.'); return; }
-      updateInfra(value => ({ ...value, camps: [...value.camps, id] }));
-      setCampKits(value => value - 1);
-      setElapsedMinutes(value => value + 95);
-      setMessage('Лагерь установлен и останется на спуск.');
+      if (!isSamePoint(point, currentPoint)) return;
+      commit({ type: 'MAKE_CAMP', point });
       return;
     }
-
     if (tool === 'ROPE') {
-      if (distanceFromGroup > 1) { setMessage('Крепление слишком далеко от группы.'); return; }
-      if (!cell.ropeRequired && !cell.ropeRecommended && cell.hazard === 'NONE') { setMessage('Эта клетка пологая: стационарная верёвка здесь не нужна.'); return; }
-      if (cell.anchorQuality < 35) { setMessage('Нет надёжного крепления. Разведай соседнюю клетку или ищи скалу/лёд с лучшим анкером.'); return; }
-      if (infra.ropes.includes(id)) {
-        updateInfra(value => ({ ...value, ropes: value.ropes.filter(valueId => valueId !== id) }));
-        setRopeMetres(value => value + 20);
-        setMessage('Верёвка снята и возвращена в запас.');
-        return;
-      }
-      if (ropeMetres < 20) { setMessage('Не хватает двадцати метров верёвки.'); return; }
-      updateInfra(value => ({ ...value, ropes: [...value.ropes, id], revealed: [...new Set([...value.revealed, id])] }));
-      setRopeMetres(value => value - 20);
-      setElapsedMinutes(value => value + 35);
-      setMessage(`Закреплено 20 м верёвки. Риск отката на клетке ${cell.slope}° снят; линия останется на спуск.`);
+      if (distanceFromGroup > 1) return;
+      if (!cell.ropeRequired && !cell.ropeRecommended && cell.hazard === 'NONE') return;
+      commit({ type: 'TOGGLE_ROPE', point });
       return;
     }
-
     if (participantMode) return;
     const existingIndex = path.findIndex(item => isSamePoint(item, point));
-    if (existingIndex >= positionIndex) {
-      setPath(values => values.slice(0, existingIndex + 1));
+    if (existingIndex >= topo!.positionIndex) {
+      commit({ type: 'SET_STAGE_PATH', stageId: stage.id, path: path.slice(0, existingIndex + 1) });
       return;
     }
     const last = path[path.length - 1]!;
-    if (!isAdjacent(last, point)) { setMessage('Маршрут строится только по соседним квадратам.'); return; }
-    setPath(values => [...values, point]);
-    setMessage(isSamePoint(point, localMap.goal) ? 'Линия доведена до выхода. Проверь стоимость и запускай движение.' : 'Маршрут продолжен.');
-  }
-
-  function beginExpedition() {
-    if (started) return;
-    setStarted(true);
-    setPaused(true);
-    setMessage(selectedRoute
-      ? `Заход ${SIDE_COPY[entrySide]} и маршрут «${selectedRoute.name}» зафиксированы. Проверь первый участок и запускай движение.`
-      : `Заход ${SIDE_COPY[entrySide]} зафиксирован. Построй авторскую линию на первом участке.`);
+    if (!isAdjacent(last, point)) return;
+    commit({ type: 'SET_STAGE_PATH', stageId: stage.id, path: [...path, point] });
   }
 
   function toggleMove() {
     if (completed) return;
     if (!paused) { setPaused(true); return; }
-    if (path.length < 2 || positionIndex >= path.length - 1) { setMessage('Сначала продолжи маршрут от текущей клетки.'); return; }
+    if (path.length < 2 || topo!.positionIndex >= path.length - 1) return;
     setPaused(false);
   }
 
-  function rest(mode: RestMode) {
-    const atCamp = infra.camps.includes(pointKey(currentPoint));
-    if (mode !== 'BREAK' && !atCamp) { setMessage('Бивак и сон доступны только в установленном лагере.'); return; }
-    if (mode === 'BREAK' && (currentCell.hazard !== 'NONE' || currentCell.slope > 36)) { setMessage('Здесь нельзя безопасно остановиться. Нужна более ровная клетка или лагерь.'); return; }
-    const minutes = mode === 'BREAK' ? 30 : mode === 'BIVOUAC' ? 180 : 480;
-    const recovery = mode === 'BREAK' ? 9 : mode === 'BIVOUAC' ? 34 : 74;
-    setElapsedMinutes(value => value + minutes);
-    setParticipants(current => current.map(member => ({ ...member, energy: Math.min(100, member.energy + recovery) })));
-    setMessage(mode === 'BREAK'
-      ? 'Короткий привал: 30 минут, небольшое восстановление. Погода продолжила меняться.'
-      : mode === 'BIVOUAC'
-        ? 'Бивак в лагере: 3 часа, заметное восстановление без полного сна.'
-        : 'Полноценный сон в лагере: 8 часов, сильное восстановление. Условия на карте могли измениться.');
-  }
-
-  function reorder(index: number, delta: number) {
-    setParticipants(values => {
-      const next = [...values];
-      const target = index + delta;
-      if (target < 0 || target >= next.length) return values;
-      [next[index], next[target]] = [next[target]!, next[index]!];
-      return next.map((member, memberIndex) => ({ ...member, role: memberIndex === 0 ? 'Ведущий' : memberIndex === next.length - 1 ? 'Замыкающий' : 'Участник' }));
-    });
-  }
+  const phaseLabel = topo.phase === 'DESCENT' ? 'СПУСК' : topo.phase === 'COMPLETE' ? 'ЗАВЕРШЕНО' : topo.phase === 'RETREATED' ? 'ОТХОД ЗАВЕРШЁН' : topo.phase === 'FAILED' ? 'ПРОВАЛ' : 'ПОДЪЁМ';
+  const teamAverageEnergy = Math.round(topo.participants.reduce((sum, participant) => sum + participant.energy, 0) / Math.max(1, topo.participants.length));
+  const teamAverageCondition = Math.round(topo.participants.reduce((sum, participant) => sum + participant.condition, 0) / Math.max(1, topo.participants.length));
 
   return (
     <main className="mg-app">
       <header className="mg-header">
-        <div><span>ALPINE LEGACY / 0.7.4</span><h1>{mountainName} · маршрутная экспедиция</h1></div>
-        <div className="mg-header-actions">{allowRegenerate && <button onClick={regenerate} disabled={started}>Новая генерация</button>}<button onClick={onExit}>Закрыть</button></div>
+        <div><span>ALPINE LEGACY / 0.8.5</span><h1>{climb.mountainName} · {climb.routeName}</h1></div>
+        <div className="mg-header-actions">{allowRegenerate && <button onClick={regenerate} disabled={topo.started}>Новая генерация</button>}<button onClick={() => onExit(completed)}>{completed ? 'Закрыть экспедицию' : 'Сохранить и выйти'}</button></div>
       </header>
 
       <section className="mg-layout">
         <div className="mg-main-column">
-          <MountainViewer grid={grid} route={globalRoute} routeName={routeName} selectedRoute={selectedRoute} stages={stages} side={entrySide} currentStage={stageIndex} />
+          <MountainViewer grid={grid} route={globalRoute} routeName={routeName} selectedRoute={selectedRoute} stages={stages} side={topo.entrySide} currentStage={stageIndex} />
 
           <section className="mg-stage-card">
             <div className="mg-stage-topline">
-              <div><span>{phase === 'DESCENT' ? 'СПУСК' : phase === 'COMPLETE' ? 'ЗАВЕРШЕНО' : 'ПОДЪЁМ'} · ЭТАП {stageIndex + 1} / {stages.length}</span><h2>{stage.title}</h2><p>{stage.subtitle} · сложность {stage.difficulty}/5 · карта {localMap.width} × {localMap.height}</p></div>
+              <div><span>{phaseLabel} · ЭТАП {stageIndex + 1} / {stages.length}</span><h2>{stage.title}</h2><p>{stage.subtitle} · сложность {stage.difficulty}/5 · карта {localMap.width} × {localMap.height}</p></div>
               <div className="mg-stage-weather"><span>{weather.temperatureC}°C</span><span>ветер {weather.windKmh}</span><span>видимость {weather.visibility}%</span><span>снег {weather.snowSoftness}</span></div>
             </div>
 
-            {!started ? (
+            {!topo.started ? (
               <section className="mg-preflight">
-                <div><span>ПЛАНИРОВАНИЕ ДО ВЫХОДА</span><h3>Зафиксируй сторону и маршрут</h3><p>После старта изменить сторону захода и глобальный маршрут нельзя. На горе останется только управление локальными линиями, людьми и инфраструктурой.</p></div>
-                <dl><div><dt>Заход</dt><dd>{SIDE_COPY[entrySide]}</dd></div><div><dt>Маршрут</dt><dd>{routeName}</dd></div><div><dt>Этапы</dt><dd>{stages.length}</dd></div><div><dt>Верёвка / лагеря</dt><dd>140 м / 2</dd></div></dl>
-                <button onClick={beginExpedition}>Начать экспедицию →</button>
+                <div><span>ПЛАН ИЗ КАРЬЕРЫ</span><h3>Команда, груз и окно связаны с восхождением</h3><p>После старта каждое действие сохраняется. Травмы, расход запасов, вершина, отход и спасение попадут в итоговый отчёт.</p></div>
+                <dl><div><dt>Заход</dt><dd>{SIDE_COPY[topo.entrySide]}</dd></div><div><dt>Маршрут</dt><dd>{routeName}</dd></div><div><dt>Команда</dt><dd>{topo.participants.length}</dd></div><div><dt>Верёвка / лагеря</dt><dd>{topo.ropeMeters} м / {topo.campKits}</dd></div><div><dt>Груз</dt><dd>{topo.packWeightKg.toFixed(1)} кг/чел.</dd></div><div><dt>Акклиматизация</dt><dd>{topo.acclimatizationDays} дн.</dd></div></dl>
+                <button onClick={() => commit({ type: 'START' })}>Начать экспедицию →</button>
               </section>
             ) : (
             <div className="mg-local-layout">
-              <LocalMap map={localMap} path={path} positionIndex={positionIndex} tool={tool} camps={infra.camps} ropes={infra.ropes} revealed={infra.revealed} selectedPoint={selectedPoint} started={started} onCell={handleCell} />
+              <LocalMap map={localMap} path={path} positionIndex={topo.positionIndex} tool={tool as Tool} camps={infra.camps} ropes={infra.ropes} revealed={infra.revealed} selectedPoint={selectedPoint} started={topo.started} onCell={handleCell} />
               <aside className="mg-local-aside">
                 <div className="mg-current-cell"><span>ГРУППА СЕЙЧАС</span><strong>{currentCell.elevation} м</strong><p>{TERRAIN_COPY[currentCell.terrain]} · уклон {currentCell.slope}° · {HAZARD_COPY[currentCell.hazard]}</p></div>
-                <div className={`mg-cell-inspector ${selectedCell.ropeRequired ? 'is-critical' : ''}`}><span>ВЫБРАННАЯ ТОЧКА</span><div><strong>{selectedCell.elevation} м</strong><b>{slopeBand(selectedCell.slope)} · {selectedCell.slope}°</b></div><p>{selectedKnown ? `${TERRAIN_COPY[selectedCell.terrain]}; устойчивость ${selectedCell.stability}/100; крепление ${selectedCell.anchorQuality}/100.` : 'Рельеф виден, но устойчивость, скрытая угроза и качество крепления не разведаны.'}</p><small>{selectedProtected ? 'Верёвка установлена: откат исключён.' : selectedRisk.reason} Риск: {RISK_COPY[selectedRisk.band]}.</small></div>
+                <div className={`mg-cell-inspector ${selectedCell.ropeRequired ? 'is-critical' : ''}`}><span>ВЫБРАННАЯ ТОЧКА</span><div><strong>{selectedCell.elevation} м</strong><b>{slopeBand(selectedCell.slope)} · {selectedCell.slope}°</b></div><p>{selectedKnown ? `${TERRAIN_COPY[selectedCell.terrain]}; устойчивость ${selectedCell.stability}/100; крепление ${selectedCell.anchorQuality}/100.` : 'Рельеф виден, но угроза и качество крепления не разведаны.'}</p><small>{selectedProtected ? 'Верёвка установлена.' : selectedRisk.reason} Риск: {RISK_COPY[selectedRisk.band]} · навык {selectedRisk.skill}/10.</small></div>
                 <div className="mg-route-metrics">
                   <div><span>ВРЕМЯ</span><strong>{formatMinutes(routeMetrics.minutes)}</strong></div>
                   <div><span>СИЛЫ</span><strong>{routeMetrics.energy}</strong></div>
@@ -718,12 +556,12 @@ export function TopoExpeditionPrototype({
                   <div className={routeMetrics.unprotectedRopeCells ? 'is-warning' : ''}><span>БЕЗ СТРАХОВКИ</span><strong>{routeMetrics.unprotectedRopeCells}</strong></div>
                   <div><span>ОТКАТ</span><strong>до {routeMetrics.maxRollbackCells} кл.</strong></div>
                 </div>
-                <div className="mg-tools">{(['ROUTE', 'SCOUT', 'ROPE', 'CAMP'] as Tool[]).map(id => <button key={id} className={tool === id ? 'is-active' : ''} onClick={() => setTool(id)} disabled={!paused}><strong>{id === 'ROUTE' ? 'Маршрут' : id === 'SCOUT' ? 'Разведка' : id === 'ROPE' ? 'Верёвка' : 'Лагерь'}</strong><small>{id === 'SCOUT' ? '12–20 мин' : id === 'ROPE' ? '20 м' : id === 'CAMP' ? '1 комплект' : 'бесплатно'}</small></button>)}</div>
-                <div className="mg-tool-explain"><strong>{TOOL_HELP[tool].title}</strong><p>{TOOL_HELP[tool].text}</p></div>
-                <div className="mg-message"><span>{paused ? 'ПАУЗА' : `ДВИЖЕНИЕ ×${speed}`}</span><p>{message}</p></div>
-                <div className="mg-time-controls"><button onClick={toggleMove}>{paused ? '▶ Запустить' : 'Ⅱ Пауза'}</button>{([1, 2, 4] as const).map(value => <button key={value} className={speed === value ? 'is-active' : ''} onClick={() => setSpeed(value)}>×{value}</button>)}</div>
-                <div className="mg-rest-controls"><span>ОТДЫХ</span><button onClick={() => rest('BREAK')} disabled={!paused}>Привал · 30 мин <small>+9 сил</small></button><button onClick={() => rest('BIVOUAC')} disabled={!paused || !infra.camps.includes(pointKey(currentPoint))}>Бивак · 3 ч <small>+34</small></button><button onClick={() => rest('SLEEP')} disabled={!paused || !infra.camps.includes(pointKey(currentPoint))}>Сон · 8 ч <small>+74</small></button><p>Установка лагеря сама по себе не восстанавливает силы. Она открывает длительный отдых и безопасную точку на спуске.</p></div>
-                <small className="mg-route-state">Линия {path.length - 1} клеток · {routeReady ? 'до выхода' : 'не завершена'} · экспедиция {formatMinutes(elapsedMinutes)}</small>
+                <div className="mg-tools">{(['ROUTE', 'SCOUT', 'ROPE', 'CAMP'] as IntegratedTool[]).map(id => <button key={id} className={tool === id ? 'is-active' : ''} onClick={() => setTool(id)} disabled={!paused || completed}><strong>{id === 'ROUTE' ? 'Маршрут' : id === 'SCOUT' ? 'Разведка' : id === 'ROPE' ? 'Верёвка' : 'Лагерь'}</strong><small>{id === 'SCOUT' ? '12–20 мин' : id === 'ROPE' ? '20 м' : id === 'CAMP' ? '1 комплект' : 'линия'}</small></button>)}</div>
+                <div className="mg-tool-explain"><strong>{TOOL_HELP[tool as Tool].title}</strong><p>{TOOL_HELP[tool as Tool].text}</p></div>
+                <div className={`mg-message ${topo.lastEvent.severity === 'DANGER' ? 'is-danger' : ''}`}><span>{completed ? 'ИТОГ' : paused ? 'ПАУЗА' : `ДВИЖЕНИЕ ×${speed}`}</span><p>{topo.message}</p></div>
+                <div className="mg-time-controls"><button onClick={toggleMove} disabled={completed || topo.forcedRetreat && path.length < 2}>{paused ? '▶ Запустить' : 'Ⅱ Пауза'}</button>{([1, 2, 4] as const).map(value => <button key={value} className={speed === value ? 'is-active' : ''} onClick={() => setSpeed(value)} disabled={completed}>×{value}</button>)}</div>
+                <div className="mg-rest-controls"><span>ОТДЫХ И ИСХОД</span><button onClick={() => commit({ type: 'REST', mode: 'BREAK' as IntegratedRestMode })} disabled={!paused || completed}>Привал · 30 мин <small>+9 сил</small></button><button onClick={() => commit({ type: 'REST', mode: 'BIVOUAC' as IntegratedRestMode })} disabled={!paused || completed}>Бивак · 3 ч <small>топливо 1</small></button><button onClick={() => commit({ type: 'REST', mode: 'SLEEP' as IntegratedRestMode })} disabled={!paused || completed}>Сон · 8 ч <small>топливо 2</small></button>{topo.phase === 'ASCENT' && <button className="is-warning" onClick={() => commit({ type: 'BEGIN_RETREAT' })} disabled={!paused}>Начать отход</button>}{topo.forcedRetreat && !completed && <button className="is-warning" onClick={() => commit({ type: 'REQUEST_RESCUE' })} disabled={!paused}>Вызвать спасателей</button>}</div>
+                <small className="mg-route-state">Линия {path.length - 1} клеток · {routeReady ? 'до выхода' : 'не завершена'} · экспедиция {formatMinutes(topo.elapsedMinutes)}</small>
               </aside>
             </div>
             )}
@@ -732,30 +570,27 @@ export function TopoExpeditionPrototype({
 
         <aside className="mg-side-column">
           <section className="mg-side-card">
-            <div className="mg-panel-head"><div><span>СТОРОНА ЗАХОДА</span><strong>{started ? `${SIDE_COPY[entrySide]} · зафиксирован` : SIDE_COPY[entrySide]}</strong></div></div>
-            <div className="mg-entry-grid">{(Object.keys(SIDE_COPY) as EntrySide[]).map(side => <button key={side} className={entrySide === side ? 'is-active' : ''} onClick={() => changeEntry(side)} disabled={!canChangePlan}>{SIDE_COPY[side]}</button>)}</div>
+            <div className="mg-panel-head"><div><span>СТОРОНА ЗАХОДА</span><strong>{topo.started ? `${SIDE_COPY[topo.entrySide]} · зафиксирован` : SIDE_COPY[topo.entrySide]}</strong></div></div>
+            <div className="mg-entry-grid">{(Object.keys(SIDE_COPY) as EntrySide[]).map(side => <button key={side} className={topo.entrySide === side ? 'is-active' : ''} onClick={() => changeEntry(side)} disabled={!canChangePlan}>{SIDE_COPY[side]}</button>)}</div>
           </section>
 
           <section className="mg-side-card mg-routes-card">
-            <div className="mg-panel-head"><div><span>МАРШРУТ НА ВЕРШИНУ</span><strong>{started ? 'план зафиксирован' : participantMode ? 'выбран руководителем' : 'выбери до выхода'}</strong></div></div>
-            {!participantMode && (
-              <button className={`mg-route-card mg-route-card--manual ${routeChoice === 'MANUAL' ? 'is-active' : ''}`} onClick={() => chooseRoute('MANUAL')} disabled={!canChangePlan}>
-                <div><span>СВОБОДНАЯ ЛИНИЯ</span><strong>Авторский маршрут</strong></div>
-                <p>Общий коридор виден на 3D-модели, но каждый локальный этап строится вручную.</p>
-                <small>{stages.length} этапов · сложность зависит от твоей линии</small>
-              </button>
-            )}
-            <div className="mg-route-options">{routeOptions.map(option => <RouteCard key={option.id} option={option} active={routeChoice === option.id} disabled={!canChangePlan || participantMode} onClick={() => chooseRoute(option.id)} />)}</div>
+            <div className="mg-panel-head"><div><span>МАРШРУТ НА ВЕРШИНУ</span><strong>{topo.started ? 'план зафиксирован' : participantMode ? 'выбран руководителем' : 'выбери до выхода'}</strong></div></div>
+            {!participantMode && <button className={`mg-route-card mg-route-card--manual ${topo.routeChoice === 'MANUAL' ? 'is-active' : ''}`} onClick={() => chooseRoute('MANUAL')} disabled={!canChangePlan}><div><span>СВОБОДНАЯ ЛИНИЯ</span><strong>Авторский маршрут</strong></div><p>Каждый локальный этап строится вручную и сохраняется.</p><small>{stages.length} этапов</small></button>}
+            <div className="mg-route-options">{routeOptions.map(option => <RouteCard key={option.id} option={option} active={selectedRoute?.id === option.id} disabled={!canChangePlan || participantMode} onClick={() => chooseRoute(option.id)} />)}</div>
           </section>
 
           <section className="mg-side-card">
-            <div className="mg-panel-head"><div><span>ЭКСПЕДИЦИЯ</span><strong>{participantMode ? 'готовый план лидера' : 'твоё управление'}</strong></div><small>{ropeMetres} м · {campKits} лагеря</small></div>
-            <div className="mg-team-list">{participants.map((member, index) => <article key={member.id}><div><strong>{member.name}</strong><span>{member.role} · {member.specialty}</span><small>{member.energy >= 70 ? 'Свежий' : member.energy >= 40 ? 'Устал' : 'На пределе'} · {member.energy}</small></div><div><button onClick={() => reorder(index, -1)} disabled={!paused || index === 0}>↑</button><button onClick={() => reorder(index, 1)} disabled={!paused || index === participants.length - 1}>↓</button></div></article>)}</div>
+            <div className="mg-panel-head"><div><span>СОСТОЯНИЕ ЭКСПЕДИЦИИ</span><strong>{teamAverageEnergy} сил · {teamAverageCondition} состояние</strong></div><small>{topo.ropeMeters} м · {topo.campKits} лагеря</small></div>
+            <div className="mg-route-metrics"><div><span>ЕДА</span><strong>{topo.supplies.foodUnits.toFixed(1)}</strong></div><div><span>ВОДА</span><strong>{topo.supplies.waterUnits.toFixed(1)}</strong></div><div><span>ТОПЛИВО</span><strong>{topo.supplies.fuelUnits.toFixed(1)}</strong></div><div><span>ТРАВМЫ</span><strong>{topo.injuries.length}</strong></div></div>
+            <div className="mg-team-list">{topo.participants.map((member, index) => <article key={member.id} className={member.status === 'INCAPACITATED' || member.status === 'DEAD' ? 'is-critical' : ''}><div><strong>{member.name}</strong><span>{member.role} · {member.specialty}</span><small>Силы {Math.round(member.energy)} · состояние {Math.round(member.condition)}{member.injury ? ` · ${member.injury}` : ''}</small></div><div><button onClick={() => commit({ type: 'REORDER', index, delta: -1 })} disabled={!paused || completed || index === 0}>↑</button><button onClick={() => commit({ type: 'REORDER', index, delta: 1 })} disabled={!paused || completed || index === topo.participants.length - 1}>↓</button></div></article>)}</div>
           </section>
+
+          {topo.incidents.length > 0 && <section className="mg-side-card"><div className="mg-panel-head"><div><span>ПОСЛЕДСТВИЯ</span><strong>{topo.incidents.length} событий</strong></div></div><ol className="mg-incident-list">{topo.incidents.slice(-5).reverse().map(incident => <li key={incident.id}><strong>{incident.title}</strong><small>{incident.detail}</small></li>)}</ol></section>}
 
           <section className="mg-side-card mg-stage-list-card">
             <div className="mg-panel-head"><div><span>РАЗВЁРТКА ГОРЫ</span><strong>{stages.length} локальных карт</strong></div></div>
-            <ol>{stages.map(item => <li key={item.id} className={item.index === stageIndex ? 'is-active' : (phase === 'ASCENT' ? item.index < stageIndex : item.index > stageIndex) ? 'is-done' : ''}><span>{String(item.index + 1).padStart(2, '0')}</span><div><strong>{item.title}</strong><small>{item.subtitle} · {item.difficulty}/5</small></div></li>)}</ol>
+            <ol>{stages.map(item => <li key={item.id} className={item.index === stageIndex ? 'is-active' : (topo.phase === 'ASCENT' ? item.index < stageIndex : item.index > stageIndex) ? 'is-done' : ''}><span>{String(item.index + 1).padStart(2, '0')}</span><div><strong>{item.title}</strong><small>{item.subtitle} · {item.difficulty}/5</small></div></li>)}</ol>
           </section>
         </aside>
       </section>
