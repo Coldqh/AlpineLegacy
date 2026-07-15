@@ -21,7 +21,6 @@ const CAREER_BACKUP_KEY = 'alpine-legacy:career:backup:v15';
 const CAREER_PENDING_KEY = 'alpine-legacy:career:pending:v15';
 const RECOVERY_META_KEY = 'alpine-legacy:career:recovery-meta:v1';
 
-
 let lastCareerSerialized: string | null = null;
 let lastBackupFingerprint = '';
 
@@ -129,26 +128,85 @@ export function loadWorld(): WorldState | null {
   return null;
 }
 
+/**
+ * Routes are deterministic world content and can be rebuilt from world.ecosystem.
+ * Keeping every route in both the world and career save was the reason a fresh
+ * desktop career could exceed the browser localStorage quota.
+ *
+ * Route arrays copied into an active climb are also rebuilt by
+ * hydrateCareerFoundation(), while the mutable simulation/strategic state stays.
+ */
+function compactCareerPayload(career: CareerState) {
+  const { routes: _routes, ...careerWithoutRoutes } = career;
+  if (!career.activeClimb) return { ...careerWithoutRoutes, activeClimb: null };
+
+  const {
+    route: _route,
+    ascentRoute: _ascentRoute,
+    descentRoute: _descentRoute,
+    ...activeClimbWithoutRouteCopies
+  } = career.activeClimb;
+
+  return {
+    ...careerWithoutRoutes,
+    activeClimb: activeClimbWithoutRouteCopies,
+  };
+}
+
+function serializeCareer(career: CareerState) {
+  return JSON.stringify(compactCareerPayload(career));
+}
+
+function isQuotaExceeded(error: unknown) {
+  if (!(error instanceof DOMException)) return false;
+  return error.name === 'QuotaExceededError'
+    || error.name === 'NS_ERROR_DOM_QUOTA_REACHED'
+    || error.code === 22
+    || error.code === 1014;
+}
+
+function clearObsoleteCareerStorage() {
+  localStorage.removeItem(CAREER_PENDING_KEY);
+  localStorage.removeItem(CAREER_BACKUP_KEY);
+  for (const key of LEGACY_KEYS) localStorage.removeItem(key);
+}
+
 export function saveCareer(career: CareerState) {
-  const serialized = JSON.stringify(career);
+  const serialized = serializeCareer(career);
   if (serialized === lastCareerSerialized) return;
 
   const previous = lastCareerSerialized ?? localStorage.getItem(CAREER_KEY);
   const fingerprint = careerFingerprint(career);
   const checkpoint = fingerprint !== lastBackupFingerprint;
 
-  // localStorage is synchronous on iOS. During an expedition use one primary write
-  // per action and only create the heavier backup at stage/5-action checkpoints.
-  if (checkpoint) localStorage.setItem(CAREER_PENDING_KEY, serialized);
-  localStorage.setItem(CAREER_KEY, serialized);
-  if (checkpoint) {
-    if (previous && previous !== serialized) localStorage.setItem(CAREER_BACKUP_KEY, previous);
-    localStorage.removeItem(CAREER_PENDING_KEY);
-    lastBackupFingerprint = fingerprint;
+  try {
+    // localStorage is synchronous on iOS. During an expedition use one primary
+    // write per action and only create the backup at stage/5-action checkpoints.
+    if (checkpoint) localStorage.setItem(CAREER_PENDING_KEY, serialized);
+    localStorage.setItem(CAREER_KEY, serialized);
+    if (checkpoint) {
+      if (previous && previous !== serialized) localStorage.setItem(CAREER_BACKUP_KEY, previous);
+      localStorage.removeItem(CAREER_PENDING_KEY);
+      lastBackupFingerprint = fingerprint;
+    }
+  } catch (error) {
+    if (!isQuotaExceeded(error)) throw error;
+
+    // A previous full-world/full-career payload may still occupy the quota.
+    // Remove only obsolete/backup career data, preserve the compact world manifest,
+    // then commit the current career as the authoritative save.
+    clearObsoleteCareerStorage();
+    try {
+      localStorage.setItem(CAREER_KEY, serialized);
+      lastBackupFingerprint = fingerprint;
+    } catch (retryError) {
+      console.error('Career save still exceeds browser storage quota', retryError);
+      throw new Error('Не удалось сохранить карьеру: хранилище браузера переполнено. Удали старые данные сайта и повтори попытку.');
+    }
   }
+
   lastCareerSerialized = serialized;
 }
-
 
 function migratePayload(parsed: any, world: WorldState): CareerState | null {
   if (!isCareerPayload(parsed) || parsed.worldId !== world.id) return null;
@@ -191,7 +249,7 @@ export function loadCareer(world?: WorldState): CareerState | null {
         saveCareer(migrated);
         recordRecoveryMeta(candidate.label, primaryInvalid ? 'Основной сейв повреждён; восстановлена резервная копия.' : 'Сейв перенесён на актуальную схему.');
       }
-      lastCareerSerialized = JSON.stringify(migrated);
+      lastCareerSerialized = serializeCareer(migrated);
       lastBackupFingerprint = careerFingerprint(migrated);
       return migrated;
     } catch {
