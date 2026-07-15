@@ -689,3 +689,306 @@ button:disabled { cursor: not-allowed; opacity: .42; }
   .mg-expedition-summary { gap: 10px; padding: 12px; }
   .mg-expedition-summary dl { grid-template-columns: 1fr 1fr; }
 }
+
+/* 0.9.6 — focused expedition workspace */
+.mg-expedition-shell {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.mg-expedition-header {
+  align-items: center;
+  margin-bottom: 10px;
+}
+.mg-header-copy { min-width: 0; }
+.mg-header-copy h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-header-copy small {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #9da7a2;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mg-expedition-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 6px;
+  border: 1px solid #39423f;
+  border-radius: 12px;
+  background: rgba(16, 22, 20, .94);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, .18);
+  backdrop-filter: blur(14px);
+}
+.mg-expedition-tabs button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 11px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #aab4ae;
+  background: transparent;
+  cursor: pointer;
+}
+.mg-expedition-tabs button:hover { color: #f2eee4; background: #202927; }
+.mg-expedition-tabs button.is-active {
+  color: #fff;
+  border-color: #d66545;
+  background: #d66545;
+}
+.mg-expedition-tabs strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mg-expedition-tabs small {
+  flex: 0 0 auto;
+  color: inherit;
+  opacity: .72;
+  font-size: 9px;
+}
+.mg-tab-panel { min-width: 0; }
+.mg-climb-tab,
+.mg-mountain-tab,
+.mg-expedition-tab,
+.mg-journal-tab { animation: mg-tab-in .16s ease-out; }
+@keyframes mg-tab-in { from { opacity: .35; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+.mg-climb-tab .mg-stage-topline { padding: 12px 14px; }
+.mg-climb-tab .mg-stage-topline h2 { font-size: 20px; }
+.mg-climb-tab .mg-local-layout {
+  grid-template-columns: minmax(0, 1fr) 310px;
+}
+.mg-climb-status {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.mg-climb-status article {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #3e4945;
+  border-radius: 9px;
+  background: rgba(12,18,16,.28);
+}
+.mg-climb-status article.is-critical { border-color: #a64f3c; box-shadow: inset 3px 0 #cb5a42; }
+.mg-climb-status span,
+.mg-climb-metrics span {
+  display: block;
+  color: #8f9a94;
+  font-size: 8px;
+  letter-spacing: .12em;
+}
+.mg-climb-status strong { display: block; margin: 4px 0 3px; font-size: 16px; }
+.mg-climb-status small {
+  display: block;
+  overflow: hidden;
+  color: #abb5b0;
+  font-size: 9px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+.mg-climb-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.mg-climb-metrics > div {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #394440;
+  border-radius: 8px;
+  background: #151d1b;
+}
+.mg-climb-metrics > div.is-warning { border-color: #ad5541; background: #2a1d19; }
+.mg-climb-metrics strong { display: block; margin-top: 3px; font-size: 12px; }
+.mg-climb-tab .mg-tools { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+.mg-climb-tab .mg-tools button {
+  display: grid;
+  justify-content: stretch;
+  min-width: 0;
+  padding: 8px;
+  text-align: left;
+}
+.mg-climb-tab .mg-tools button strong,
+.mg-climb-tab .mg-tools button small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mg-climb-tab .mg-message { padding: 9px 10px; }
+.mg-climb-tab .mg-message p { font-size: 11px; }
+.mg-secondary-actions {
+  overflow: hidden;
+  border: 1px solid #3b4642;
+  border-radius: 9px;
+  background: #141c1a;
+}
+.mg-secondary-actions summary {
+  padding: 10px;
+  color: #b9c2bd;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  list-style-position: inside;
+}
+.mg-secondary-actions[open] summary { border-bottom: 1px solid #343d3a; }
+.mg-secondary-actions .mg-rest-controls { border: 0; border-radius: 0; background: transparent; }
+
+.mg-empty-tab {
+  display: grid;
+  justify-items: start;
+  gap: 7px;
+  min-height: 260px;
+  align-content: center;
+  padding: 28px;
+  background: linear-gradient(135deg, rgba(78, 116, 101, .12), transparent 48%), #151d1b;
+}
+.mg-empty-tab strong { font-size: 20px; }
+.mg-empty-tab p { margin: 0; color: #aeb8b2; font-size: 12px; }
+.mg-empty-tab button { margin-top: 5px; }
+
+.mg-mountain-tab .mg-viewer-card { min-height: calc(100vh - 170px); }
+.mg-mountain-tab .mg-3d-canvas { height: min(72vh, 760px); }
+.mg-expedition-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, .8fr);
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid #39423f;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(75, 126, 105, .13), transparent 52%), #171f1d;
+}
+.mg-expedition-overview > div:first-child > span,
+.mg-expedition-overview > div:first-child > strong,
+.mg-expedition-overview > div:first-child > small { display: block; }
+.mg-expedition-overview > div:first-child > span { color: #9ba6a0; font-size: 9px; letter-spacing: .16em; }
+.mg-expedition-overview > div:first-child > strong { margin: 5px 0 3px; font-size: 18px; }
+.mg-expedition-overview > div:first-child > small { color: #aab4ae; font-size: 10px; }
+.mg-expedition-overview .mg-pace-controls { padding: 0; border: 0; background: transparent; }
+.mg-expedition-overview .mg-pace-controls > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mg-expedition-grid {
+  display: grid;
+  grid-template-columns: minmax(290px, .72fr) minmax(0, 1.28fr);
+  gap: 12px;
+  align-items: start;
+}
+.mg-expedition-grid .mg-side-card { padding-bottom: 0; }
+.mg-gear-card .mg-route-metrics { padding: 12px; }
+.mg-team-card .mg-team-list { max-height: calc(100vh - 300px); overflow: auto; }
+
+.mg-journal-tab {
+  display: grid;
+  grid-template-columns: minmax(260px, .72fr) minmax(0, 1.28fr);
+  gap: 12px;
+  align-items: start;
+}
+.mg-journal-tab .mg-side-card { padding-bottom: 0; }
+.mg-journal-tab .mg-incident-list,
+.mg-journal-tab .mg-event-log { padding: 12px; }
+.mg-journal-tab .mg-event-log { max-height: calc(100vh - 220px); overflow: auto; }
+.mg-journal-empty { margin: 0; padding: 18px 14px; color: #8f9b95; font-size: 11px; }
+
+@media (max-width: 980px) {
+  .mg-climb-tab .mg-local-layout { grid-template-columns: 1fr; }
+  .mg-climb-tab .mg-local-map { border-right: 0; border-bottom: 1px solid #343d3a; }
+  .mg-expedition-overview,
+  .mg-expedition-grid,
+  .mg-journal-tab { grid-template-columns: 1fr; }
+  .mg-team-card .mg-team-list,
+  .mg-journal-tab .mg-event-log { max-height: none; }
+}
+
+@media (max-width: 760px) {
+  .mg-expedition-shell {
+    width: 100%;
+    padding: max(7px, env(safe-area-inset-top)) 7px max(8px, env(safe-area-inset-bottom));
+  }
+  .mg-expedition-header {
+    gap: 8px;
+    align-items: center;
+    padding-bottom: 8px;
+    margin-bottom: 7px;
+  }
+  .mg-expedition-header .mg-header-copy > span { display: none; }
+  .mg-expedition-header .mg-header-copy h1 { margin: 0; font-size: 17px; }
+  .mg-expedition-header .mg-header-copy small { max-width: 62vw; font-size: 9px; }
+  .mg-expedition-header .mg-header-actions { flex: 0 0 auto; flex-direction: row; }
+  .mg-expedition-header .mg-header-actions button { padding: 7px 8px; font-size: 9px; }
+  .mg-expedition-tabs {
+    gap: 3px;
+    margin: 0 0 7px;
+    padding: 4px;
+    border-radius: 10px;
+  }
+  .mg-expedition-tabs button {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    min-height: 45px;
+    padding: 6px 3px;
+  }
+  .mg-expedition-tabs strong { font-size: 10px; }
+  .mg-expedition-tabs small { font-size: 8px; }
+  .mg-climb-tab .mg-stage-topline { padding: 9px; }
+  .mg-climb-tab .mg-stage-topline h2 { margin-top: 3px; font-size: 16px; }
+  .mg-climb-tab .mg-stage-topline p { font-size: 9px; }
+  .mg-climb-tab .mg-stage-weather {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .mg-climb-tab .mg-stage-weather::-webkit-scrollbar { display: none; }
+  .mg-climb-tab .mg-stage-weather span { flex: 0 0 auto; padding: 4px 6px; font-size: 8px; }
+  .mg-climb-tab .mg-local-map { min-height: 0; aspect-ratio: 1 / 1; }
+  .mg-climb-tab .mg-local-aside { gap: 7px; padding: 7px; }
+  .mg-climb-status { grid-template-columns: 1fr 1fr; gap: 5px; }
+  .mg-climb-status article { padding: 7px; }
+  .mg-climb-status strong { font-size: 14px; }
+  .mg-climb-status small { font-size: 8px; }
+  .mg-climb-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .mg-climb-metrics > div { padding: 6px 7px; }
+  .mg-climb-tab .mg-tools { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mg-climb-tab .mg-tools button { min-height: 42px; }
+  .mg-climb-tab .mg-message { padding: 8px; }
+  .mg-climb-tab .mg-message p { font-size: 10px; }
+  .mg-climb-tab .mg-time-controls { grid-template-columns: minmax(0, 1fr) repeat(3, 42px); }
+  .mg-climb-tab .mg-time-controls button { padding: 8px 5px; font-size: 9px; }
+  .mg-map-legend,
+  .mg-tool-hint { display: none; }
+  .mg-mountain-tab .mg-viewer-card { min-height: 0; }
+  .mg-mountain-tab .mg-3d-canvas { height: min(62vh, 470px); }
+  .mg-mountain-tab .mg-mountain-scale { grid-template-columns: repeat(2, 74px); max-width: 158px; }
+  .mg-mountain-tab .mg-panel-head small { display: none; }
+  .mg-expedition-overview { gap: 10px; margin-bottom: 7px; padding: 10px; }
+  .mg-expedition-overview > div:first-child > strong { font-size: 16px; }
+  .mg-expedition-overview .mg-pace-controls > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mg-expedition-overview .mg-pace-controls button { min-height: 42px; padding: 6px; }
+  .mg-expedition-overview .mg-pace-controls button small { display: none; }
+  .mg-expedition-grid,
+  .mg-journal-tab { gap: 7px; }
+  .mg-gear-card .mg-route-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px; }
+  .mg-team-card .mg-team-list { gap: 6px; padding: 8px; }
+  .mg-team-list article { padding: 7px; }
+  .mg-team-list article > div:last-child { flex-direction: column; }
+  .mg-journal-tab .mg-incident-list,
+  .mg-journal-tab .mg-event-log { padding: 8px; }
+  .mg-empty-tab { min-height: 220px; padding: 20px; }
+  .mg-empty-tab strong { font-size: 17px; }
+  .mg-preflight,
+  .mg-expedition-summary { border-radius: 10px; }
+}

@@ -1,4 +1,4 @@
-# Alpine Legacy v0.9.5
+# Alpine Legacy v0.9.6
 
 Карьерная roguelike-RPG про альпинизм, экспедиции и живой процедурный мир.
 

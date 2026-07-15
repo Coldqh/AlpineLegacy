@@ -38,6 +38,7 @@ import {
 } from './mountainGridEngine';
 
 type Tool = 'ROUTE' | 'ROPE' | 'CAMP' | 'SCOUT';
+type ExpeditionTab = 'CLIMB' | 'MOUNTAIN' | 'EXPEDITION' | 'JOURNAL';
 
 type Props = {
   career: CareerState;
@@ -339,17 +340,6 @@ function LocalMap({ map, path, positionIndex, tool, camps, ropes, revealed, sele
   );
 }
 
-function RouteCard({ option, active, disabled, onClick }: { option: MountainRouteOption; active: boolean; disabled: boolean; onClick: () => void }) {
-  return (
-    <button className={`mg-route-card ${active ? 'is-active' : ''}`} onClick={onClick} disabled={disabled}>
-      <div><span>{option.difficultyLabel}</span><strong>{option.name}</strong></div>
-      <p>{option.description}</p>
-      <small>{option.distanceKm} км · {option.stageCount} этапов · уклон до {option.maxSlope}°</small>
-      <div className="mg-difficulty-dots">{[1, 2, 3, 4, 5].map(value => <i key={value} className={value <= option.difficulty ? 'is-on' : ''} />)}</div>
-    </button>
-  );
-}
-
 function localProfileFor(option?: MountainRouteOption): LocalRouteProfile {
   return option?.localProfile ?? 'SAFE';
 }
@@ -366,7 +356,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.9.5</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.9.6</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -385,6 +375,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const [speed, setSpeed] = useState<1 | 2 | 4>(1);
   const [tool, setTool] = useState<IntegratedTool>('ROUTE');
   const [selectedPoint, setSelectedPoint] = useState<GridPoint>({ x: 0, y: 0 });
+  const [activeTab, setActiveTab] = useState<ExpeditionTab>(() => topo.started ? 'CLIMB' : 'EXPEDITION');
 
   const participantMode = topo.authority !== 'COMMAND';
   const grid = useMemo(
@@ -425,7 +416,6 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const infra = topo.infrastructure[stage.id] ?? EMPTY_INTEGRATED_INFRASTRUCTURE;
   const weather = integratedWeatherAt(topo);
   const completed = ['COMPLETE', 'RETREATED', 'FAILED'].includes(topo.phase);
-  const canChangePlan = !topo.started;
   const currentPoint = path[Math.min(topo.positionIndex, Math.max(0, path.length - 1))] ?? localMap.start;
   const currentCell = localCellAt(localMap, currentPoint)!;
   const selectedCell = localCellAt(localMap, selectedPoint) ?? currentCell;
@@ -450,6 +440,11 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     setTool('ROUTE');
   }, [stage.id, descending]);
 
+
+  useEffect(() => {
+    if (!topo.started || completed) setActiveTab('EXPEDITION');
+  }, [topo.started, completed]);
+
   function commit(command: IntegratedExpeditionCommand) {
     const nextTopo = reduceIntegratedExpedition(topo!, command, context);
     if (nextTopo !== topo) onPersist(persistIntegratedExpedition(integratedCareer, nextTopo));
@@ -466,17 +461,6 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     }, delay);
     return () => window.clearTimeout(timer);
   }, [topo, paused, completed, path, speed, context.stageId, weather.temperatureC, weather.windKmh, weather.visibility, weather.snowSoftness]);
-
-  function changeEntry(side: EntrySide) {
-    if (!canChangePlan) return;
-    const nextOptions = buildMountainRouteOptions(grid, side);
-    commit({ type: 'SET_ENTRY', side, routeChoice: participantMode ? nextOptions[0]!.id : 'MANUAL' });
-  }
-
-  function chooseRoute(choice: string) {
-    if (!canChangePlan) return;
-    commit({ type: 'SET_ROUTE', routeChoice: choice });
-  }
 
   function regenerate() {
     if (topo!.started) return;
@@ -534,22 +518,147 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const outcomeLabel = topo.phase === 'COMPLETE' ? 'Вершина и возвращение' : topo.phase === 'RETREATED' ? 'Экспедиция завершена отходом' : 'Экспедиция провалена';
 
   return (
-    <main className="mg-app">
-      <header className="mg-header">
-        <div><span>ALPINE LEGACY / 0.9.5</span><h1>{climb.mountainName} · {climb.routeName}</h1></div>
-        <div className="mg-header-actions">{allowRegenerate && <button onClick={regenerate} disabled={topo.started}>Новая генерация</button>}<button onClick={() => onExit(completed)}>{completed ? 'Закрыть экспедицию' : 'Сохранить и выйти'}</button></div>
+    <main className="mg-app mg-expedition-shell">
+      <header className="mg-header mg-expedition-header">
+        <div className="mg-header-copy">
+          <span>ALPINE LEGACY / 0.9.6</span>
+          <h1>{climb.mountainName}</h1>
+          <small>{routeName} · {phaseLabel.toLowerCase()}</small>
+        </div>
+        <div className="mg-header-actions">
+          {allowRegenerate && <button onClick={regenerate} disabled={topo.started}>Новая гора</button>}
+          <button onClick={() => onExit(completed)}>{completed ? 'Закрыть' : 'Сохранить и выйти'}</button>
+        </div>
       </header>
 
-      <section className="mg-layout">
-        <div className="mg-main-column">
-          <MountainViewer grid={grid} route={globalRoute} routeName={routeName} selectedRoute={selectedRoute} stages={stages} side={topo.entrySide} currentStage={stageIndex} />
+      <nav className="mg-expedition-tabs" role="tablist" aria-label="Разделы экспедиции">
+        {([
+          ['CLIMB', 'Подъём', `${stageIndex + 1}/${stages.length}`],
+          ['MOUNTAIN', 'Гора 3D', `${Math.round(topo.currentElevation)} м`],
+          ['EXPEDITION', 'Экспедиция', `${teamAverageEnergy}%`],
+          ['JOURNAL', 'Журнал', String(topo.eventLog.length)],
+        ] as Array<[ExpeditionTab, string, string]>).map(([id, label, meta]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === id}
+            className={activeTab === id ? 'is-active' : ''}
+            onClick={() => setActiveTab(id)}
+          >
+            <strong>{label}</strong>
+            <small>{meta}</small>
+          </button>
+        ))}
+      </nav>
 
-          <section className="mg-stage-card">
+      <section className="mg-tab-panel">
+        {activeTab === 'CLIMB' && (
+          <section className="mg-stage-card mg-climb-tab" role="tabpanel">
             <div className="mg-stage-topline">
-              <div><span>{phaseLabel} · ЭТАП {stageIndex + 1} / {stages.length}</span><h2>{stage.title}</h2><p>{stage.subtitle} · сложность {stage.difficulty}/5 · карта {localMap.width} × {localMap.height}</p></div>
-              <div className="mg-stage-weather"><span>{weather.temperatureC}°C</span><span>ветер {weather.windKmh}</span><span>видимость {weather.visibility}%</span><span>снег {weather.snowSoftness}</span></div>
+              <div>
+                <span>{phaseLabel} · ЭТАП {stageIndex + 1} / {stages.length}</span>
+                <h2>{stage.title}</h2>
+                <p>{stage.subtitle} · сложность {stage.difficulty}/5</p>
+              </div>
+              <div className="mg-stage-weather">
+                <span>{weather.temperatureC}°C</span>
+                <span>ветер {weather.windKmh}</span>
+                <span>видимость {weather.visibility}%</span>
+                <span>снег {weather.snowSoftness}</span>
+              </div>
             </div>
 
+            {!topo.started ? (
+              <div className="mg-empty-tab">
+                <strong>Экспедиция ещё не началась</strong>
+                <p>Проверь людей и снаряжение, затем выходи на маршрут.</p>
+                <button onClick={() => setActiveTab('EXPEDITION')}>Открыть экспедицию</button>
+              </div>
+            ) : completed ? (
+              <div className="mg-empty-tab">
+                <strong>Вылазка завершена</strong>
+                <p>{topo.message}</p>
+                <button onClick={() => setActiveTab('EXPEDITION')}>Посмотреть итог</button>
+              </div>
+            ) : (
+              <div className="mg-local-layout">
+                <LocalMap
+                  map={localMap}
+                  path={path}
+                  positionIndex={topo.positionIndex}
+                  tool={tool as Tool}
+                  camps={infra.camps}
+                  ropes={infra.ropes}
+                  revealed={infra.revealed}
+                  selectedPoint={selectedPoint}
+                  started={topo.started}
+                  onCell={handleCell}
+                />
+                <aside className="mg-local-aside">
+                  <div className="mg-climb-status">
+                    <article>
+                      <span>ГРУППА</span>
+                      <strong>{currentCell.elevation} м</strong>
+                      <small>{TERRAIN_COPY[currentCell.terrain]} · {currentCell.slope}° · {HAZARD_COPY[currentCell.hazard]}</small>
+                    </article>
+                    <article className={selectedCell.ropeRequired ? 'is-critical' : ''}>
+                      <span>ВЫБРАННАЯ ТОЧКА</span>
+                      <strong>{RISK_COPY[selectedRisk.band]}</strong>
+                      <small>{selectedKnown ? `${selectedCell.elevation} м · ${slopeBand(selectedCell.slope)} · навык ${selectedRisk.skill}/10` : 'Угроза не разведана'}</small>
+                    </article>
+                  </div>
+
+                  <div className="mg-climb-metrics">
+                    <div><span>ВРЕМЯ</span><strong>{formatMinutes(routeMetrics.minutes)}</strong></div>
+                    <div><span>СИЛЫ</span><strong>{routeMetrics.energy}</strong></div>
+                    <div className={routeMetrics.unprotectedRopeCells ? 'is-warning' : ''}><span>БЕЗ СТРАХОВКИ</span><strong>{routeMetrics.unprotectedRopeCells}</strong></div>
+                    <div><span>ВЕРЁВКА</span><strong>{topo.ropeMeters} м</strong></div>
+                  </div>
+
+                  <div className="mg-tools" role="group" aria-label="Инструмент на карте">
+                    {(['ROUTE', 'SCOUT', 'ROPE', 'CAMP'] as IntegratedTool[]).map(id => (
+                      <button key={id} className={tool === id ? 'is-active' : ''} onClick={() => setTool(id)} disabled={!paused || completed}>
+                        <strong>{id === 'ROUTE' ? 'Маршрут' : id === 'SCOUT' ? 'Разведка' : id === 'ROPE' ? 'Верёвка' : 'Лагерь'}</strong>
+                        <small>{id === 'SCOUT' ? '12–20 мин' : id === 'ROPE' ? '20 м' : id === 'CAMP' ? '1 комплект' : 'линия'}</small>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className={`mg-message ${topo.lastEvent.severity === 'DANGER' ? 'is-danger' : ''}`}>
+                    <span>{paused ? 'ПАУЗА' : `ДВИЖЕНИЕ ×${speed}`}</span>
+                    <p>{topo.message}</p>
+                  </div>
+
+                  <div className="mg-time-controls">
+                    <button onClick={toggleMove} disabled={topo.forcedRetreat && path.length < 2}>{paused ? '▶ Двигаться' : 'Ⅱ Пауза'}</button>
+                    {([1, 2, 4] as const).map(value => <button key={value} className={speed === value ? 'is-active' : ''} onClick={() => setSpeed(value)}>×{value}</button>)}
+                  </div>
+
+                  <details className="mg-secondary-actions" open={topo.forcedRetreat || undefined}>
+                    <summary>Отдых и аварийные действия</summary>
+                    <div className="mg-rest-controls">
+                      <button onClick={() => commit({ type: 'REST', mode: 'BREAK' as IntegratedRestMode })} disabled={!paused}>Привал <small>30 мин · +9 сил</small></button>
+                      <button onClick={() => commit({ type: 'REST', mode: 'BIVOUAC' as IntegratedRestMode })} disabled={!paused}>Бивак <small>3 ч · топливо 1</small></button>
+                      <button onClick={() => commit({ type: 'REST', mode: 'SLEEP' as IntegratedRestMode })} disabled={!paused}>Сон <small>8 ч · топливо 2</small></button>
+                      {topo.phase === 'ASCENT' && <button className="is-warning" onClick={() => commit({ type: 'BEGIN_RETREAT' })} disabled={!paused}>Начать отход</button>}
+                      {topo.forcedRetreat && <button className="is-warning" onClick={() => commit({ type: 'REQUEST_RESCUE' })} disabled={!paused}>Вызвать спасателей</button>}
+                    </div>
+                  </details>
+                </aside>
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeTab === 'MOUNTAIN' && (
+          <div role="tabpanel" className="mg-mountain-tab">
+            <MountainViewer grid={grid} route={globalRoute} routeName={routeName} selectedRoute={selectedRoute} stages={stages} side={topo.entrySide} currentStage={stageIndex} />
+          </div>
+        )}
+
+        {activeTab === 'EXPEDITION' && (
+          <div role="tabpanel" className="mg-expedition-tab">
             {completed ? (
               <section className="mg-expedition-summary">
                 <div className="mg-summary-lead"><span>ИТОГ ЭКСПЕДИЦИИ</span><h3>{outcomeLabel}</h3><p>{topo.message}</p></div>
@@ -565,66 +674,68 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
               </section>
             ) : !topo.started ? (
               <section className="mg-preflight">
-                <div><span>ПЛАН ИЗ КАРЬЕРЫ</span><h3>Несколько решений, вся работа команды — автоматически</h3><p>Ты выбираешь линию, общий темп, отдых и момент отхода. Навигатор разведывает, техник ставит страховку, медик лечит, а груз перераспределяется сам.</p></div>
-                <dl><div><dt>Заход</dt><dd>{SIDE_COPY[topo.entrySide]}</dd></div><div><dt>Маршрут</dt><dd>{routeName}</dd></div><div><dt>Команда</dt><dd>{topo.participants.length}</dd></div><div><dt>Специалисты</dt><dd>{navigator.name} · {technician.name} · {medic.name}</dd></div><div><dt>Верёвка / лагеря</dt><dd>{topo.ropeMeters} м / {topo.campKits}</dd></div><div><dt>Груз</dt><dd>{topo.packWeightKg.toFixed(1)} кг/чел.</dd></div><div><dt>Акклиматизация</dt><dd>{topo.acclimatizationDays} дн.</dd></div><div><dt>Аптечка</dt><dd>{topo.gear.medkitCharges} применений</dd></div></dl>
-                <button onClick={() => commit({ type: 'START' })}>Начать экспедицию →</button>
+                <div><span>ГОТОВНОСТЬ</span><h3>Команда собрана</h3><p>Навигатор ведёт разведку, техник отвечает за страховку, медик работает с травмами. Ты управляешь линией, темпом, отдыхом и отходом.</p></div>
+                <dl>
+                  <div><dt>Команда</dt><dd>{topo.participants.length}</dd></div>
+                  <div><dt>Специалисты</dt><dd>{navigator.name} · {technician.name} · {medic.name}</dd></div>
+                  <div><dt>Верёвка / лагеря</dt><dd>{topo.ropeMeters} м / {topo.campKits}</dd></div>
+                  <div><dt>Груз</dt><dd>{topo.packWeightKg.toFixed(1)} кг/чел.</dd></div>
+                  <div><dt>Акклиматизация</dt><dd>{topo.acclimatizationDays} дн.</dd></div>
+                  <div><dt>Аптечка</dt><dd>{topo.gear.medkitCharges} применений</dd></div>
+                </dl>
+                <button onClick={() => { commit({ type: 'START' }); setActiveTab('CLIMB'); }}>Начать экспедицию →</button>
               </section>
             ) : (
-            <div className="mg-local-layout">
-              <LocalMap map={localMap} path={path} positionIndex={topo.positionIndex} tool={tool as Tool} camps={infra.camps} ropes={infra.ropes} revealed={infra.revealed} selectedPoint={selectedPoint} started={topo.started} onCell={handleCell} />
-              <aside className="mg-local-aside">
-                <div className="mg-current-cell"><span>ГРУППА СЕЙЧАС</span><strong>{currentCell.elevation} м</strong><p>{TERRAIN_COPY[currentCell.terrain]} · уклон {currentCell.slope}° · {HAZARD_COPY[currentCell.hazard]}</p></div>
-                <div className={`mg-cell-inspector ${selectedCell.ropeRequired ? 'is-critical' : ''}`}><span>ВЫБРАННАЯ ТОЧКА</span><div><strong>{selectedCell.elevation} м</strong><b>{slopeBand(selectedCell.slope)} · {selectedCell.slope}°</b></div><p>{selectedKnown ? `${TERRAIN_COPY[selectedCell.terrain]}; устойчивость ${selectedCell.stability}/100; крепление ${selectedCell.anchorQuality}/100.` : 'Рельеф виден, но угроза и качество крепления не разведаны.'}</p><small>{selectedProtected ? 'Верёвка установлена.' : selectedRisk.reason} Риск: {RISK_COPY[selectedRisk.band]} · навык {selectedRisk.skill}/10.</small></div>
-                <div className="mg-route-metrics">
-                  <div><span>ВРЕМЯ</span><strong>{formatMinutes(routeMetrics.minutes)}</strong></div>
-                  <div><span>СИЛЫ</span><strong>{routeMetrics.energy}</strong></div>
-                  <div><span>НАБОР / СБРОС</span><strong>+{routeMetrics.ascentMetres} / −{routeMetrics.descentMetres}</strong></div>
-                  <div><span>ОПАСНОСТИ</span><strong>{routeMetrics.hazardCells}</strong></div>
-                  <div><span>МАКС. УКЛОН</span><strong>{routeMetrics.maxSlope}°</strong></div>
-                  <div><span>ВЕРЁВКА</span><strong>{routeMetrics.ropeMetresRecommended} м</strong></div>
-                  <div className={routeMetrics.unprotectedRopeCells ? 'is-warning' : ''}><span>БЕЗ СТРАХОВКИ</span><strong>{routeMetrics.unprotectedRopeCells}</strong></div>
-                  <div><span>ОТКАТ</span><strong>до {routeMetrics.maxRollbackCells} кл.</strong></div>
+              <>
+                <section className="mg-expedition-overview">
+                  <div>
+                    <span>{phaseLabel}</span>
+                    <strong>{teamAverageEnergy} сил · {teamAverageCondition} состояние</strong>
+                    <small>мораль {teamAverageMorale} · доверие {teamAverageTrust} · в пути {formatMinutes(topo.elapsedMinutes)}</small>
+                  </div>
+                  <div className="mg-pace-controls">
+                    <span>ОБЩИЙ ТЕМП</span>
+                    <div>{(Object.keys(PACE_COPY) as IntegratedPace[]).map(pace => <button key={pace} className={topo.pace === pace ? 'is-active' : ''} onClick={() => commit({ type: 'SET_PACE', pace })} disabled={!paused}><strong>{PACE_COPY[pace].title}</strong><small>{PACE_COPY[pace].detail}</small></button>)}</div>
+                  </div>
+                </section>
+
+                <div className="mg-expedition-grid">
+                  <section className="mg-side-card mg-gear-card">
+                    <div className="mg-panel-head"><div><span>СНАРЯЖЕНИЕ И ЗАПАСЫ</span><strong>Фактический остаток</strong></div></div>
+                    <div className="mg-route-metrics">
+                      <div><span>ЕДА</span><strong>{topo.supplies.foodUnits.toFixed(1)}</strong></div>
+                      <div><span>ВОДА</span><strong>{topo.supplies.waterUnits.toFixed(1)}</strong></div>
+                      <div><span>ТОПЛИВО</span><strong>{topo.supplies.fuelUnits.toFixed(1)}</strong></div>
+                      <div><span>АПТЕЧКА</span><strong>{topo.gear.medkitCharges}</strong></div>
+                      <div><span>ВЕРЁВКА</span><strong>{topo.ropeMeters} м · {Math.round(topo.gear.ropeCondition)}%</strong></div>
+                      <div><span>ЖЕЛЕЗО</span><strong>{Math.round(topo.gear.hardwareCondition)}%</strong></div>
+                      <div><span>УКРЫТИЕ</span><strong>{Math.round(topo.gear.shelterCondition)}%</strong></div>
+                      <div><span>РАДИО</span><strong>{Math.round(topo.gear.radioCondition)}%</strong></div>
+                    </div>
+                  </section>
+
+                  <section className="mg-side-card mg-team-card">
+                    <div className="mg-panel-head"><div><span>ЛЮДИ</span><strong>{topo.participants.length} участников</strong></div><small>порядок группы</small></div>
+                    <div className="mg-team-list">{topo.participants.map((member, index) => <article key={member.id} className={member.status === 'INCAPACITATED' || member.status === 'DEAD' ? 'is-critical' : ''}><div><strong>{member.name}</strong><span>{member.role} · {member.specialty}</span><small>Силы {Math.round(member.energy)} · состояние {Math.round(member.condition)} · груз {member.loadKg.toFixed(1)}/{member.carryCapacityKg.toFixed(1)} кг</small><small>Мораль {Math.round(member.morale)} · доверие {Math.round(member.trust)}{member.injury ? ` · ${member.injury}` : ''}</small></div><div><button onClick={() => commit({ type: 'REORDER', index, delta: -1 })} disabled={!paused || index === 0}>↑</button><button onClick={() => commit({ type: 'REORDER', index, delta: 1 })} disabled={!paused || index === topo.participants.length - 1}>↓</button></div></article>)}</div>
+                  </section>
                 </div>
-                <div className="mg-tools">{(['ROUTE', 'SCOUT', 'ROPE', 'CAMP'] as IntegratedTool[]).map(id => <button key={id} className={tool === id ? 'is-active' : ''} onClick={() => setTool(id)} disabled={!paused || completed}><strong>{id === 'ROUTE' ? 'Маршрут' : id === 'SCOUT' ? 'Разведка' : id === 'ROPE' ? 'Верёвка' : 'Лагерь'}</strong><small>{id === 'SCOUT' ? '12–20 мин' : id === 'ROPE' ? '20 м' : id === 'CAMP' ? '1 комплект' : 'линия'}</small></button>)}</div>
-                <div className="mg-tool-explain"><strong>{TOOL_HELP[tool as Tool].title}</strong><p>{TOOL_HELP[tool as Tool].text}</p></div>
-                <div className="mg-pace-controls"><span>ОБЩИЙ ТЕМП</span><div>{(Object.keys(PACE_COPY) as IntegratedPace[]).map(pace => <button key={pace} className={topo.pace === pace ? 'is-active' : ''} onClick={() => commit({ type: 'SET_PACE', pace })} disabled={!paused || completed}><strong>{PACE_COPY[pace].title}</strong><small>{PACE_COPY[pace].detail}</small></button>)}</div></div>
-                <div className={`mg-message ${topo.lastEvent.severity === 'DANGER' ? 'is-danger' : ''}`}><span>{completed ? 'ИТОГ' : paused ? 'ПАУЗА' : `ДВИЖЕНИЕ ×${speed}`}</span><p>{topo.message}</p></div>
-                <div className="mg-time-controls"><button onClick={toggleMove} disabled={completed || topo.forcedRetreat && path.length < 2}>{paused ? '▶ Запустить' : 'Ⅱ Пауза'}</button>{([1, 2, 4] as const).map(value => <button key={value} className={speed === value ? 'is-active' : ''} onClick={() => setSpeed(value)} disabled={completed}>×{value}</button>)}</div>
-                <div className="mg-rest-controls"><span>ОТДЫХ И ИСХОД</span><button onClick={() => commit({ type: 'REST', mode: 'BREAK' as IntegratedRestMode })} disabled={!paused || completed}>Привал · 30 мин <small>+9 сил</small></button><button onClick={() => commit({ type: 'REST', mode: 'BIVOUAC' as IntegratedRestMode })} disabled={!paused || completed}>Бивак · 3 ч <small>топливо 1</small></button><button onClick={() => commit({ type: 'REST', mode: 'SLEEP' as IntegratedRestMode })} disabled={!paused || completed}>Сон · 8 ч <small>топливо 2</small></button>{topo.phase === 'ASCENT' && <button className="is-warning" onClick={() => commit({ type: 'BEGIN_RETREAT' })} disabled={!paused}>Начать отход</button>}{topo.forcedRetreat && !completed && <button className="is-warning" onClick={() => commit({ type: 'REQUEST_RESCUE' })} disabled={!paused}>Вызвать спасателей</button>}</div>
-                <small className="mg-route-state">Линия {path.length - 1} клеток · {routeReady ? 'до выхода' : 'не завершена'} · экспедиция {formatMinutes(topo.elapsedMinutes)}</small>
-              </aside>
-            </div>
+              </>
             )}
-          </section>
-        </div>
+          </div>
+        )}
 
-        <aside className="mg-side-column">
-          <section className="mg-side-card">
-            <div className="mg-panel-head"><div><span>СТОРОНА ЗАХОДА</span><strong>{topo.started ? `${SIDE_COPY[topo.entrySide]} · зафиксирован` : SIDE_COPY[topo.entrySide]}</strong></div></div>
-            <div className="mg-entry-grid">{(Object.keys(SIDE_COPY) as EntrySide[]).map(side => <button key={side} className={topo.entrySide === side ? 'is-active' : ''} onClick={() => changeEntry(side)} disabled={!canChangePlan}>{SIDE_COPY[side]}</button>)}</div>
-          </section>
-
-          <section className="mg-side-card mg-routes-card">
-            <div className="mg-panel-head"><div><span>МАРШРУТ НА ВЕРШИНУ</span><strong>{topo.started ? 'план зафиксирован' : participantMode ? 'выбран руководителем' : 'выбери до выхода'}</strong></div></div>
-            {!participantMode && <button className={`mg-route-card mg-route-card--manual ${topo.routeChoice === 'MANUAL' ? 'is-active' : ''}`} onClick={() => chooseRoute('MANUAL')} disabled={!canChangePlan}><div><span>СВОБОДНАЯ ЛИНИЯ</span><strong>Авторский маршрут</strong></div><p>Каждый локальный этап строится вручную и сохраняется.</p><small>{stages.length} этапов</small></button>}
-            <div className="mg-route-options">{routeOptions.map(option => <RouteCard key={option.id} option={option} active={selectedRoute?.id === option.id} disabled={!canChangePlan || participantMode} onClick={() => chooseRoute(option.id)} />)}</div>
-          </section>
-
-          <section className="mg-side-card">
-            <div className="mg-panel-head"><div><span>СОСТОЯНИЕ ЭКСПЕДИЦИИ</span><strong>{teamAverageEnergy} сил · {teamAverageCondition} состояние</strong></div><small>мораль {teamAverageMorale} · доверие {teamAverageTrust}</small></div>
-            <div className="mg-route-metrics"><div><span>ЕДА</span><strong>{topo.supplies.foodUnits.toFixed(1)}</strong></div><div><span>ВОДА</span><strong>{topo.supplies.waterUnits.toFixed(1)}</strong></div><div><span>ТОПЛИВО</span><strong>{topo.supplies.fuelUnits.toFixed(1)}</strong></div><div><span>АПТЕЧКА</span><strong>{topo.gear.medkitCharges}</strong></div><div><span>ВЕРЁВКА</span><strong>{topo.ropeMeters} м · {Math.round(topo.gear.ropeCondition)}%</strong></div><div><span>ЖЕЛЕЗО</span><strong>{Math.round(topo.gear.hardwareCondition)}%</strong></div><div><span>УКРЫТИЕ</span><strong>{Math.round(topo.gear.shelterCondition)}%</strong></div><div><span>РАДИО</span><strong>{Math.round(topo.gear.radioCondition)}%</strong></div></div>
-            <div className="mg-team-list">{topo.participants.map((member, index) => <article key={member.id} className={member.status === 'INCAPACITATED' || member.status === 'DEAD' ? 'is-critical' : ''}><div><strong>{member.name}</strong><span>{member.role} · {member.specialty}</span><small>Силы {Math.round(member.energy)} · состояние {Math.round(member.condition)} · груз {member.loadKg.toFixed(1)}/{member.carryCapacityKg.toFixed(1)} кг</small><small>Мораль {Math.round(member.morale)} · доверие {Math.round(member.trust)}{member.injury ? ` · ${member.injury}` : ''}</small></div><div><button onClick={() => commit({ type: 'REORDER', index, delta: -1 })} disabled={!paused || completed || index === 0}>↑</button><button onClick={() => commit({ type: 'REORDER', index, delta: 1 })} disabled={!paused || completed || index === topo.participants.length - 1}>↓</button></div></article>)}</div>
-          </section>
-
-          {topo.incidents.length > 0 && <section className="mg-side-card"><div className="mg-panel-head"><div><span>ПОСЛЕДСТВИЯ</span><strong>{topo.incidents.length} событий</strong></div></div><ol className="mg-incident-list">{topo.incidents.slice(-7).reverse().map(incident => <li key={incident.id}><strong>{incident.title}</strong><small>{incident.detail}</small></li>)}</ol></section>}
-
-          <section className="mg-side-card"><div className="mg-panel-head"><div><span>ЖУРНАЛ МАРШРУТА</span><strong>{topo.eventLog.length} записей</strong></div></div><ol className="mg-event-log">{topo.eventLog.slice(-10).reverse().map(entry => <li key={`${entry.serial}-${entry.text}`} className={`is-${entry.severity.toLowerCase()}`}><span>{String(entry.serial).padStart(2, '0')}</span><p>{entry.text}</p></li>)}</ol></section>
-
-          <section className="mg-side-card mg-stage-list-card">
-            <div className="mg-panel-head"><div><span>РАЗВЁРТКА ГОРЫ</span><strong>{stages.length} локальных карт</strong></div></div>
-            <ol>{stages.map(item => <li key={item.id} className={item.index === stageIndex ? 'is-active' : (topo.phase === 'ASCENT' ? item.index < stageIndex : item.index > stageIndex) ? 'is-done' : ''}><span>{String(item.index + 1).padStart(2, '0')}</span><div><strong>{item.title}</strong><small>{item.subtitle} · {item.difficulty}/5</small></div></li>)}</ol>
-          </section>
-        </aside>
+        {activeTab === 'JOURNAL' && (
+          <div role="tabpanel" className="mg-journal-tab">
+            <section className="mg-side-card">
+              <div className="mg-panel-head"><div><span>ПОСЛЕДСТВИЯ</span><strong>{topo.incidents.length || 'нет'} событий</strong></div></div>
+              {topo.incidents.length > 0 ? <ol className="mg-incident-list">{topo.incidents.slice().reverse().map(incident => <li key={incident.id}><strong>{incident.title}</strong><small>{incident.detail}</small></li>)}</ol> : <p className="mg-journal-empty">Серьёзных происшествий пока нет.</p>}
+            </section>
+            <section className="mg-side-card mg-log-card">
+              <div className="mg-panel-head"><div><span>ХОД ЭКСПЕДИЦИИ</span><strong>{topo.eventLog.length} записей</strong></div></div>
+              <ol className="mg-event-log">{topo.eventLog.slice().reverse().map(entry => <li key={`${entry.serial}-${entry.text}`} className={`is-${entry.severity.toLowerCase()}`}><span>{String(entry.serial).padStart(2, '0')}</span><p>{entry.text}</p></li>)}</ol>
+            </section>
+          </div>
+        )}
       </section>
     </main>
   );
