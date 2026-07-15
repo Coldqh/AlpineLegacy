@@ -60,7 +60,8 @@ export function MobileWorldSetup({ config, onConfig, onRandomSeed, onCreate, onB
   );
 }
 
-export function MobileGeneratingScreen({ seed }: { seed: string }) {
+export function MobileGeneratingScreen({ seed, error, onRetry, onBack }: { seed: string; error: string | null; onRetry: () => void; onBack: () => void }) {
+  if (error) return <main className="m-public-shell m-generating"><section className="generation-error"><p className="m-kicker">{seed}</p><h2>Мир не создан</h2><p>{error}</p><div><button onClick={onRetry}>Повторить</button><button onClick={onBack}>Назад</button></div></section></main>;
   return <main className="m-public-shell m-generating"><p className="m-kicker">{seed}</p><MountainArt variant="hero" /><h1>Строим хребет</h1><div className="m-loading"><i /><i /><i /><i /></div></main>;
 }
 

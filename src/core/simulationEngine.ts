@@ -1,5 +1,14 @@
 import { detectTerrainModule, terrainModuleById } from '../content/terrainModules';
 import { targetStageBudget } from './contentPipeline';
+import {
+  buildStageBrief,
+  missingPreparationGroups,
+  movementChoices,
+  movementTacticModifier,
+  nextPreparationActions,
+  recommendedMovement,
+  stagePrepared,
+} from './expeditionTactics';
 import { createParticipantEvent, resolveParticipantSkill } from './expeditionEngine';
 import { createRng } from './rng';
 import type {
@@ -85,22 +94,14 @@ function uniqueTags(tags: ExpeditionPreparationTag[]) {
 }
 
 export function isStagePrepared(stage: ExpeditionSimulationStage) {
-  return stage.preparationOptions.some(option => option.every(tag => stage.preparationTags.includes(tag)));
+  return stagePrepared(stage);
 }
 
 export function missingStagePreparation(stage: ExpeditionSimulationStage) {
-  const tagCost: Record<ExpeditionPreparationTag, number> = {
-    ROUTE_SCOUTED: 1,
-    SURFACE_CHECKED: 1,
-    TEAM_STABILIZED: 1,
-    ANCHOR_PLACED: 2,
-    ROPE_FIXED: 6,
-  };
-  const options = stage.preparationOptions
-    .map(option => option.filter(tag => !stage.preparationTags.includes(tag)))
-    .sort((a, b) => a.reduce((sum, tag) => sum + tagCost[tag], 0) - b.reduce((sum, tag) => sum + tagCost[tag], 0));
-  return options[0] ?? [];
+  return missingPreparationGroups(stage).flat();
 }
+
+export { buildStageBrief, nextPreparationActions, recommendedMovement };
 
 function addPreparationTag(stage: ExpeditionSimulationStage, tag: ExpeditionPreparationTag) {
   return { ...stage, preparationTags: uniqueTags([...stage.preparationTags, tag]) };
@@ -323,7 +324,7 @@ export function createExpeditionSimulation(route: ExpeditionRoute): ExpeditionSi
   const ascentStages = buildAscentStages(route);
   const descentStages = buildFullDescentStages(route, ascentStages);
   return {
-    version: 3,
+    version: 4,
     direction: 'ASCENT',
     status: 'ACTIVE',
     ascentStages,
@@ -350,7 +351,7 @@ export function createExpeditionSimulation(route: ExpeditionRoute): ExpeditionSi
 }
 
 export function hydrateExpeditionSimulation(climb: QualificationClimb, route: ExpeditionRoute): ExpeditionSimulationState {
-  if (climb.simulation?.version === 3) return climb.simulation;
+  if (climb.simulation?.version === 4) return climb.simulation;
   const fresh = createExpeditionSimulation(route);
   const legacy = climb.simulation as any;
   const direction = legacy?.direction === 'DESCENT' || climb.phase === 'DESCENT' ? 'DESCENT' as const : 'ASCENT' as const;
@@ -410,39 +411,53 @@ function makeLeaderOrder(career: CareerState, stage: ExpeditionSimulationStage, 
   const climb = career.activeClimb;
   if (!climb || climb.authorityMode === 'COMMAND') return null;
   const leader = leaderFor(career);
-  const cautious = (leader?.personality.caution ?? 55) >= (leader?.personality.ambition ?? 50);
-  let preferredAction: ExpeditionFieldActionId = cautious ? 'MOVE_CAUTIOUS' : 'MOVE_STEADY';
-  let text = cautious ? 'Держать связку плотной. Не ускоряться без команды.' : 'Темп не терять. Пройти участок до следующей остановки.';
+  const prep = nextPreparationActions(stage);
+  let preferredAction: ExpeditionFieldActionId;
+  let text: string;
   if (stage.phase === 'BASE_CAMP' || stage.phase === 'CAMP') {
     preferredAction = 'MAKE_CAMP';
-    text = stage.phase === 'BASE_CAMP' ? 'Развернуть базовый лагерь. Выполнить свою часть работы и доложить о готовности.' : 'Группа останавливается на ночёвку. Помочь поставить лагерь.';
-  } else if (stage.critical && stage.exposure >= 50) {
-    preferredAction = stage.terrain.toLowerCase().includes('снег') || stage.terrain.toLowerCase().includes('лед') ? 'CHECK_SURFACE' : 'PLACE_ANCHOR';
-    text = preferredAction === 'CHECK_SURFACE' ? 'Сначала проверить поверхность. Никого не выпускать на склон вслепую.' : 'Поставить надёжную точку и только потом вести связку.';
-  } else if (stage.critical && stage.difficulty >= 62) {
-    preferredAction = 'FIX_ROPE';
-    text = 'Закрепить линию. Скорость сейчас не важнее обратного пути.';
-  } else if (!cautious && stage.exposure < 42) {
-    preferredAction = 'MOVE_FAST';
-    text = 'Участок простой. Ускориться и не тратить окно.';
+    text = stage.phase === 'BASE_CAMP'
+      ? 'Развернуть базовый лагерь. Выполни свою часть работы и доложи о готовности.'
+      : 'Группа останавливается. Помоги подготовить площадку и укрытие.';
+  } else if (prep.length > 0) {
+    preferredAction = prep[0]!;
+    const task = contextualActionTitle(career, preferredAction, stage);
+    text = `${task}. Движение начнём только после доклада о готовности.`;
+  } else {
+    preferredAction = recommendedMovement(career, stage);
+    text = preferredAction === 'MOVE_FAST'
+      ? 'Линия готова. Пройти опасную зону без остановки.'
+      : preferredAction === 'MOVE_CAUTIOUS'
+        ? 'Работать с запасом. Держать дистанцию и не ломать темп связки.'
+        : 'Держать рабочий темп до следующей точки.';
   }
-  return { id: `${climb.id}:order:${actionCount}:${stage.id}`, text, preferredAction, issuedAtAction: actionCount, strictness: clamp(45 + (leader?.personality.discipline ?? 50) * .45), resolved: false, obeyed: null };
+  return {
+    id: `${climb.id}:order:${actionCount}:${stage.id}`,
+    text,
+    preferredAction,
+    issuedAtAction: actionCount,
+    strictness: clamp(45 + (leader?.personality.discipline ?? 50) * .45),
+    resolved: false,
+    obeyed: null,
+  };
 }
 
 function chanceFor(career: CareerState, actionId: ExpeditionFieldActionId, stage: ExpeditionSimulationStage) {
   const climb = career.activeClimb!;
   const skillId = actionSkill(actionId, stage);
   const skill = skillId ? career.hero.skills[skillId] : 5;
-  const paceModifier = actionId === 'MOVE_CAUTIOUS' ? 18 : actionId === 'MOVE_FAST' ? -14 : 0;
-  const weatherPenalty = Math.max(0, climb.windKmh - 45) * .18 + Math.max(0, 45 - climb.visibility) * .15 + Math.max(0, -20 - climb.temperatureC) * .25;
-  const fatiguePenalty = Math.max(0, climb.hoursAwake - 14) * .9 + Math.max(0, 25 - climb.energy) * .25;
+  const weatherPenalty = Math.max(0, climb.windKmh - 42) * .22 + Math.max(0, 50 - climb.visibility) * .18 + Math.max(0, -18 - climb.temperatureC) * .28;
+  const fatiguePenalty = Math.max(0, climb.hoursAwake - 10) * 1.1 + Math.max(0, 45 - climb.energy) * .32;
   const prepared = isStagePrepared(stage);
   const missing = missingStagePreparation(stage).length;
-  const preparation = stage.preparation * .3 + stage.routeKnowledge * .2 + stage.surfaceKnowledge * .22 + stage.anchorsPlaced * 7 + (stage.ropeFixed ? 12 : 0) + (prepared ? 12 : 0);
-  const tacticalPenalty = actionId.startsWith('MOVE_') && stage.critical && !prepared ? 18 + missing * 5 : 0;
-  const loadPenalty = Math.max(0, climb.packWeightKg - 13) * 1.1;
-  const raw = 52 + skill * 7 + career.hero.form * .15 + preparation + paceModifier - stage.difficulty * .52 - stage.exposure * .16 - weatherPenalty - fatiguePenalty - loadPenalty - tacticalPenalty;
-  return Math.round(clamp(raw, 4, 96));
+  const preparation = stage.preparation * .18 + stage.routeKnowledge * .14 + stage.surfaceKnowledge * .17 + stage.anchorsPlaced * 5 + (stage.ropeFixed ? 10 : 0) + (prepared ? 8 : 0);
+  const tacticalPenalty = actionId.startsWith('MOVE_') && stage.critical && !prepared ? 34 + missing * 8 : 0;
+  const loadPenalty = Math.max(0, climb.packWeightKg - 13) * 1.2;
+  const tactic = movementTacticModifier(career, stage, actionId);
+  const repeatFailures = stage.incidentHistory.filter(item => item === `ACTION_FAIL:${actionId}`).length;
+  const learningBonus = Math.min(36, repeatFailures * 18);
+  const raw = 58 + skill * 8 + career.hero.form * .15 + preparation + tactic + learningBonus - stage.difficulty * .48 - stage.exposure * .14 - weatherPenalty - fatiguePenalty - loadPenalty - tacticalPenalty;
+  return Math.round(clamp(raw, 3, 94));
 }
 
 function simulationFor(career: CareerState) {
@@ -455,81 +470,81 @@ function preview(career: CareerState, actionId: ExpeditionFieldActionId): Expedi
   const stage = currentExpeditionStage(career)!;
   const skill = actionSkill(actionId, stage);
   const move = actionId.startsWith('MOVE_');
-  const pace = actionId === 'MOVE_CAUTIOUS' ? .78 : actionId === 'MOVE_FAST' ? 1.28 : 1;
+  const pace = actionId === 'MOVE_CAUTIOUS' ? .82 : actionId === 'MOVE_FAST' ? 1.22 : 1;
   const duration = move
-    ? Math.round((24 + stage.difficulty * .34 + stage.exposure * .18) / pace)
+    ? Math.round((30 + stage.difficulty * .38 + stage.exposure * .22) / pace)
     : actionId === 'SCOUT_LINE' ? 35
       : actionId === 'PLACE_ANCHOR' ? 28
         : actionId === 'FIX_ROPE' ? 50
           : actionId === 'CHECK_SURFACE' ? 30
-            : actionId === 'REST_SHORT' ? 60
-              : actionId === 'EAT_DRINK' ? 20
-                : actionId === 'MAKE_CAMP' ? 420
-                  : actionId === 'MELT_SNOW' ? 50
-                    : actionId === 'HELP_TEAM' ? 35
-                      : actionId === 'DROP_LOAD' ? 15
-                        : actionId === 'REQUEST_AID' ? 15
-                          : actionId === 'CHALLENGE_ORDER' ? 20
+            : actionId === 'REST_SHORT' ? 45
+              : actionId === 'EAT_DRINK' ? 15
+                : actionId === 'MAKE_CAMP' ? 360
+                  : actionId === 'MELT_SNOW' ? 45
+                    : actionId === 'HELP_TEAM' ? 30
+                      : actionId === 'DROP_LOAD' ? 12
+                        : actionId === 'REQUEST_AID' ? 10
+                          : actionId === 'CHALLENGE_ORDER' ? 15
                             : 10;
-  const progress = move ? Math.round((actionId === 'MOVE_CAUTIOUS' ? 54 : actionId === 'MOVE_FAST' ? 82 : 68) + career.hero.skills[stage.skill] * 1.8) : 0;
-  const movementCost = Math.max(1, Math.round((.8 + stage.difficulty * .012 + stage.exposure * .008 + Math.max(0, climb.packWeightKg - 13) * .05) * (actionId === 'MOVE_CAUTIOUS' ? .82 : actionId === 'MOVE_FAST' ? 1.34 : 1)));
+  const remaining = Math.max(0, stage.requiredProgress - stage.progress);
+  const progress = move ? remaining : 0;
+  const movementCost = Math.max(2, Math.round((1.5 + stage.difficulty * .018 + stage.exposure * .012 + Math.max(0, climb.packWeightKg - 13) * .065) * (actionId === 'MOVE_CAUTIOUS' ? .88 : actionId === 'MOVE_FAST' ? 1.3 : 1)));
   const energyDelta = move ? -movementCost
     : actionId === 'SCOUT_LINE' ? -1
       : actionId === 'PLACE_ANCHOR' || actionId === 'FIX_ROPE' ? -2
         : actionId === 'CHECK_SURFACE' ? -1
-          : actionId === 'REST_SHORT' ? 9
+          : actionId === 'REST_SHORT' ? 8
             : actionId === 'EAT_DRINK' ? 10
-              : actionId === 'MAKE_CAMP' ? 42
-                : actionId === 'HELP_TEAM' ? -1
+              : actionId === 'MAKE_CAMP' ? 38
+                : actionId === 'HELP_TEAM' ? -2
                   : actionId === 'REQUEST_AID' ? -1
                     : 0;
   let disabledReason: string | null = null;
   const plannedCamp = stage.phase === 'BASE_CAMP' || stage.phase === 'CAMP';
+  const preparationActions = nextPreparationActions(stage);
   if (simulation.activeEvent) disabledReason = 'Сначала разреши текущую ситуацию.';
   else if (simulation.status === 'SUMMIT' || simulation.status === 'SAFE' || simulation.status === 'DEAD' || simulation.status === 'EVACUATED') disabledReason = 'Действие сейчас недоступно.';
-  else if (move && plannedCamp) disabledReason = 'Сначала группа должна закончить работу в лагере.';
-  else if (move && stage.critical && !isStagePrepared(stage)) disabledReason = `Сначала подготовь участок: ${missingStagePreparation(stage).join(', ')}.`;
-  else if (move && (climb.energy <= 1 || climb.condition <= 8 || simulation.status === 'STRANDED')) disabledReason = 'Сначала восстанови состояние или запроси помощь.';
+  else if (move && plannedCamp) disabledReason = 'Сначала закончи порученную лагерную работу.';
+  else if (move && preparationActions.length > 0) disabledReason = 'Сначала выполни текущую задачу участка.';
+  else if (move && (climb.energy <= 2 || climb.condition <= 8 || simulation.status === 'STRANDED')) disabledReason = 'Сначала восстанови состояние или запроси помощь.';
   else if (actionId === 'FIX_ROPE' && (simulation.direction !== 'ASCENT' || climb.ropeMetersRemaining < 20 || stage.ropeFixed)) disabledReason = stage.ropeFixed ? 'Линия уже закреплена.' : 'Нужно 20 м свободной верёвки на подъёме.';
-    else if (actionId === 'MAKE_CAMP' && !plannedCamp && simulation.status !== 'STRANDED') disabledReason = 'Лагерь организует руководитель только на назначенной площадке.';
+  else if (actionId === 'MAKE_CAMP' && !plannedCamp && simulation.status !== 'STRANDED') disabledReason = career.activeClimb?.authorityMode === 'COMMAND' ? 'Здесь нет запланированной площадки.' : 'Решение об остановке принимает руководитель.';
+  else if (actionId === 'MAKE_CAMP' && !plannedCamp && career.activeClimb?.authorityMode !== 'COMMAND' && simulation.leaderOrder?.preferredAction !== 'MAKE_CAMP') disabledReason = 'Руководитель не отдавал приказ на бивак.';
   else if (actionId === 'MAKE_CAMP' && !stage.campPossible && !(career.expeditionPlan.gear.bivy ?? 0)) disabledReason = 'Здесь нет площадки и аварийного укрытия.';
   else if (actionId === 'MAKE_CAMP' && (climb.supplies.foodUnits <= 0 || climb.supplies.fuelUnits <= 0)) disabledReason = 'Для лагеря нужны еда и топливо.';
+  else if (actionId === 'REST_SHORT' && simulation.status !== 'STRANDED' && climb.energy >= 84 && climb.hoursAwake < 8) disabledReason = 'Силы ещё в рабочем диапазоне.';
   else if (actionId === 'EAT_DRINK' && (climb.supplies.foodUnits <= 0 || climb.supplies.waterUnits <= 0)) disabledReason = 'Еда или вода закончились.';
+  else if (actionId === 'EAT_DRINK' && simulation.status !== 'STRANDED' && climb.energy >= 84 && climb.condition >= 88) disabledReason = 'Сейчас запас лучше сохранить.';
   else if (actionId === 'MELT_SNOW' && (!plannedCamp || climb.supplies.fuelUnits <= 0)) disabledReason = plannedCamp ? 'Топливо закончилось.' : 'Снег топят во время остановки или лагеря.';
-  else if (actionId === 'DROP_LOAD' && climb.packWeightKg - simulation.loadDroppedKg <= 7) disabledReason = 'Больше бросать нечего.';
+  else if (actionId === 'HELP_TEAM' && climb.teamCondition >= 86 && !preparationActions.includes('HELP_TEAM')) disabledReason = 'Группа сейчас не требует помощи.';
+  else if (actionId === 'DROP_LOAD' && climb.packWeightKg - simulation.loadDroppedKg <= 9) disabledReason = 'Больше бросать нечего.';
   else if (actionId === 'REQUEST_AID' && simulation.rescueEtaMinutes !== null) disabledReason = 'Помощь уже вызвана.';
   else if (actionId === 'REQUEST_AID' && simulation.status !== 'STRANDED' && climb.condition > 18) disabledReason = 'Эвакуация вызывается при реальной невозможности двигаться.';
   else if (actionId === 'CHALLENGE_ORDER' && (!simulation.leaderOrder || simulation.leaderOrder.resolved)) disabledReason = 'Нет активного приказа.';
   else if (actionId === 'TURN_BACK' && simulation.direction !== 'ASCENT') disabledReason = 'Группа уже возвращается.';
+
   const successChance = skill ? chanceFor(career, actionId, stage) : null;
-  const risk = successChance === null ? 0 : 100 - successChance + (move ? stage.exposure * .18 : 0);
+  const risk = successChance === null ? 0 : 100 - successChance + (move ? stage.exposure * .16 : 0);
   const riskLabel = risk < 18 ? 'НИЗКИЙ' : risk < 34 ? 'СРЕДНИЙ' : risk < 56 ? 'ВЫСОКИЙ' : 'КРИТИЧЕСКИЙ';
-  const missingPreparation = missingStagePreparation(stage);
-  const prepText = missingPreparation.length ? ` Не подготовлено: ${missingPreparation.join(', ')}.` : ' Участок подготовлен.';
+  const recommended = move && actionId === recommendedMovement(career, stage);
   const detail = move
-    ? `${progress} прогресса участка. Результат зависит от навыка, подготовки и темпа.${stage.critical ? prepText : ''}`
-    : actionId === 'SCOUT_LINE' ? 'Открывает линию и повышает шанс следующего движения.'
-      : actionId === 'PLACE_ANCHOR' ? 'Ставит точку из технического комплекта и повышает защиту участка.'
-        : actionId === 'FIX_ROPE' ? 'Тратит 20 м верёвки, упрощает работу группы и обратный путь.'
-          : actionId === 'CHECK_SURFACE' ? 'Снижает неизвестность снега, льда и трещин.'
-            : actionId === 'REST_SHORT' ? 'Восстанавливает силы, но время и погода продолжают идти.'
-              : actionId === 'EAT_DRINK' ? 'Тратит личный запас и возвращает рабочее состояние.'
-                : actionId === 'MAKE_CAMP' ? (climb.authorityMode === 'COMMAND' ? 'Ты принимаешь решение о лагере и распределяешь работу.' : 'Руководитель остановил группу. Ты выполняешь свою часть лагерной работы.')
+    ? recommended
+      ? 'Тактика подходит текущему рельефу и условиям. Успех завершит этап.'
+      : 'Альтернативный темп. Он может сработать, но хуже отвечает текущим условиям.'
+    : actionId === 'SCOUT_LINE' ? 'Чтение рельефа. Успех откроет следующий шаг подготовки.'
+      : actionId === 'PLACE_ANCHOR' ? 'Экономная защита участка. На спуске она помогает меньше стационарной линии.'
+        : actionId === 'FIX_ROPE' ? 'Тратит 20 м верёвки, зато защищает группу и обратный путь.'
+          : actionId === 'CHECK_SURFACE' ? 'Проверка слоя, льда и скрытых провалов профильным навыком.'
+            : actionId === 'REST_SHORT' ? 'Возвращает часть сил, но погода и время продолжают идти.'
+              : actionId === 'EAT_DRINK' ? 'Тратит запас и возвращает рабочее состояние.'
+                : actionId === 'MAKE_CAMP' ? (climb.authorityMode === 'COMMAND' ? 'Ты распределяешь работу лагеря.' : 'Руководитель уже остановил группу. Ты выполняешь порученную работу.')
                   : actionId === 'MELT_SNOW' ? 'Топливо превращается в воду для всей группы.'
-                    : actionId === 'HELP_TEAM' ? 'Стабилизирует слабого участника ценой твоих сил.'
+                    : actionId === 'HELP_TEAM' ? 'Стабилизирует связку ценой твоих сил и времени.'
                       : actionId === 'DROP_LOAD' ? 'Снижает вес, но часть груза останется на горе.'
-                        : actionId === 'REQUEST_AID' ? 'Начинает реальную эвакуацию. До контакта нужно выжить.'
-                          : actionId === 'CHALLENGE_ORDER' ? 'Проверка лидерства. Можно изменить опасный приказ.'
+                        : actionId === 'REQUEST_AID' ? 'Запускает реальную эвакуацию. До контакта нужно выжить.'
+                          : actionId === 'CHALLENGE_ORDER' ? 'Попытка изменить опасный приказ через лидерство.'
                             : 'Разворот не завершает экспедицию. Весь путь вниз останется впереди.';
   return { id: actionId, title: contextualActionTitle(career, actionId, stage), detail, durationMinutes: duration, energyDelta, progressDelta: progress, successChance, riskLabel, disabled: Boolean(disabledReason), disabledReason, skill };
-}
-
-function actionForPreparationTag(tag: ExpeditionPreparationTag): ExpeditionFieldActionId {
-  if (tag === 'ROUTE_SCOUTED') return 'SCOUT_LINE';
-  if (tag === 'SURFACE_CHECKED') return 'CHECK_SURFACE';
-  if (tag === 'ANCHOR_PLACED') return 'PLACE_ANCHOR';
-  if (tag === 'ROPE_FIXED') return 'FIX_ROPE';
-  return 'HELP_TEAM';
 }
 
 export function previewExpeditionActions(career: CareerState): ExpeditionActionPreview[] {
@@ -541,59 +556,38 @@ export function previewExpeditionActions(career: CareerState): ExpeditionActionP
   const ids: ExpeditionFieldActionId[] = [];
   const add = (id: ExpeditionFieldActionId) => { if (!ids.includes(id)) ids.push(id); };
   const plannedCamp = stage.phase === 'BASE_CAMP' || stage.phase === 'CAMP';
-  const prepared = isStagePrepared(stage);
 
   if (simulation.status === 'STRANDED') {
+    if (climb.supplies.foodUnits > 0 && climb.supplies.waterUnits > 0) add('EAT_DRINK');
     add('REST_SHORT');
-    add('EAT_DRINK');
     if (stage.campPossible || (career.expeditionPlan.gear.bivy ?? 0) > 0) add('MAKE_CAMP');
-    if (climb.packWeightKg - simulation.loadDroppedKg > 9) add('DROP_LOAD');
+    if (climb.packWeightKg - simulation.loadDroppedKg > 11) add('DROP_LOAD');
     add('REQUEST_AID');
-    if (climb.teamCondition < 65) add('HELP_TEAM');
   } else if (plannedCamp) {
     add('MAKE_CAMP');
     if (climb.supplies.waterUnits < Math.max(8, climb.teamMemberIds.length * 2)) add('MELT_SNOW');
-    add('EAT_DRINK');
-    add('HELP_TEAM');
+    if (climb.energy < 78) add('EAT_DRINK');
   } else {
-    if (stage.critical && !prepared) {
-      missingStagePreparation(stage).map(actionForPreparationTag).forEach(add);
+    const prepActions = nextPreparationActions(stage);
+    if (prepActions.length) {
+      prepActions.forEach(add);
+      if (stage.critical && simulation.direction === 'ASCENT' && !stage.ropeFixed && climb.ropeMetersRemaining >= 20) add('FIX_ROPE');
+      if (climb.energy < 42 || climb.hoursAwake >= 10) add('REST_SHORT');
+      if (climb.energy < 50 && climb.supplies.foodUnits > 0 && climb.supplies.waterUnits > 0) add('EAT_DRINK');
     } else {
-      if (stage.terrainModuleId === 'ICEFALL') {
-        add('MOVE_STEADY'); add('MOVE_FAST');
-      } else if (stage.exposure >= 55 || stage.terrainModuleId === 'CREVASSE_FIELD' || stage.terrainModuleId === 'RIDGE') {
-        add('MOVE_CAUTIOUS'); add('MOVE_STEADY');
-      } else if (stage.terrainModuleId === 'APPROACH_TRAIL' || stage.terrainModuleId === 'MORAINE' || stage.terrainModuleId === 'ALTITUDE_PLATEAU' || stage.terrainModuleId === 'EXIT_TRAIL') {
-        add('MOVE_STEADY'); add('MOVE_FAST');
-      } else {
-        add('MOVE_CAUTIOUS'); add('MOVE_STEADY');
-      }
+      movementChoices(career, stage).forEach(add);
+      if (climb.teamCondition < 50) add('HELP_TEAM');
+      if (climb.energy < 38 || climb.hoursAwake >= 11) add('REST_SHORT');
+      if (climb.energy < 44 && climb.supplies.foodUnits > 0 && climb.supplies.waterUnits > 0) add('EAT_DRINK');
     }
-
-    const role = climb.playerRole;
-    const ordered = simulation.leaderOrder?.resolved === false ? simulation.leaderOrder.preferredAction : null;
-    const ropeCanProtect = simulation.direction === 'ASCENT'
-      && climb.ropeMetersRemaining >= 20
-      && !stage.ropeFixed
-      && (stage.critical || stage.preparationOptions.some(option => option.includes('ROPE_FIXED')));
-    if (ropeCanProtect) add('FIX_ROPE');
-    for (const recommended of stage.recommendedActions) {
-      if (recommended.startsWith('MOVE_')) continue;
-      if (recommended === 'SCOUT_LINE' && !['NAVIGATOR', 'ROPE_LEAD', 'LEADER'].includes(role) && ordered !== 'SCOUT_LINE' && stage.terrainModuleId !== 'MORAINE') continue;
-      add(recommended);
+    if (simulation.leaderOrder && !simulation.leaderOrder.resolved) {
+      const ordered = simulation.leaderOrder.preferredAction;
+      if (prepActions.includes(ordered) || movementChoices(career, stage).includes(ordered)) add(ordered);
+      add('CHALLENGE_ORDER');
     }
-    if (ordered) add(ordered);
-    if (climb.teamCondition < 68 || missingStagePreparation(stage).includes('TEAM_STABILIZED')) add('HELP_TEAM');
-    if (climb.energy < 58 || climb.hoursAwake >= 10) add('REST_SHORT');
-    if (climb.energy < 68 || climb.hoursAwake >= 8) add('EAT_DRINK');
-    if (climb.packWeightKg - simulation.loadDroppedKg > 19) add('DROP_LOAD');
-    if (simulation.leaderOrder && !simulation.leaderOrder.resolved) add('CHALLENGE_ORDER');
   }
 
-  const previews = ids.map(id => preview(career, id));
-  const enabled = previews.filter(item => !item.disabled);
-  const disabledRequired = previews.filter(item => item.disabled && ['SCOUT_LINE', 'PLACE_ANCHOR', 'FIX_ROPE', 'CHECK_SURFACE', 'MAKE_CAMP'].includes(item.id));
-  return [...enabled, ...disabledRequired].slice(0, 6);
+  return ids.map(id => preview(career, id)).filter(item => !item.disabled).slice(0, 4);
 }
 
 function consume(climb: QualificationClimb, minutes: number) {
@@ -826,7 +820,12 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
   }
 
   const rng = createRng(`${career.rootSeed}:${climb.id}:field:${simulation.totalActions}:${stage.id}:${actionId}`);
-  const success = action.successChance === null || rng.int(1, 100) <= action.successChance;
+  const priorMoveFailures = stage.incidentHistory.filter(item => item.startsWith('MOVE_FAIL')).length;
+  const priorActionFailures = stage.incidentHistory.filter(item => item === `ACTION_FAIL:${actionId}`).length;
+  const learnedPass = actionId.startsWith('MOVE_')
+    ? actionId === recommendedMovement(career, stage) && priorMoveFailures >= 1 && isStagePrepared(stage)
+    : Boolean(action.skill) && priorActionFailures >= 1;
+  const success = learnedPass || action.successChance === null || rng.int(1, 100) <= action.successChance;
   let duration = action.durationMinutes;
   let energy = clamp(climb.energy + action.energyDelta);
   let condition = climb.condition;
@@ -843,40 +842,54 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
 
   if (actionId.startsWith('MOVE_')) {
     const prepared = isStagePrepared(stage);
-    const rawProgress = Math.max(12, Math.round(action.progressDelta * (success ? 1 : .38)));
-    const tacticalCap = Math.round(stage.requiredProgress * .38);
-    const progress = stage.critical && !prepared && simulation.direction === 'ASCENT'
-      ? Math.max(0, Math.min(Math.round(rawProgress * .42), tacticalCap - stage.progress))
-      : stage.critical && !prepared
-        ? Math.max(10, Math.round(rawProgress * .55))
-        : rawProgress;
-    nextStage.progress = clamp(stage.progress + progress, 0, stage.requiredProgress);
-    nextSimulation.totalMovementActions += 1;
-    const stageRatio = nextStage.progress / Math.max(1, stage.requiredProgress);
-    nextSimulation.relativeElevation = Math.round(stage.relativeStart + (stage.relativeEnd - stage.relativeStart) * stageRatio);
-    nextSimulation.highestRelativeElevation = Math.max(nextSimulation.highestRelativeElevation, nextSimulation.relativeElevation);
-    if (success) {
-      detail = stage.critical && !prepared && simulation.direction === 'ASCENT'
-        ? progress > 0 ? `${progress} прогресса. Дальше без подготовки участок не пускает.` : 'Движение остановлено требованиями участка. Нужна разведка, проверка или страховка.'
-        : stage.critical && !prepared
-          ? `${progress} прогресса. Спуск идёт без полной защиты: риск остаётся высоким.`
-          : `${progress} прогресса. Связка удержала выбранный темп.`;
+    const remaining = Math.max(0, stage.requiredProgress - stage.progress);
+    const previousMoveFailures = stage.incidentHistory.filter(item => item.startsWith('MOVE_FAIL')).length;
+    const correctTactic = actionId === recommendedMovement(career, stage);
+    if (success && prepared) {
+      nextStage.progress = stage.requiredProgress;
+      nextStage.incidentHistory = [...stage.incidentHistory, `MOVE_OK:${actionId}`].slice(-8);
+      nextSimulation.totalMovementActions += 1;
+      nextSimulation.relativeElevation = stage.relativeEnd;
+      nextSimulation.highestRelativeElevation = Math.max(nextSimulation.highestRelativeElevation, nextSimulation.relativeElevation);
+      detail = correctTactic
+        ? `Участок пройден выбранной тактикой. ${Math.abs(stage.relativeEnd - stage.relativeStart)} м маршрута закрыты.`
+        : `Участок пройден, но альтернативный темп потребовал большего запаса. ${Math.abs(stage.relativeEnd - stage.relativeStart)} м маршрута закрыты.`;
+      if (!correctTactic) {
+        energy = clamp(energy - 2);
+        duration += 12;
+      }
     } else {
-      const loss = rng.int(3, 9) + Math.round(stage.exposure / 18);
+      const progress = prepared ? Math.min(remaining, Math.max(6, Math.round(stage.requiredProgress * (success ? .18 : .1)))) : 0;
+      nextStage.progress = clamp(stage.progress + progress, 0, stage.requiredProgress);
+      nextStage.incidentHistory = [...stage.incidentHistory, `MOVE_FAIL:${actionId}`].slice(-8);
+      nextSimulation.totalMovementActions += 1;
+      const stageRatio = nextStage.progress / Math.max(1, stage.requiredProgress);
+      nextSimulation.relativeElevation = Math.round(stage.relativeStart + (stage.relativeEnd - stage.relativeStart) * stageRatio);
+      nextSimulation.highestRelativeElevation = Math.max(nextSimulation.highestRelativeElevation, nextSimulation.relativeElevation);
+      const failureNumber = previousMoveFailures + 1;
+      const loss = rng.int(3, 7) + Math.round(stage.exposure / 28) + (correctTactic ? 0 : 3);
       energy = clamp(energy - loss);
-      condition = clamp(condition - rng.int(1, Math.max(2, Math.round(stage.exposure / 22))));
-      teamCondition = clamp(teamCondition - rng.int(1, 5));
-      duration += rng.int(18, 55);
-      detail = `Проверка навыка провалена. Пройдено только ${progress} прогресса, потеряны силы и время.`;
-      severity = stage.critical || stage.exposure >= 55 ? 'DANGER' : 'WARNING';
-      const baseAccidentChance = clamp((100 - (action.successChance ?? 50)) / 260, .02, .12);
-      const accidentChance = prepared ? 0 : baseAccidentChance * (stage.exposure >= 72 ? 1.25 : 1);
-      if (stage.critical && simulation.direction === 'ASCENT' && rng.chance(accidentChance)) {
-        condition = clamp(condition - rng.int(4, 10));
+      condition = clamp(condition - rng.int(0, Math.max(1, Math.round(stage.exposure / 34))));
+      teamCondition = clamp(teamCondition - rng.int(0, 3));
+      duration += rng.int(25, 65);
+      severity = stage.critical || stage.exposure >= 50 ? 'DANGER' : 'WARNING';
+      if (!prepared) {
+        headline = 'Участок не готов';
+        detail = 'Движение остановлено до обязательной подготовки. Высота почти не изменилась.';
+      } else {
+        headline = failureNumber >= 2 ? 'Связка теряет контроль' : 'Проход не удался';
+        detail = `${progress > 0 ? `Удалось пройти лишь ${progress} единиц участка. ` : ''}Ошибка забрала силы, время и состояние группы.`;
+      }
+      if (failureNumber >= 2) {
+        condition = clamp(condition - 1);
+        teamCondition = clamp(teamCondition - 2);
+        detail += ' Повторная ошибка стала общей проблемой экспедиции.';
+      }
+      if (stage.critical && failureNumber >= 3 && simulation.direction === 'ASCENT') {
         nextSimulation.forcedRetreat = true;
-        nextSimulation.returnReason = `Авария на этапе «${stage.label}»`;
-        headline = 'Срыв на участке';
-        detail += ' Движение вверх прекращено. Сначала нужно стабилизироваться, затем вернуться вниз.';
+        nextSimulation.returnReason = `Три неудачных попытки на этапе «${stage.label}»`;
+        headline = 'Руководитель прекращает подъём';
+        detail += ' Дальнейшие попытки запрещены. Теперь нужно пройти весь путь вниз.';
       }
     }
   } else if (actionId === 'SCOUT_LINE') {
@@ -959,6 +972,11 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
     }
   }
 
+  if (!actionId.startsWith('MOVE_') && action.skill) {
+    const resultTag = success ? `ACTION_OK:${actionId}` : `ACTION_FAIL:${actionId}`;
+    nextStage.incidentHistory = [...nextStage.incidentHistory, resultTag].slice(-12);
+  }
+
   const weather = evolveWeather(career, climb, duration);
   const elapsedMinutes = climb.elapsedMinutes + duration;
   const stages = nextSimulation.direction === 'ASCENT' ? nextSimulation.ascentStages : nextSimulation.descentStages;
@@ -994,7 +1012,7 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
       windKmh: weather.windKmh,
     }].slice(-24)
     : simulation.failureTrace;
-  nextSimulation.actionLog = [...simulation.actionLog, actionRecord];
+  nextSimulation.actionLog = [...simulation.actionLog, actionRecord].slice(-180);
   nextSimulation.failureTrace = failureTrace;
   nextSimulation.lastCheckpointAction = nextSimulation.totalActions;
   const nextParticipant = orderUpdate.participant ? { ...orderUpdate.participant, totalActions: orderUpdate.participant.totalActions + 1, competence: orderUpdate.participant.competence + (success && action.skill ? 1 : 0), decisions: orderUpdate.participant.decisions } : climb.participant;
@@ -1014,7 +1032,7 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
     currentElevation: climb.startElevation + nextSimulation.relativeElevation,
     participant: nextParticipant,
     simulation: nextSimulation,
-    log: [...climb.log, `${clock(elapsedMinutes)} — ${action.title}: ${detail}`],
+    log: [...climb.log, `${clock(elapsedMinutes)} — ${action.title}: ${detail}`].slice(-220),
   };
 
   let nextCareer: CareerState = { ...career, activeClimb: nextClimb };
@@ -1107,7 +1125,7 @@ export function resolveExpeditionEventChoice(career: CareerState, optionId: stri
     teamCondition: clamp(climb.teamCondition + effect(selected.teamDelta)),
     participant,
     simulation: nextSimulation,
-    log: [...climb.log, `${clock(climb.elapsedMinutes + selected.advanceMinutes)} — ${scene.title}: ${selected.title}. ${success ? selected.detail : 'Навыка не хватило.'}`],
+    log: [...climb.log, `${clock(climb.elapsedMinutes + selected.advanceMinutes)} — ${scene.title}: ${selected.title}. ${success ? selected.detail : 'Навыка не хватило.'}`].slice(-220),
   };
   return { career: { ...career, activeClimb: nextClimb }, headline: selected.title, detail: success ? selected.detail : 'Решение выполнено плохо. Физический маршрут всё равно продолжается.', severity: success ? 'CALM' : 'WARNING' };
 }

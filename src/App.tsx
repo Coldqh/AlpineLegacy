@@ -57,6 +57,7 @@ function App() {
   const [world, setWorld] = useState<WorldState | null>(initial.world);
   const [career, setCareer] = useState<CareerState | null>(initial.career);
   const [selectedMountain, setSelectedMountain] = useState<MountainData | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [config, setConfig] = useState<WorldSeedConfig>({
     seed: randomSeed(),
     eraId: 'EXPEDITION',
@@ -72,15 +73,26 @@ function App() {
   }
 
   function createWorld() {
+    const safeConfig = { ...config, seed: config.seed.trim().toUpperCase() || randomSeed() };
+    setConfig(safeConfig);
+    setGenerationError(null);
     setScreen('GENERATING');
-    window.setTimeout(() => {
-      const created = generateWorld(config);
-      saveWorld(created);
-      deleteCareer();
-      setWorld(created);
-      setCareer(null);
-      setScreen('REGION');
-    }, 900);
+    requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        try {
+          const created = generateWorld(safeConfig);
+          saveWorld(created);
+          deleteCareer();
+          setWorld(created);
+          setCareer(null);
+          setScreen('REGION');
+        } catch (error) {
+          console.error('World generation failed', error);
+          const message = error instanceof Error ? error.message : 'Неизвестная ошибка генерации.';
+          setGenerationError(`Мир не создан: ${message}`);
+        }
+      }, 40);
+    });
   }
 
   function openMountain(mountain: MountainData) {
@@ -155,7 +167,7 @@ function App() {
             <p className="eyebrow">NEW WORLD / NEW LIFE</p>
             <h1>Создай мир, который переживёт тебя.</h1>
             <p className="lead">Один seed определит географию, историю, вершины и людей. Смерть героя завершит карьеру, но не обязательно уничтожит мир.</p>
-            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.6.5</small></div>
+            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.6.6</small></div>
           </div>
 
           <div className="setup-form">
@@ -218,10 +230,10 @@ function App() {
   }
 
   if (screen === 'GENERATING') {
-    if (mobile) return <MobileGeneratingScreen seed={config.seed} />;
+    if (mobile) return <MobileGeneratingScreen seed={config.seed} error={generationError} onRetry={createWorld} onBack={() => { setGenerationError(null); setScreen('SETUP'); }} />;
     return (
-      <ScreenShell rightLabel="GENERATIVE ATLAS / RUNNING">
-        <section className="generation-screen page-enter">
+      <ScreenShell rightLabel={generationError ? "GENERATION / ERROR" : "GENERATIVE ATLAS / RUNNING"}>
+        {generationError ? <section className="generation-screen page-enter"><div className="generation-error"><h2>Генерация остановлена</h2><p>{generationError}</p><div><button onClick={createWorld}>Повторить</button><button onClick={() => { setGenerationError(null); setScreen('SETUP'); }}>Вернуться к настройкам</button></div></div></section> : <section className="generation-screen page-enter">
           <div className="generation-code">{config.seed}</div>
           <h1>Поднимаем хребты.</h1>
           <p>Формируем геологию, вершины, климат и десятилетия истории.</p>
@@ -232,7 +244,7 @@ function App() {
               </div>
             ))}
           </div>
-        </section>
+        </section>}
       </ScreenShell>
     );
   }
@@ -273,7 +285,7 @@ function App() {
 
           <div className="career-entry-banner">
             <div>
-              <p className="eyebrow">CAREER MODULE / 0.6.5</p>
+              <p className="eyebrow">CAREER MODULE / 0.6.6</p>
               <h2>{career ? career.hero.name : 'Горы уже существуют. Теперь войди в их историю.'}</h2>
               <p>{career
                 ? `${career.club.name}. ${career.completedClimbs} засчитанных восхождений. Высшая точка: ${career.highestElevation} м.`
@@ -386,7 +398,7 @@ function App() {
   const archiveCount = career?.log.length ?? 0;
   if (mobile) return <MobileMenu world={world} career={career} onNew={() => setScreen('SETUP')} onContinue={continueCareer} onAtlas={() => setScreen(world ? 'REGION' : 'SETUP')} onArchive={() => { if (career) { setCareerTab('JOURNAL'); setScreen('CAREER'); } else setScreen('ARCHIVE'); }} />;
   return (
-    <ScreenShell rightLabel="EDITION 0.6.5 / MOBILE APP">
+    <ScreenShell rightLabel="EDITION 0.6.6 / MOBILE APP">
       <section className="menu-page page-enter">
         <div className="menu-hero-copy">
           <p className="eyebrow">A MOUNTAINEERING CAREER ROGUELIKE</p>

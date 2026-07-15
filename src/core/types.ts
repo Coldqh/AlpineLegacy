@@ -689,7 +689,7 @@ export interface ExpeditionFailureTrace {
 }
 
 export interface ExpeditionSimulationState {
-  version: 3;
+  version: 4;
   direction: ExpeditionDirection;
   status: ExpeditionSimulationStatus;
   ascentStages: ExpeditionSimulationStage[];

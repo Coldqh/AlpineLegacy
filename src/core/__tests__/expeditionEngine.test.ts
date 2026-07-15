@@ -63,8 +63,10 @@ describe('playable participant expedition', () => {
   it('triggers personal events on top of movement instead of replacing it', () => {
     const { career } = acceptedCareer();
     let current: CareerState = startPlannedClimb(career);
-    for (let step = 0; step < 12 && !getCurrentParticipantScene(current); step += 1) {
-      current = resolveExpeditionFieldAction(current, 'MOVE_CAUTIOUS').career;
+    for (let step = 0; step < 30 && !getCurrentParticipantScene(current); step += 1) {
+      const action = previewExpeditionActions(current).find(item => !item.disabled);
+      if (!action) break;
+      current = resolveExpeditionFieldAction(current, action.id).career;
     }
     const scene = getCurrentParticipantScene(current);
     expect(scene?.options.length).toBeGreaterThanOrEqual(3);

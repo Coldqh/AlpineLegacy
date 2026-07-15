@@ -5,6 +5,7 @@ import { AppSettings } from './components/AppSettings';
 import './styles/global.css';
 import './styles/mobile-app.css';
 import './styles/mobile-compact.css';
+import './styles/expedition-066.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

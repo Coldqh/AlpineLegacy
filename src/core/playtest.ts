@@ -131,8 +131,7 @@ function chooseAutoplayAction(career: CareerState) {
     if (ordered) return ordered;
   }
 
-  return usable('MOVE_CAUTIOUS')
-    ?? usable('MOVE_STEADY')
+  return actions.find(action => action.id.startsWith('MOVE_') && !action.disabled)
     ?? usable('REST_SHORT')
     ?? actions.find(action => !action.disabled);
 }

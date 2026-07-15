@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import { RouteBlueprint } from '../components/RouteBlueprint';
 import { ExpeditionHeightScale } from '../components/ExpeditionHeightScale';
+import { ExpeditionTurnPanel } from '../components/ExpeditionTurnPanel';
 import { currentExpeditionStage, getCurrentRouteDecision, previewClimbAction, previewExpeditionActions, SKILL_LABELS } from '../core/career';
 import { getCurrentParticipantScene, nodeProgress, participantLeader } from '../core/expeditionEngine';
-import { isStagePrepared, missingStagePreparation } from '../core/simulationEngine';
-import { terrainModuleById } from '../content/terrainModules';
 import type { CareerState, ClimbActionPreview, ClimbOrderId, ClimbPace, ClimbStepResult, DifficultyId, ExpeditionFieldActionId } from '../core/types';
 
 type Props = {
@@ -101,6 +100,7 @@ function PaceCard({ preview, primary, recommended, difficulty, onClick }: { prev
 export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onParticipantAction, onFieldAction, onBeginDescent, onRetreat, onClose }: Props) {
   const climb = career.activeClimb!;
   const [feedback, setFeedback] = useState<Pick<ClimbStepResult, 'headline' | 'detail' | 'severity'> | null>(null);
+  const [busy, setBusy] = useState(false);
   const activeSegment = climb.route[Math.max(0, Math.min(climb.route.length - 1, climb.segmentIndex))]!;
   const terminal = ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase);
   const liveTeam = climb.teamStates.map(state => ({ state, member: career.teamRoster.find(member => member.id === state.memberId) })).filter(item => item.member);
@@ -125,9 +125,16 @@ export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, on
         ? { tone: 'warning', title: 'Условия ухудшились', detail: 'Ожидание тратит время и запасы, но может изменить погоду до следующего движения.' }
         : { tone: 'calm', title: 'Условия рабочие', detail: 'Сравни три варианта темпа. Перед нажатием видны время, силы, расход и риск.' };
 
-  function resolve(action: () => ClimbStepResult) {
-    const result = action();
-    setFeedback({ headline: result.headline, detail: result.detail, severity: result.severity });
+  async function resolve(action: () => ClimbStepResult) {
+    if (busy) return;
+    setBusy(true);
+    await new Promise<void>(done => requestAnimationFrame(() => done()));
+    try {
+      const result = action();
+      setFeedback({ headline: result.headline, detail: result.detail, severity: result.severity });
+    } finally {
+      requestAnimationFrame(() => setBusy(false));
+    }
   }
 
   if (terminal) {
@@ -162,28 +169,20 @@ export function ClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, on
   if (climb.simulation && simulationStage) {
     const simulation = climb.simulation;
     const stages = simulation.direction === 'ASCENT' ? simulation.ascentStages : simulation.descentStages;
-    const stagePercent = Math.min(100, Math.round(simulationStage.progress / Math.max(1, simulationStage.requiredProgress) * 100));
-    const terrainModule = terrainModuleById(simulationStage.terrainModuleId);
-    const prepared = isStagePrepared(simulationStage);
-    const missingPreparation = missingStagePreparation(simulationStage);
-    const lastFailure = simulation.failureTrace.at(-1);
-    const routePercent = Math.min(100, Math.round((simulation.stageIndex + stagePercent / 100) / Math.max(1, stages.length) * 100));
-    const chanceLabel = (chance: number | null, risk: string) => difficulty === 'EXPLORER' && chance !== null ? `${chance}%` : difficulty === 'EXPEDITION' ? 'скрыто' : risk.toLowerCase();
-    if (simulation.status === 'SUMMIT') return <section className="workspace-page summit-screen summit-screen--embedded"><div className="summit-screen__altitude">{climb.summitElevation}</div><p className="eyebrow">SUMMIT / RETURN REQUIRED</p><h1>{climb.mountainName}</h1><ExpeditionHeightScale climb={climb} /><p className="lead">До стартовой точки {climb.startElevation} м остаётся {simulation.descentStages.length} физических этапов.</p><button className="primary-action summit-descent" onClick={onBeginDescent}><span>Начать полный спуск</span><b>↓</b></button></section>;
-    const renderAction = (action: typeof fieldActions[number]) => <button key={action.id} disabled={action.disabled} className="simulation-action-card" onClick={() => resolve(() => onFieldAction(action.id))}><header><strong>{action.title}</strong><span>{action.successChance === null ? 'ДЕЙСТВИЕ' : chanceLabel(action.successChance, action.riskLabel)}</span></header><p>{action.detail}</p><footer><b>{durationLabel(action.durationMinutes)}</b><span>{action.energyDelta > 0 ? `силы +${action.energyDelta}` : action.energyDelta < 0 ? `силы ${action.energyDelta}` : 'силы 0'}</span>{action.progressDelta > 0 && <span>этап +{action.progressDelta}</span>}</footer>{action.disabledReason && <small>{action.disabledReason}</small>}</button>;
-    return <section className="workspace-page simulation-expedition-page">
-      <header className="simulation-expedition-head"><div><p className="eyebrow">{simulation.direction === 'ASCENT' ? 'ASCENT' : climb.retreating ? 'RETREAT' : 'DESCENT'} · STAGE {simulation.stageIndex + 1}/{stages.length}</p><h1>{simulationStage.label}</h1><span>{climb.mountainName} · {simulationStage.terrain}</span></div><div><strong>{climb.currentElevation} м</strong><small>{simulation.direction === 'ASCENT' ? 'подъём' : 'возвращение'}</small></div></header>
+    const remainingAltitude = simulation.direction === 'ASCENT'
+      ? Math.max(0, climb.summitElevation - climb.currentElevation)
+      : Math.max(0, climb.currentElevation - climb.startElevation);
+    if (simulation.status === 'SUMMIT') return <section className="workspace-page summit-screen summit-screen--embedded"><div className="summit-screen__altitude">{climb.summitElevation}</div><p className="eyebrow">SUMMIT / RETURN REQUIRED</p><h1>{climb.mountainName}</h1><ExpeditionHeightScale climb={climb} /><p className="lead">Вершина не завершает экспедицию. Нужно физически вернуться к стартовой точке.</p><button className="primary-action summit-descent" disabled={busy} onClick={onBeginDescent}><span>Начать спуск</span><b>↓</b></button></section>;
+
+    return <section className="workspace-page simulation-expedition-page exp-ux exp-ux--desktop">
+      <header className="simulation-expedition-head exp-ux__head"><div><p className="eyebrow">{simulation.direction === 'ASCENT' ? 'ASCENT' : climb.retreating ? 'RETREAT' : 'DESCENT'} · {simulation.stageIndex + 1}/{stages.length}</p><h1>{simulationStage.label}</h1><span>{climb.mountainName} · {simulationStage.terrain}</span></div><div><strong>{climb.currentElevation} м</strong><small>осталось {remainingAltitude} м</small></div></header>
       <ExpeditionHeightScale climb={climb} />
-      <div className="simulation-route-meter"><i style={{ width: `${routePercent}%` }} /><span>{routePercent}% этапов · {simulation.totalActions} действий</span></div>
-      <div className="climb-instruments climb-instruments--workspace"><div><span>Силы</span><strong>{Math.round(climb.energy)}%</strong></div><div><span>Состояние</span><strong>{Math.round(climb.condition)}%</strong></div><div><span>Группа</span><strong>{Math.round(climb.teamCondition)}%</strong></div><div><span>Вода</span><strong>{climb.supplies.waterUnits}</strong></div><div><span>Верёвка</span><strong>{climb.ropeMetersRemaining} м</strong></div><div><span>Без сна</span><strong>{Math.round(climb.hoursAwake)} ч</strong></div></div>
-      {simulation.status === 'STRANDED' && <section className="simulation-survival"><h2>Движение остановлено</h2><p>Ты остаёшься на горе. Восстанавливай силы, ставь лагерь, проси помощь или состояние продолжит падать.</p>{simulation.rescueEtaMinutes !== null && <strong>Помощь через ≈ {Math.ceil(simulation.rescueEtaMinutes / 60)} ч</strong>}</section>}
-      {simulation.leaderOrder && !simulation.leaderOrder.resolved && <section className="simulation-order"><p className="eyebrow">ПРИКАЗ РУКОВОДИТЕЛЯ</p><blockquote>«{simulation.leaderOrder.text}»</blockquote></section>}
-      <section className={`simulation-stage-card ${simulationStage.critical ? 'is-critical' : ''}`}><header><div><p className="eyebrow">{simulationStage.critical ? 'KEY SECTION' : 'CURRENT SECTION'} · {terrainModule.label}</p><h2>{simulationStage.hazard}</h2></div><strong>{stagePercent}%</strong></header><i><b style={{ width: `${stagePercent}%` }} /></i><div><span>Навык <b>{SKILL_LABELS[simulationStage.skill]} {career.hero.skills[simulationStage.skill]}</b></span><span>Сложность <b>{Math.round(simulationStage.difficulty)}</b></span><span>Подготовка <b>{prepared ? 'готово' : Math.round(simulationStage.preparation)}</b></span><span>Точки <b>{simulationStage.anchorsPlaced}</b></span></div></section>
-      {simulationStage.critical && <section className={`simulation-preparation-state ${prepared ? 'is-ready' : 'is-missing'}`}><strong>{prepared ? 'Участок подготовлен' : 'Нужна подготовка'}</strong><p>{prepared ? terrainModule.description : missingPreparation.map(tag => preparationLabel[tag]).join(' · ')}</p></section>}
-      {lastFailure && lastFailure.actionNumber >= simulation.totalActions - 3 && <section className="simulation-failure-trace"><p className="eyebrow">ПОСЛЕДНЯЯ ОШИБКА</p><strong>{lastFailure.cause}</strong><span>Силы {Math.round(lastFailure.energy)} · состояние {Math.round(lastFailure.condition)} · ветер {lastFailure.windKmh} км/ч</span></section>}
-      {feedback && <div className={`climb-feedback is-${feedback.severity.toLowerCase()}`}><span>ПОСЛЕДНЕЕ ДЕЙСТВИЕ</span><h3>{feedback.headline}</h3><p>{feedback.detail}</p></div>}
-      {participantScene ? <section className="simulation-event-panel"><p className="eyebrow">EVENT ON ROUTE</p><h2>{participantScene.title}</h2>{participantScene.orderText && <blockquote>«{participantScene.orderText}»</blockquote>}<p>{participantScene.situation}</p><div>{participantScene.options.map(option => <button key={option.id} onClick={() => resolve(() => onParticipantAction(option.id))}><strong>{option.title}</strong><p>{option.detail}</p>{option.skill && <small>{SKILL_LABELS[option.skill]}</small>}</button>)}</div></section> : <div className="simulation-action-layout simulation-action-layout--context"><section><p className="eyebrow">ДОСТУПНЫЕ ДЕЙСТВИЯ · {fieldActions.length}</p><div className="simulation-actions">{fieldActions.map(renderAction)}</div></section></div>}
-      {!participantScene && simulation.direction === 'ASCENT' && <button className="m-retreat-button" onClick={() => resolve(() => onFieldAction('TURN_BACK'))}>{climb.authorityMode === 'COMMAND' ? 'Развернуть группу и пройти весь путь вниз' : 'Потребовать у руководителя начать отход'}</button>}
+      <div className="exp-ux__status"><span>Силы <b>{Math.round(climb.energy)}%</b></span><span>Состояние <b>{Math.round(climb.condition)}%</b></span><span>Группа <b>{Math.round(climb.teamCondition)}%</b></span><span>Запасы <b>{climb.supplies.foodUnits}/{climb.supplies.waterUnits}</b></span></div>
+      {simulation.status === 'STRANDED' && <section className="simulation-survival"><h2>Движение остановлено</h2><p>Восстанови рабочий резерв, добейся отхода или вызови помощь.</p></section>}
+      {simulation.leaderOrder && !simulation.leaderOrder.resolved && <section className="exp-ux__order"><small>ПРИКАЗ РУКОВОДИТЕЛЯ</small><strong>«{simulation.leaderOrder.text}»</strong></section>}
+      {participantScene ? <section className="simulation-event-panel exp-ux__event"><p className="eyebrow">СОБЫТИЕ НА МАРШРУТЕ</p><h2>{participantScene.title}</h2><p>{participantScene.situation}</p><div>{participantScene.options.map(option => <button key={option.id} disabled={busy} onClick={() => void resolve(() => onParticipantAction(option.id))}><strong>{option.title}</strong><p>{option.detail}</p></button>)}</div></section> : <ExpeditionTurnPanel career={career} stage={simulationStage} actions={fieldActions} difficulty={difficulty} feedback={feedback} busy={busy} onAction={actionId => void resolve(() => onFieldAction(actionId))} />}
+      <details className="exp-ux__details"><summary>Группа, рюкзак и журнал</summary><div><span>Верёвка <b>{climb.ropeMetersRemaining} м</b></span><span>Вес <b>{climb.packWeightKg.toFixed(1)} кг</b></span><span>Без сна <b>{Math.round(climb.hoursAwake)} ч</b></span><span>Действия <b>{simulation.totalActions}</b></span></div><p>{climb.log.slice(-4).join(' · ')}</p></details>
+      {!participantScene && simulation.direction === 'ASCENT' && <button className="m-retreat-button" disabled={busy} onClick={() => void resolve(() => onFieldAction('TURN_BACK'))}>{climb.authorityMode === 'COMMAND' ? 'Начать отход' : 'Потребовать отход'}</button>}
     </section>;
   }
 

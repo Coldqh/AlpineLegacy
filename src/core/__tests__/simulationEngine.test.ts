@@ -42,10 +42,13 @@ describe('physical expedition simulation', () => {
     const initial = currentExpeditionStage(career)!;
     career = resolveExpeditionFieldAction(career, 'SCOUT_LINE').career;
     expect(currentExpeditionStage(career)!.routeKnowledge).toBeGreaterThan(initial.routeKnowledge);
-    const beforeProgress = currentExpeditionStage(career)!.progress;
-    career = resolveExpeditionFieldAction(career, 'MOVE_CAUTIOUS').career;
-    expect(currentExpeditionStage(career)!.progress).toBeGreaterThan(beforeProgress);
+    const beforeStage = currentExpeditionStage(career)!;
+    const beforeElevation = career.activeClimb!.currentElevation;
+    const movement = previewExpeditionActions(career).find(action => action.id.startsWith('MOVE_'))!;
+    career = resolveExpeditionFieldAction(career, movement.id).career;
+    const afterStage = currentExpeditionStage(career);
     expect(career.activeClimb!.moveCount).toBe(1);
+    expect(career.activeClimb!.currentElevation > beforeElevation || afterStage?.id !== beforeStage.id).toBe(true);
   });
 
   it('requires multi-action preparation on a critical stage', () => {
@@ -63,6 +66,19 @@ describe('physical expedition simulation', () => {
     career = resolveExpeditionFieldAction(career, 'FIX_ROPE').career;
     expect(career.activeClimb!.ropeMetersRemaining).toBe(climb.ropeMetersRemaining - 20);
     expect(currentExpeditionStage(career)!.preparation).toBeGreaterThan(before.preparation);
+  });
+
+  it('does not let random movement bypass an unprepared critical section', () => {
+    let { career } = startedCareer('SIM-ANTI-RANDOM');
+    const climb = career.activeClimb!;
+    const simulation = climb.simulation!;
+    const criticalIndex = simulation.ascentStages.findIndex(stage => stage.critical);
+    const criticalId = simulation.ascentStages[criticalIndex]!.id;
+    career = { ...career, activeClimb: { ...climb, simulation: { ...simulation, stageIndex: criticalIndex, activeEvent: null, leaderOrder: null } } };
+    for (let click = 0; click < 6; click += 1) career = resolveExpeditionFieldAction(career, 'MOVE_FAST').career;
+    expect(currentExpeditionStage(career)?.id).toBe(criticalId);
+    expect(currentExpeditionStage(career)?.progress).toBe(0);
+    expect(previewExpeditionActions(career).some(action => !action.id.startsWith('MOVE_'))).toBe(true);
   });
 
   it('changes a failed ascent into a real descent instead of returning home instantly', () => {

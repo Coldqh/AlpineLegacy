@@ -21,6 +21,17 @@ const CAREER_BACKUP_KEY = 'alpine-legacy:career:backup:v15';
 const CAREER_PENDING_KEY = 'alpine-legacy:career:pending:v15';
 const RECOVERY_META_KEY = 'alpine-legacy:career:recovery-meta:v1';
 
+
+let lastCareerSerialized: string | null = null;
+let lastBackupFingerprint = '';
+
+function careerFingerprint(career: CareerState) {
+  const simulation = career.activeClimb?.simulation;
+  if (!simulation) return `career:${career.year}:${career.seasonDay}:${career.reports.length}`;
+  const stage = simulation.direction === 'ASCENT' ? simulation.ascentStages[simulation.stageIndex] : simulation.descentStages[simulation.stageIndex];
+  return `${career.activeClimb?.id}:${simulation.direction}:${stage?.id ?? simulation.stageIndex}:${Math.floor(simulation.totalActions / 5)}`;
+}
+
 const LEGACY_KEYS = [CAREER_KEY_V14, CAREER_KEY_V13, CAREER_KEY_V12, CAREER_KEY_V11, CAREER_KEY_V10, CAREER_KEY_V9, CAREER_KEY_V8, CAREER_KEY_V7, CAREER_KEY_V6, CAREER_KEY_V5, CAREER_KEY_V4, CAREER_KEY_V3, CAREER_KEY_V2];
 
 function parseJson(raw: string | null) {
@@ -55,15 +66,24 @@ export function loadWorld(): WorldState | null {
 
 export function saveCareer(career: CareerState) {
   const serialized = JSON.stringify(career);
-  const previous = localStorage.getItem(CAREER_KEY);
-  const parsedPrevious = parseJson(previous);
-  if (previous && isCareerPayload(parsedPrevious) && previous !== serialized) {
-    localStorage.setItem(CAREER_BACKUP_KEY, previous);
-  }
-  localStorage.setItem(CAREER_PENDING_KEY, serialized);
+  if (serialized === lastCareerSerialized) return;
+
+  const previous = lastCareerSerialized ?? localStorage.getItem(CAREER_KEY);
+  const fingerprint = careerFingerprint(career);
+  const checkpoint = fingerprint !== lastBackupFingerprint;
+
+  // localStorage is synchronous on iOS. During an expedition use one primary write
+  // per action and only create the heavier backup at stage/5-action checkpoints.
+  if (checkpoint) localStorage.setItem(CAREER_PENDING_KEY, serialized);
   localStorage.setItem(CAREER_KEY, serialized);
-  localStorage.removeItem(CAREER_PENDING_KEY);
+  if (checkpoint) {
+    if (previous && previous !== serialized) localStorage.setItem(CAREER_BACKUP_KEY, previous);
+    localStorage.removeItem(CAREER_PENDING_KEY);
+    lastBackupFingerprint = fingerprint;
+  }
+  lastCareerSerialized = serialized;
 }
+
 
 function migratePayload(parsed: any, world: WorldState): CareerState | null {
   if (!isCareerPayload(parsed) || parsed.worldId !== world.id) return null;
@@ -106,6 +126,8 @@ export function loadCareer(world?: WorldState): CareerState | null {
         saveCareer(migrated);
         recordRecoveryMeta(candidate.label, primaryInvalid ? 'Основной сейв повреждён; восстановлена резервная копия.' : 'Сейв перенесён на актуальную схему.');
       }
+      lastCareerSerialized = JSON.stringify(migrated);
+      lastBackupFingerprint = careerFingerprint(migrated);
       return migrated;
     } catch {
       if (candidate.key === CAREER_KEY) primaryInvalid = true;
@@ -141,6 +163,8 @@ export function restoreCareerBackup(world: WorldState): CareerState | null {
 }
 
 export function deleteCareer() {
+  lastCareerSerialized = null;
+  lastBackupFingerprint = '';
   localStorage.removeItem(CAREER_KEY);
   localStorage.removeItem(CAREER_BACKUP_KEY);
   localStorage.removeItem(CAREER_PENDING_KEY);
