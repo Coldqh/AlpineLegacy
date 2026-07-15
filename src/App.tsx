@@ -171,7 +171,7 @@ function App() {
             <p className="eyebrow">NEW WORLD / NEW LIFE</p>
             <h1>Создай мир, который переживёт тебя.</h1>
             <p className="lead">Один seed определит географию, историю, вершины и людей. Смерть героя завершит карьеру, но не обязательно уничтожит мир.</p>
-            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.7.2</small></div>
+            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.7.3</small></div>
           </div>
 
           <div className="setup-form">
@@ -402,7 +402,7 @@ function App() {
   const archiveCount = career?.log.length ?? 0;
   if (mobile) return <MobileMenu world={world} career={career} onNew={() => setScreen('SETUP')} onContinue={continueCareer} onAtlas={() => setScreen(world ? 'REGION' : 'SETUP')} onArchive={() => { if (career) { setCareerTab('JOURNAL'); setScreen('CAREER'); } else setScreen('ARCHIVE'); }} onTopo={() => setTopoPreview(true)} />;
   return (
-    <ScreenShell rightLabel="EDITION 0.7.2 / FULL MOUNTAIN STAGES">
+    <ScreenShell rightLabel="EDITION 0.7.3 / ROUTE TERRAIN GAMEPLAY">
       <section className="menu-page page-enter">
         <div className="menu-hero-copy">
           <p className="eyebrow">A MOUNTAINEERING CAREER ROGUELIKE</p>
@@ -417,7 +417,7 @@ function App() {
         </div>
 
         <div className="menu-actions">
-          <button className="menu-action menu-action--primary" onClick={() => setTopoPreview(true)}><span><small>00</small>3D-гора и карта этапов</span><b>0.7.2</b></button>
+          <button className="menu-action menu-action--primary" onClick={() => setTopoPreview(true)}><span><small>00</small>3D-гора и карта этапов</span><b>0.7.3</b></button>
           <button className="menu-action menu-action--primary" onClick={() => setScreen('SETUP')}><span><small>01</small>Новая карьера</span><b>→</b></button>
           <button className="menu-action" disabled={!world} onClick={continueCareer}><span><small>02</small>Продолжить</span><b>{career ? career.hero.name : world ? world.region.name : 'Нет сохранения'}</b></button>
           <button className="menu-action" onClick={() => setScreen('ARCHIVE')}><span><small>03</small>Архив мира</span><b>{archiveCount} записей</b></button>
