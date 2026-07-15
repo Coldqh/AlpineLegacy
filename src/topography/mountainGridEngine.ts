@@ -1,389 +1,359 @@
 export type GridPoint = { x: number; y: number };
+export type EntrySide = 'NORTH' | 'EAST' | 'SOUTH' | 'WEST';
+export type MountainTerrain = 'VALLEY' | 'SCREE' | 'GLACIER' | 'SNOW' | 'ROCK' | 'RIDGE' | 'SUMMIT';
+export type MountainHazard = 'NONE' | 'CREVASSE' | 'AVALANCHE' | 'ROCKFALL' | 'CORNICE';
+export type LocalStageType = 'APPROACH' | 'MORAINE' | 'GLACIER' | 'SNOWFIELD' | 'ROCK_FACE' | 'RIDGE' | 'SUMMIT';
 
-export type MountainTerrain = 'APPROACH' | 'SCREE' | 'GLACIER' | 'SNOW' | 'RIDGE' | 'ROCK';
-export type MountainHazard = 'NONE' | 'CREVASSE_VISIBLE' | 'CREVASSE_HIDDEN' | 'AVALANCHE' | 'ROCKFALL';
-
-export type MountainGridCell = {
-  id: string;
+export type MountainCell = {
   x: number;
   y: number;
   elevation: number;
-  normalizedHeight: number;
   slope: number;
   terrain: MountainTerrain;
   hazard: MountainHazard;
   passable: boolean;
-  campScore: number;
-  windExposure: number;
-  sunExposure: number;
+  campQuality: number;
 };
 
 export type MountainGrid = {
   seed: string;
-  name: string;
-  size: number;
-  startElevation: number;
+  width: number;
+  height: number;
+  baseElevation: number;
   summitElevation: number;
-  start: GridPoint;
+  cells: MountainCell[];
   summit: GridPoint;
-  cells: MountainGridCell[];
+  entries: Record<EntrySide, GridPoint>;
+  start: GridPoint;
+};
+
+export type StageDefinition = {
+  id: string;
+  index: number;
+  type: LocalStageType;
+  title: string;
+  subtitle: string;
+  globalPoint: GridPoint;
+  startElevation: number;
+  endElevation: number;
+  exposure: number;
+};
+
+export type LocalCell = {
+  x: number;
+  y: number;
+  elevation: number;
+  terrain: MountainTerrain;
+  hazard: MountainHazard;
+  passable: boolean;
+  campPossible: boolean;
+  ropeRecommended: boolean;
+};
+
+export type LocalStageMap = {
+  id: string;
+  width: number;
+  height: number;
+  start: GridPoint;
+  goal: GridPoint;
+  cells: LocalCell[];
 };
 
 export type GridWeather = {
-  hour: number;
   windKmh: number;
   visibility: number;
   snowSoftness: number;
   temperatureC: number;
 };
 
-export type GridMoveCost = {
-  minutes: number;
-  energy: number;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
-};
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-export const MOUNTAIN_GRID_SIZE = 21;
-
-const terrainTime: Record<MountainTerrain, number> = {
-  APPROACH: 1,
-  SCREE: 1.35,
-  GLACIER: 1.22,
-  SNOW: 1.28,
-  RIDGE: 1.42,
-  ROCK: 1.62,
-};
-
-const terrainEnergy: Record<MountainTerrain, number> = {
-  APPROACH: 1,
-  SCREE: 1.32,
-  GLACIER: 1.18,
-  SNOW: 1.35,
-  RIDGE: 1.42,
-  ROCK: 1.58,
-};
-
-export const terrainLabels: Record<MountainTerrain, string> = {
-  APPROACH: 'Подход',
-  SCREE: 'Осыпь',
-  GLACIER: 'Ледник',
-  SNOW: 'Снег',
-  RIDGE: 'Гребень',
-  ROCK: 'Скалы',
-};
-
-export const hazardLabels: Record<MountainHazard, string> = {
-  NONE: 'Не выявлена',
-  CREVASSE_VISIBLE: 'Открытая трещина',
-  CREVASSE_HIDDEN: 'Возможна скрытая трещина',
-  AVALANCHE: 'Лавинный склон',
-  ROCKFALL: 'Камнепад',
-};
-
-export function clamp(value: number, min = 0, max = 1) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function hashString(value: string) {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
+function hash(seed: string) {
+  let value = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    value ^= seed.charCodeAt(index);
+    value = Math.imul(value, 16777619);
   }
-  return hash >>> 0;
+  return value >>> 0;
 }
 
-function random01(seed: string, x = 0, y = 0, salt = 0) {
-  let state = hashString(`${seed}:${x}:${y}:${salt}`) || 1;
-  state ^= state << 13;
-  state ^= state >>> 17;
-  state ^= state << 5;
-  return (state >>> 0) / 4294967295;
+function noise(seed: string, x: number, y: number) {
+  const h = hash(`${seed}:${x}:${y}`);
+  return ((h % 100000) / 50000) - 1;
 }
 
-function gaussian(x: number, y: number, cx: number, cy: number, sx: number, sy: number) {
-  const dx = (x - cx) / sx;
-  const dy = (y - cy) / sy;
-  return Math.exp(-(dx * dx + dy * dy) * 0.5);
+function smoothNoise(seed: string, x: number, y: number) {
+  const a = noise(seed, x, y);
+  const b = noise(seed, x + 1, y);
+  const c = noise(seed, x, y + 1);
+  const d = noise(seed, x + 1, y + 1);
+  return (a + b + c + d) / 4;
 }
 
-function rawHeight(seed: string, x: number, y: number, size: number) {
-  const nx = x / (size - 1);
-  const ny = y / (size - 1);
-  const summit = gaussian(nx, ny, 0.77, 0.14, 0.23, 0.19) * 1.12;
-  const shoulder = gaussian(nx, ny, 0.56, 0.34, 0.31, 0.25) * 0.58;
-  const westRidge = gaussian(nx, ny, 0.34, 0.48, 0.18, 0.36) * 0.26;
-  const valley = gaussian(nx, ny, 0.16, 0.88, 0.32, 0.22) * 0.48;
-  const ridgeWave = Math.max(0, 1 - Math.abs(nx - (0.36 + (1 - ny) * 0.38)) / 0.15) * (1 - ny) * 0.2;
-  const coarse = (random01(seed, Math.floor(x / 2), Math.floor(y / 2), 11) - 0.5) * 0.1;
-  const fine = (random01(seed, x, y, 17) - 0.5) * 0.055;
-  const edgeFalloff = clamp((1 - Math.abs(nx - 0.56) * 0.54) * (1 - Math.max(0, ny - 0.82) * 1.4), 0.45, 1);
-  return Math.max(0, (summit + shoulder + westRidge + ridgeWave - valley + coarse + fine) * edgeFalloff);
+function elevationField(seed: string, x: number, y: number, size: number, base: number, summit: number) {
+  const center = (size - 1) / 2;
+  const nx = (x - center) / center;
+  const ny = (y - center) / center;
+  const radius = Math.hypot(nx, ny);
+  const radial = clamp(1 - radius, 0, 1);
+  const angle = Math.atan2(ny, nx);
+  const ridge = Math.max(0, Math.cos(angle * 3 + hash(seed) % 7) * 0.11 + Math.cos(angle * 5 - 0.8) * 0.07);
+  const shoulder = Math.max(0, 1 - Math.abs(radius - 0.45) * 4) * 0.08;
+  const rough = smoothNoise(seed, x, y) * 0.055 + smoothNoise(`${seed}:large`, Math.floor(x / 2), Math.floor(y / 2)) * 0.08;
+  const normalized = clamp(Math.pow(radial, 1.5) + ridge * radial + shoulder + rough * radial, 0, 1);
+  return Math.round(base + normalized * (summit - base));
 }
 
-function pointId(point: GridPoint) {
-  return `${point.x}:${point.y}`;
+function terrainFor(elevationRatio: number, slope: number, x: number, y: number, size: number): MountainTerrain {
+  const center = (size - 1) / 2;
+  const angle = Math.atan2(y - center, x - center);
+  if (elevationRatio >= 0.965) return 'SUMMIT';
+  if (elevationRatio >= 0.79 && slope >= 38) return 'RIDGE';
+  if (slope >= 54) return 'ROCK';
+  if (elevationRatio >= 0.58 && Math.cos(angle - 0.7) > -0.15) return 'SNOW';
+  if (elevationRatio >= 0.35 && Math.sin(angle + 0.6) < 0.45) return 'GLACIER';
+  if (elevationRatio >= 0.18) return 'SCREE';
+  return 'VALLEY';
 }
 
-function forceCampScore(x: number, y: number) {
-  if ((x === 7 && y === 14) || (x === 13 && y === 8)) return 96;
-  return 0;
+function hazardFor(seed: string, terrain: MountainTerrain, slope: number, x: number, y: number): MountainHazard {
+  const roll = (noise(`${seed}:hazard`, x, y) + 1) / 2;
+  if (terrain === 'GLACIER' && roll > 0.7) return 'CREVASSE';
+  if (terrain === 'SNOW' && slope > 34 && roll > 0.65) return 'AVALANCHE';
+  if (terrain === 'ROCK' && roll > 0.7) return 'ROCKFALL';
+  if (terrain === 'RIDGE' && roll > 0.76) return 'CORNICE';
+  return 'NONE';
 }
 
-export function generateMountainGrid(
-  seed = 'ALPINE-GRID-01',
-  startElevation = 620,
-  summitElevation = 3480,
-  name = 'Кайрн-Валь',
-  size = MOUNTAIN_GRID_SIZE,
-): MountainGrid {
-  const start = { x: 2, y: size - 3 };
-  const summit = { x: size - 5, y: 2 };
-  const raw = Array.from({ length: size * size }, (_, index) => {
-    const x = index % size;
-    const y = Math.floor(index / size);
-    return rawHeight(seed, x, y, size);
-  });
-  const minRaw = Math.min(...raw);
-  const maxRaw = Math.max(...raw);
-  const normalized = raw.map(value => clamp((value - minRaw) / Math.max(0.001, maxRaw - minRaw)));
+function nearestEdgePoint(side: EntrySide, size: number): GridPoint {
+  const center = Math.floor(size / 2);
+  if (side === 'NORTH') return { x: center, y: 0 };
+  if (side === 'EAST') return { x: size - 1, y: center };
+  if (side === 'SOUTH') return { x: center, y: size - 1 };
+  return { x: 0, y: center };
+}
 
-  const elevationAtIndex = (x: number, y: number) => {
-    const value = normalized[y * size + x] ?? 0;
-    return Math.round(startElevation + value * (summitElevation - startElevation));
-  };
-
-  const cells = normalized.map((height, index): MountainGridCell => {
-    const x = index % size;
-    const y = Math.floor(index / size);
-    const neighbours = [
-      elevationAtIndex(Math.max(0, x - 1), y),
-      elevationAtIndex(Math.min(size - 1, x + 1), y),
-      elevationAtIndex(x, Math.max(0, y - 1)),
-      elevationAtIndex(x, Math.min(size - 1, y + 1)),
-    ];
-    const elevation = elevationAtIndex(x, y);
-    const slope = Math.max(...neighbours.map(value => Math.abs(value - elevation))) / Math.max(1, summitElevation - startElevation) * 8.2;
-    const nx = x / (size - 1);
-    const ny = y / (size - 1);
-    const glacierBand = nx > 0.28 && nx < 0.64 && ny > 0.34 && ny < 0.78 && slope < 0.43;
-    const ridgeBand = height > 0.67 && Math.abs(nx - (0.39 + (1 - ny) * 0.39)) < 0.105;
-    let terrain: MountainTerrain = 'APPROACH';
-    if (ridgeBand) terrain = 'RIDGE';
-    else if (slope > 0.47 || (nx > 0.72 && ny > 0.24 && ny < 0.73)) terrain = 'ROCK';
-    else if (glacierBand) terrain = 'GLACIER';
-    else if (height > 0.5) terrain = 'SNOW';
-    else if (height > 0.2 || slope > 0.24) terrain = 'SCREE';
-
-    const campScoreForced = forceCampScore(x, y);
-    const flatness = clamp(1 - slope / 0.42);
-    const shelter = clamp(1 - nx * 0.38 - Math.max(0, height - 0.7) * 0.45);
-    const campScore = campScoreForced || Math.round(flatness * shelter * 82);
-    const passable = slope < 0.74 && !(x === 0 || y === 0 || x === size - 1 || y === size - 1);
-
-    let hazard: MountainHazard = 'NONE';
-    if (terrain === 'GLACIER') {
-      const roll = random01(seed, x, y, 41);
-      if (roll > 0.86) hazard = 'CREVASSE_HIDDEN';
-      else if (roll > 0.76) hazard = 'CREVASSE_VISIBLE';
-    } else if (terrain === 'SNOW' && slope > 0.3 && nx > 0.5) {
-      hazard = 'AVALANCHE';
-    } else if ((terrain === 'ROCK' || terrain === 'SCREE') && slope > 0.42 && random01(seed, x, y, 73) > 0.78) {
-      hazard = 'ROCKFALL';
-    }
-
-    return {
-      id: `${x}:${y}`,
-      x,
-      y,
-      elevation,
-      normalizedHeight: height,
-      slope,
-      terrain,
-      hazard,
-      passable,
-      campScore,
-      windExposure: clamp(height * 0.72 + (terrain === 'RIDGE' ? 0.32 : 0) + nx * 0.1),
-      sunExposure: clamp((1 - ny) * 0.62 + nx * 0.28),
-    };
-  });
-
-  const patchCell = (point: GridPoint, patch: Partial<MountainGridCell>) => {
-    const index = point.y * size + point.x;
-    cells[index] = { ...cells[index]!, ...patch };
-  };
-  const backbone: GridPoint[] = [];
-  const addLine = (from: GridPoint, to: GridPoint) => {
-    let cursor = { ...from };
-    if (!backbone.length || !isSamePoint(backbone[backbone.length - 1]!, cursor)) backbone.push({ ...cursor });
-    while (!isSamePoint(cursor, to)) {
-      if (cursor.x !== to.x) cursor = { x: cursor.x + Math.sign(to.x - cursor.x), y: cursor.y };
-      else cursor = { x: cursor.x, y: cursor.y + Math.sign(to.y - cursor.y) };
-      backbone.push({ ...cursor });
-    }
-  };
-  const backbonePoints = [start, { x: 7, y: 18 }, { x: 7, y: 14 }, { x: 11, y: 14 }, { x: 11, y: 10 }, { x: 13, y: 10 }, { x: 13, y: 8 }, { x: 16, y: 8 }, summit];
-  for (let index = 1; index < backbonePoints.length; index += 1) addLine(backbonePoints[index - 1]!, backbonePoints[index]!);
-  for (const point of backbone) {
-    const existing = cells[point.y * size + point.x]!;
-    patchCell(point, {
-      passable: true,
-      hazard: existing.hazard === 'CREVASSE_VISIBLE' ? 'CREVASSE_VISIBLE' : 'NONE',
-      slope: Math.min(existing.slope, 0.42),
-    });
+export function generateMountainGrid(seed: string, baseElevation = 620, summitElevation = 3480, sizeOrName: number | string = 33): MountainGrid {
+  const size = typeof sizeOrName === 'number' ? sizeOrName : 33;
+  const elevations: number[] = [];
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) elevations.push(elevationField(seed, x, y, size, baseElevation, summitElevation));
   }
 
-  patchCell(start, { elevation: startElevation, normalizedHeight: 0, terrain: 'APPROACH', passable: true, hazard: 'NONE', campScore: 88, slope: 0.04 });
-  patchCell(summit, { elevation: summitElevation, normalizedHeight: 1, terrain: 'RIDGE', passable: true, hazard: 'NONE', campScore: 0 });
-  patchCell({ x: 7, y: 14 }, { passable: true, terrain: 'SCREE', hazard: 'NONE', campScore: 96, slope: 0.1 });
-  patchCell({ x: 13, y: 8 }, { passable: true, terrain: 'SNOW', hazard: 'NONE', campScore: 96, slope: 0.12 });
+  let summitIndex = 0;
+  elevations.forEach((value, index) => { if (value > elevations[summitIndex]!) summitIndex = index; });
+  const summit = { x: summitIndex % size, y: Math.floor(summitIndex / size) };
+  elevations[summitIndex] = summitElevation;
 
-  return { seed, name, size, startElevation, summitElevation, start, summit, cells };
+  const at = (x: number, y: number) => elevations[clamp(y, 0, size - 1) * size + clamp(x, 0, size - 1)]!;
+  const cells: MountainCell[] = [];
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const elevation = at(x, y);
+      const dx = Math.abs(at(x + 1, y) - at(x - 1, y));
+      const dy = Math.abs(at(x, y + 1) - at(x, y - 1));
+      const slope = clamp(Math.round(Math.hypot(dx, dy) / 22), 0, 80);
+      const ratio = (elevation - baseElevation) / Math.max(1, summitElevation - baseElevation);
+      const terrain = (x === summit.x && y === summit.y) ? 'SUMMIT' : terrainFor(ratio, slope, x, y, size);
+      const hazard = hazardFor(seed, terrain, slope, x, y);
+      const edge = x === 0 || y === 0 || x === size - 1 || y === size - 1;
+      const passable = edge || slope < 73;
+      const campQuality = passable && hazard === 'NONE' && slope <= 16 && ratio > 0.16 && ratio < 0.82 ? Math.round(100 - slope * 4 - Math.abs(ratio - 0.48) * 28) : 0;
+      cells.push({ x, y, elevation, slope, terrain, hazard, passable, campQuality });
+    }
+  }
+
+  const entries: Record<EntrySide, GridPoint> = {
+    NORTH: nearestEdgePoint('NORTH', size),
+    EAST: nearestEdgePoint('EAST', size),
+    SOUTH: nearestEdgePoint('SOUTH', size),
+    WEST: nearestEdgePoint('WEST', size),
+  };
+  return { seed, width: size, height: size, baseElevation, summitElevation, cells, summit, entries, start: entries.SOUTH };
 }
 
 export function cellAt(grid: MountainGrid, point: GridPoint) {
-  if (point.x < 0 || point.y < 0 || point.x >= grid.size || point.y >= grid.size) return null;
-  return grid.cells[point.y * grid.size + point.x] ?? null;
+  if (point.x < 0 || point.y < 0 || point.x >= grid.width || point.y >= grid.height) return null;
+  return grid.cells[point.y * grid.width + point.x] ?? null;
 }
 
-export function isSamePoint(a: GridPoint, b: GridPoint) {
-  return a.x === b.x && a.y === b.y;
-}
+export function isSamePoint(a: GridPoint, b: GridPoint) { return a.x === b.x && a.y === b.y; }
+export function isAdjacent(a: GridPoint, b: GridPoint) { return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) === 1; }
+export function cellCanHostCamp(cell: MountainCell) { return cell.campQuality >= 42 && cell.hazard === 'NONE' && cell.passable; }
 
-export function isAdjacent(a: GridPoint, b: GridPoint) {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
-}
-
-export function gridNeighbours(grid: MountainGrid, point: GridPoint) {
-  const candidates = [
-    { x: point.x + 1, y: point.y },
-    { x: point.x - 1, y: point.y },
-    { x: point.x, y: point.y + 1 },
-    { x: point.x, y: point.y - 1 },
-  ];
-  return candidates.filter(candidate => cellAt(grid, candidate)?.passable);
-}
-
-export function weatherAtGrid(elapsedMinutes: number): GridWeather {
-  const hour = (5.5 + elapsedMinutes / 60) % 24;
-  const daylight = clamp(Math.sin((hour - 6) / 12 * Math.PI));
-  const front = clamp((elapsedMinutes - 520) / 420);
-  const windKmh = Math.round(14 + Math.sin(elapsedMinutes / 81) * 7 + front * 31);
-  const visibility = Math.round(clamp(0.98 - front * 0.62 - Math.max(0, windKmh - 38) / 130, 0.18, 1) * 100);
-  const snowSoftness = Math.round(clamp(daylight * 0.72 + elapsedMinutes / 1800) * 100);
-  const temperatureC = Math.round(-11 + daylight * 12 - front * 5);
-  return { hour, windKmh, visibility, snowSoftness, temperatureC };
-}
-
-export function moveCost(
-  grid: MountainGrid,
-  from: GridPoint,
-  to: GridPoint,
-  weather: GridWeather,
-  options: { roped: boolean; fixedRope: boolean; leaderEnergy: number },
-): GridMoveCost {
-  const a = cellAt(grid, from);
-  const b = cellAt(grid, to);
-  if (!a || !b || !isAdjacent(from, to)) return { minutes: 9999, energy: 99, severity: 'EXTREME' };
-  const gain = b.elevation - a.elevation;
-  const vertical = Math.abs(gain);
-  const climbFactor = gain > 0 ? 1 + vertical / 190 : 0.82 + vertical / 460;
-  const steepFactor = 1 + Math.max(0, b.slope - 0.2) * 1.8;
-  const weatherFactor = 1 + Math.max(0, weather.windKmh - 28) / 120 + Math.max(0, 52 - weather.visibility) / 150;
-  const snowFactor = b.terrain === 'SNOW' ? 1 + weather.snowSoftness / 210 : 1;
-  const ropeFactor = options.fixedRope && (b.terrain === 'ROCK' || b.terrain === 'RIDGE') ? 0.76 : options.roped ? 1.06 : 1;
-  const exhaustion = 1 + Math.max(0, 42 - options.leaderEnergy) / 78;
-  const minutes = Math.round(11 * terrainTime[b.terrain] * climbFactor * steepFactor * weatherFactor * snowFactor * ropeFactor * exhaustion);
-  const energy = Math.max(1, Math.round((1.2 + vertical / 115) * terrainEnergy[b.terrain] * steepFactor * (options.leaderEnergy < 35 ? 1.25 : 1)));
-  const danger = b.slope + (b.hazard === 'NONE' ? 0 : 0.24) + Math.max(0, weather.windKmh - 42) / 100 + (options.roped ? -0.08 : 0);
-  const severity = danger > 0.85 ? 'EXTREME' : danger > 0.58 ? 'HIGH' : danger > 0.34 ? 'MEDIUM' : 'LOW';
-  return { minutes, energy, severity };
-}
-
-export function routeCost(grid: MountainGrid, route: GridPoint[], elapsedMinutes = 0) {
-  let minutes = 0;
-  let energy = 0;
-  let hazards = 0;
-  for (let index = 1; index < route.length; index += 1) {
-    const weather = weatherAtGrid(elapsedMinutes + minutes);
-    const cost = moveCost(grid, route[index - 1]!, route[index]!, weather, { roped: true, fixedRope: false, leaderEnergy: 80 });
-    minutes += cost.minutes;
-    energy += cost.energy;
-    const cell = cellAt(grid, route[index]!);
-    if (cell?.hazard !== 'NONE') hazards += 1;
+function neighbors(grid: MountainGrid, point: GridPoint) {
+  const result: GridPoint[] = [];
+  for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+    if (!dx && !dy) continue;
+    const next = { x: point.x + dx, y: point.y + dy };
+    const cell = cellAt(grid, next);
+    if (cell?.passable) result.push(next);
   }
-  return { minutes, energy, hazards, cells: Math.max(0, route.length - 1) };
+  return result;
 }
 
-function pathKey(point: GridPoint) {
-  return `${point.x}:${point.y}`;
-}
-
-export function findGuidedRoute(grid: MountainGrid, start = grid.start, target = grid.summit) {
+function pathfind(grid: MountainGrid, start: GridPoint, goal: GridPoint) {
+  const key = (p: GridPoint) => `${p.x}:${p.y}`;
   const open: GridPoint[] = [start];
-  const cameFrom = new Map<string, GridPoint>();
-  const cost = new Map<string, number>([[pathKey(start), 0]]);
-  const heuristic = (point: GridPoint) => Math.abs(point.x - target.x) + Math.abs(point.y - target.y);
-
+  const came = new Map<string, GridPoint>();
+  const score = new Map<string, number>([[key(start), 0]]);
   while (open.length) {
-    open.sort((a, b) => (cost.get(pathKey(a)) ?? Infinity) + heuristic(a) - ((cost.get(pathKey(b)) ?? Infinity) + heuristic(b)));
+    open.sort((a, b) => (score.get(key(a))! + Math.hypot(a.x - goal.x, a.y - goal.y) * 18) - (score.get(key(b))! + Math.hypot(b.x - goal.x, b.y - goal.y) * 18));
     const current = open.shift()!;
-    if (isSamePoint(current, target)) {
-      const route: GridPoint[] = [current];
+    if (isSamePoint(current, goal)) {
+      const path = [current];
       let cursor = current;
-      while (!isSamePoint(cursor, start)) {
-        const previous = cameFrom.get(pathKey(cursor));
-        if (!previous) break;
-        route.push(previous);
-        cursor = previous;
-      }
-      return route.reverse();
+      while (came.has(key(cursor))) { cursor = came.get(key(cursor))!; path.push(cursor); }
+      return path.reverse();
     }
-
-    for (const next of gridNeighbours(grid, current)) {
-      const cell = cellAt(grid, next)!;
-      const hazardPenalty = cell.hazard === 'NONE' ? 0 : cell.hazard === 'CREVASSE_VISIBLE' ? 16 : 10;
-      const slopePenalty = cell.slope * 12;
-      const terrainPenalty = terrainTime[cell.terrain] * 2;
-      const nextCost = (cost.get(pathKey(current)) ?? 0) + 1 + hazardPenalty + slopePenalty + terrainPenalty;
-      if (nextCost >= (cost.get(pathKey(next)) ?? Infinity)) continue;
-      cost.set(pathKey(next), nextCost);
-      cameFrom.set(pathKey(next), current);
-      if (!open.some(item => isSamePoint(item, next))) open.push(next);
+    const currentCell = cellAt(grid, current)!;
+    for (const next of neighbors(grid, current)) {
+      const nextCell = cellAt(grid, next)!;
+      const uphill = Math.max(0, nextCell.elevation - currentCell.elevation);
+      const hazardPenalty = nextCell.hazard === 'NONE' ? 0 : 35;
+      const tentative = score.get(key(current))! + 10 + nextCell.slope * 0.7 + uphill * 0.035 + hazardPenalty;
+      if (tentative < (score.get(key(next)) ?? Infinity)) {
+        came.set(key(next), current);
+        score.set(key(next), tentative);
+        if (!open.some(item => isSamePoint(item, next))) open.push(next);
+      }
     }
   }
   return [start];
 }
 
-export function routeContains(route: GridPoint[], point: GridPoint) {
-  return route.some(item => isSamePoint(item, point));
+export function findGuidedRoute(grid: MountainGrid, side: EntrySide = 'SOUTH') {
+  return pathfind(grid, grid.entries[side], grid.summit);
 }
 
-export function routeIndexOf(route: GridPoint[], point: GridPoint) {
-  return route.findIndex(item => isSamePoint(item, point));
+export function buildMountainStages(grid: MountainGrid, side: EntrySide): StageDefinition[] {
+  const route = findGuidedRoute(grid, side);
+  const ratios = [0, 0.16, 0.33, 0.5, 0.68, 0.84, 1];
+  const types: LocalStageType[] = ['APPROACH', 'MORAINE', 'GLACIER', 'SNOWFIELD', 'ROCK_FACE', 'RIDGE', 'SUMMIT'];
+  const titles = ['Подход к массиву', 'Моренный пояс', 'Ледниковая ступень', 'Снежное поле', 'Скальная стена', 'Верхний гребень', 'Выход на вершину'];
+  return ratios.map((ratio, index) => {
+    const routeIndex = Math.min(route.length - 1, Math.round((route.length - 1) * ratio));
+    const point = route[routeIndex]!;
+    const cell = cellAt(grid, point)!;
+    const previousRatio = index === 0 ? 0 : ratios[index - 1]!;
+    const previousPoint = route[Math.min(route.length - 1, Math.round((route.length - 1) * previousRatio))]!;
+    const previousCell = cellAt(grid, previousPoint)!;
+    return {
+      id: `${grid.seed}:${side}:stage:${index + 1}`,
+      index,
+      type: types[index]!,
+      title: titles[index]!,
+      subtitle: `${previousCell.elevation}–${cell.elevation} м`,
+      globalPoint: point,
+      startElevation: previousCell.elevation,
+      endElevation: cell.elevation,
+      exposure: clamp(Math.round(cell.slope * 1.25 + (cell.hazard === 'NONE' ? 0 : 20)), 0, 100),
+    };
+  });
 }
 
-export function pointLabel(point: GridPoint) {
-  return `${String.fromCharCode(65 + point.x)}${point.y + 1}`;
+function localTerrain(type: LocalStageType): MountainTerrain {
+  if (type === 'APPROACH') return 'VALLEY';
+  if (type === 'MORAINE') return 'SCREE';
+  if (type === 'GLACIER') return 'GLACIER';
+  if (type === 'SNOWFIELD') return 'SNOW';
+  if (type === 'ROCK_FACE') return 'ROCK';
+  if (type === 'RIDGE') return 'RIDGE';
+  return 'SUMMIT';
 }
 
-export function slopeLabel(slope: number) {
-  if (slope < 0.14) return 'ровно';
-  if (slope < 0.28) return 'умеренно';
-  if (slope < 0.46) return 'круто';
-  return 'очень круто';
+export function generateLocalStageMap(stage: StageDefinition, seed: string, size = 11): LocalStageMap {
+  const cells: LocalCell[] = [];
+  const start = { x: Math.floor(size / 2), y: size - 1 };
+  const goal = { x: Math.floor(size / 2), y: 0 };
+  const terrain = localTerrain(stage.type);
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const progress = 1 - y / Math.max(1, size - 1);
+      const elevation = Math.round(stage.startElevation + (stage.endElevation - stage.startElevation) * progress + noise(`${seed}:${stage.id}:e`, x, y) * 18);
+      const corridor = Math.abs(x - size / 2 - Math.sin(y * 0.9 + stage.index) * 1.5);
+      const rough = (noise(`${seed}:${stage.id}:r`, x, y) + 1) / 2;
+      let passable = corridor < 4.8 || rough > 0.2;
+      if ((x === start.x && y === start.y) || (x === goal.x && y === goal.y)) passable = true;
+      let hazard: MountainHazard = 'NONE';
+      if (stage.type === 'GLACIER' && rough > 0.78 && y > 1 && y < size - 1) hazard = 'CREVASSE';
+      if (stage.type === 'SNOWFIELD' && rough > 0.82) hazard = 'AVALANCHE';
+      if (stage.type === 'ROCK_FACE' && rough > 0.84) hazard = 'ROCKFALL';
+      if (stage.type === 'RIDGE' && rough > 0.86) hazard = 'CORNICE';
+      const campPossible = passable && hazard === 'NONE' && rough < 0.28 && y > 1 && y < size - 2;
+      const ropeRecommended = ['GLACIER', 'ROCK_FACE', 'RIDGE'].includes(stage.type) && (hazard !== 'NONE' || rough > 0.58);
+      cells.push({ x, y, elevation, terrain, hazard, passable, campPossible, ropeRecommended });
+    }
+  }
+  return { id: stage.id, width: size, height: size, start, goal, cells };
 }
 
-export function cellCanHostCamp(cell: MountainGridCell | null) {
-  return Boolean(cell && cell.passable && cell.campScore >= 90 && cell.hazard === 'NONE');
+export function localCellAt(map: LocalStageMap, point: GridPoint) {
+  if (point.x < 0 || point.y < 0 || point.x >= map.width || point.y >= map.height) return null;
+  return map.cells[point.y * map.width + point.x] ?? null;
 }
 
-export function compareRouteEfficiency(grid: MountainGrid, first: GridPoint[], second: GridPoint[]) {
-  const a = routeCost(grid, first);
-  const b = routeCost(grid, second);
-  return (a.minutes + a.energy * 5 + a.hazards * 45) - (b.minutes + b.energy * 5 + b.hazards * 45);
+export function findLocalGuidedRoute(map: LocalStageMap) {
+  const queue: GridPoint[] = [map.start];
+  const previous = new Map<string, GridPoint>();
+  const seen = new Set<string>([`${map.start.x}:${map.start.y}`]);
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (isSamePoint(current, map.goal)) {
+      const path = [current];
+      let cursor = current;
+      while (previous.has(`${cursor.x}:${cursor.y}`)) { cursor = previous.get(`${cursor.x}:${cursor.y}`)!; path.push(cursor); }
+      return path.reverse();
+    }
+    const options: GridPoint[] = [];
+    for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+      if (!dx && !dy) continue;
+      const next = { x: current.x + dx, y: current.y + dy };
+      const cell = localCellAt(map, next);
+      if (cell?.passable) options.push(next);
+    }
+    options.sort((a, b) => (a.y + Math.abs(a.x - map.goal.x) * 0.3) - (b.y + Math.abs(b.x - map.goal.x) * 0.3));
+    for (const next of options) {
+      const id = `${next.x}:${next.y}`;
+      if (seen.has(id)) continue;
+      seen.add(id); previous.set(id, current); queue.push(next);
+    }
+  }
+  return [map.start];
 }
 
-export function routeToCellIds(route: GridPoint[]) {
-  return route.map(pointId);
+export function weatherAtGrid(elapsedMinutes: number): GridWeather {
+  const hour = (5.5 + elapsedMinutes / 60) % 24;
+  const sun = clamp(Math.sin((hour - 6) / 12 * Math.PI), 0, 1);
+  const front = clamp((elapsedMinutes - 360) / 480, 0, 1);
+  return {
+    windKmh: Math.round(15 + Math.sin(elapsedMinutes / 77) * 7 + front * 30),
+    visibility: Math.round(clamp(100 - front * 62, 18, 100)),
+    snowSoftness: Math.round(clamp(8 + sun * 65 + elapsedMinutes / 50, 0, 100)),
+    temperatureC: Math.round(-10 + sun * 11 - front * 4),
+  };
+}
+
+export function moveCost(grid: MountainGrid, from: GridPoint, to: GridPoint, weather: GridWeather, options: { roped: boolean; fixedRope: boolean; leaderEnergy: number }) {
+  const a = cellAt(grid, from)!;
+  const b = cellAt(grid, to)!;
+  const vertical = Math.abs(b.elevation - a.elevation);
+  const terrainFactor: Record<MountainTerrain, number> = { VALLEY: 1, SCREE: 1.3, GLACIER: 1.25, SNOW: 1.35, ROCK: 1.7, RIDGE: 1.45, SUMMIT: 1.1 };
+  const weatherFactor = 1 + Math.max(0, 55 - weather.visibility) / 120 + Math.max(0, weather.windKmh - 35) / 140;
+  const ropeFactor = options.fixedRope ? 0.72 : options.roped ? 0.92 : 1;
+  const fatigueFactor = 1 + Math.max(0, 60 - options.leaderEnergy) / 100;
+  const minutes = Math.round((18 + vertical / 8 + b.slope * 0.55) * terrainFactor[b.terrain] * weatherFactor * ropeFactor * fatigueFactor);
+  const energy = Math.max(1, Math.round((1.5 + vertical / 85 + b.slope / 24) * terrainFactor[b.terrain] * fatigueFactor));
+  return { minutes, energy };
+}
+
+export function routeCost(grid: MountainGrid, route: GridPoint[]) {
+  let minutes = 0;
+  let energy = 0;
+  const weather = weatherAtGrid(0);
+  for (let index = 1; index < route.length; index += 1) {
+    const cost = moveCost(grid, route[index - 1]!, route[index]!, weather, { roped: true, fixedRope: false, leaderEnergy: 90 });
+    minutes += cost.minutes; energy += cost.energy;
+  }
+  return { cells: Math.max(0, route.length - 1), minutes, energy };
 }
