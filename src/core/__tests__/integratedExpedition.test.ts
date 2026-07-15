@@ -9,7 +9,9 @@ import {
   startPlannedClimb,
 } from '../career';
 import {
+  distributeIntegratedLoads,
   integratedStepPreview,
+  normalizeIntegratedExpeditionState,
   integratedWeatherAt,
   reduceIntegratedExpedition,
   type IntegratedExpeditionContext,
@@ -123,8 +125,9 @@ describe('integrated expedition career loop', () => {
 
     expect(restored.activeClimb?.topo?.started).toBe(true);
     expect(restored.activeClimb?.topo?.actionSerial).toBe(1);
-    expect(restored.activeClimb?.topo?.elapsedMinutes).toBe(25);
-    expect(restored.activeClimb?.elapsedMinutes).toBe(25);
+    expect(restored.activeClimb?.topo?.elapsedMinutes).toBe(scouted.elapsedMinutes);
+    expect(restored.activeClimb?.elapsedMinutes).toBe(scouted.elapsedMinutes);
+    expect(scouted.elapsedMinutes).toBeLessThan(25);
     expect(restored.activeClimb?.topo?.infrastructure[context.stageId]?.revealed.length).toBeGreaterThan(1);
   });
 
@@ -157,7 +160,9 @@ describe('integrated expedition career loop', () => {
     expect(rescued.phase).toBe('RETREATED');
     expect(rescued.incidents.at(-1)?.type).toBe('RESCUE');
     expect(rescued.rescuedMemberIds).toContain(victim.memberId);
-    expect(rescued.elapsedMinutes).toBe(360);
+    expect(rescued.elapsedMinutes).toBe(rescued.rescueDurationMinutes);
+    expect(rescued.elapsedMinutes).toBeGreaterThan(360);
+    expect(rescued.rescueCost).toBeGreaterThan(0);
   });
 
   it('applies team casualties and hero injuries to the correct career records', () => {
@@ -206,4 +211,77 @@ describe('integrated expedition career loop', () => {
     expect(expedition.incidentChance).toBeGreaterThanOrEqual(explorer.incidentChance);
     expect(expedition.conditionMultiplier).toBeGreaterThan(explorer.conditionMultiplier);
   });
+
+  it('uses one expedition pace instead of separate movement actions', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-PACE');
+    const { topo, context, path } = initializedTopo(career);
+    const from = path[0] as GridPoint;
+    const to = path[1] as GridPoint;
+    const cautious = integratedStepPreview({ ...topo, pace: 'CAUTIOUS' }, context.localMap, from, to, context.weather, false);
+    const fast = integratedStepPreview({ ...topo, pace: 'FAST' }, context.localMap, from, to, context.weather, false);
+
+    expect(cautious.score).toBeLessThanOrEqual(fast.score);
+    expect(cautious.minutes).toBeGreaterThan(fast.minutes);
+    expect(cautious.energy).toBeLessThanOrEqual(fast.energy);
+  });
+
+  it('lets specialists automate scouting and treatment', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-SPECIALISTS');
+    const { topo, context } = initializedTopo(career);
+    const started = reduceIntegratedExpedition(topo, { type: 'START' }, context);
+    const scouted = reduceIntegratedExpedition(started, { type: 'SCOUT', point: context.localMap.start, radius: 1, minutes: 25 }, context);
+    const patient = scouted.participants.find(participant => participant.memberId)!;
+    const injured: IntegratedExpeditionState = {
+      ...scouted,
+      participants: scouted.participants.map(participant => participant.id === patient.id
+        ? { ...participant, injury: `${participant.name}: растяжение`, status: 'INJURED', condition: 52 }
+        : participant),
+    };
+    const rested = reduceIntegratedExpedition(injured, { type: 'REST', mode: 'BIVOUAC' }, context);
+    const treated = rested.participants.find(participant => participant.id === patient.id)!;
+
+    expect(scouted.message).toContain('разведал');
+    expect(scouted.elapsedMinutes).toBeLessThan(25);
+    expect(rested.gear.medkitCharges).toBe(injured.gear.medkitCharges - 1);
+    expect(treated.condition).toBeGreaterThan(52);
+    expect(rested.message).toContain('обработал травму');
+  });
+
+  it('redistributes load automatically when a carrier is incapacitated', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-LOAD');
+    const topo = career.activeClimb!.topo!;
+    const victim = topo.participants.find(participant => participant.memberId)!;
+    const before = topo.participants.filter(participant => participant.id !== victim.id).reduce((sum, participant) => sum + participant.loadKg, 0);
+    const redistributed = distributeIntegratedLoads(
+      topo.participants.map(participant => participant.id === victim.id ? { ...participant, status: 'INCAPACITATED' as const } : participant),
+      topo.packWeightKg,
+    );
+    const after = redistributed.filter(participant => participant.id !== victim.id).reduce((sum, participant) => sum + participant.loadKg, 0);
+
+    expect(redistributed.find(participant => participant.id === victim.id)?.loadKg).toBe(0);
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it('migrates an active 0.8.5 expedition without losing its route', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-MIGRATION');
+    const topo = career.activeClimb!.topo!;
+    const legacy = {
+      ...topo,
+      version: 1,
+      pace: undefined,
+      gear: undefined,
+      eventLog: undefined,
+      rescueCost: undefined,
+      rescueDurationMinutes: undefined,
+      participants: topo.participants.map(({ loadKg: _loadKg, carryCapacityKg: _capacity, ...participant }) => participant),
+    } as unknown as IntegratedExpeditionState;
+    const migrated = normalizeIntegratedExpeditionState(legacy);
+
+    expect(migrated.version).toBe(2);
+    expect(migrated.pace).toBe('STEADY');
+    expect(migrated.participants.every(participant => participant.carryCapacityKg > 0)).toBe(true);
+    expect(migrated.eventLog.length).toBeGreaterThan(0);
+    expect(migrated.routeChoice).toBe(topo.routeChoice);
+  });
+
 });

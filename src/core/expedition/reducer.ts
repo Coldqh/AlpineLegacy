@@ -1,9 +1,18 @@
 import { createRng } from '../rng';
 import { isSamePoint, localCellAt, type GridPoint } from '../../topography/mountainGridEngine';
 import type { IntegratedExpeditionCommand, IntegratedExpeditionContext } from './commands';
-import { integratedDifficultyTuning, integratedStepPreview } from './risk';
-import { activeIntegratedParticipants, integratedLeader, integratedTeamCondition } from './selectors';
+import { integratedDifficultyTuning, integratedPaceTuning, integratedStepPreview } from './risk';
 import {
+  activeIntegratedParticipants,
+  integratedLeader,
+  integratedSpecialist,
+  integratedTeamCondition,
+  integratedTeamMorale,
+  integratedTeamTrust,
+  mobileIntegratedParticipants,
+} from './selectors';
+import {
+  distributeIntegratedLoads,
   EMPTY_INTEGRATED_INFRASTRUCTURE,
   type IntegratedExpeditionEvent,
   type IntegratedExpeditionState,
@@ -17,6 +26,12 @@ const pointKey = (point: GridPoint) => `${point.x}:${point.y}`;
 
 function event(state: IntegratedExpeditionState, kind: IntegratedExpeditionEvent['kind'], severity: IntegratedExpeditionEvent['severity'], text: string) {
   return { serial: state.lastEvent.serial + 1, kind, severity, text } satisfies IntegratedExpeditionEvent;
+}
+
+function finalizeTransition(previous: IntegratedExpeditionState, next: IntegratedExpeditionState) {
+  if (next === previous || next.lastEvent.serial === previous.lastEvent.serial) return next;
+  const eventLog = [...(previous.eventLog ?? []), next.lastEvent].slice(-160);
+  return { ...next, eventLog };
 }
 
 function updateInfrastructure(
@@ -52,12 +67,22 @@ function applyTime(state: IntegratedExpeditionState, minutes: number, intensity 
   };
 }
 
-function injuryLabel(type: IntegratedIncidentRecord['type']) {
-  if (type === 'FALL') return 'Травма после срыва';
-  if (type === 'FROSTBITE') return 'Обморожение';
-  if (type === 'ALTITUDE') return 'Высотное истощение';
-  if (type === 'EXHAUSTION') return 'Критическое истощение';
-  return 'Травма на маршруте';
+function rebalanceLoads(state: IntegratedExpeditionState) {
+  return {
+    ...state,
+    participants: distributeIntegratedLoads(state.participants, Math.max(0, state.packWeightKg - state.gear.lostWeightKg / Math.max(1, state.participants.length))),
+  };
+}
+
+function adjustTeamMindset(state: IntegratedExpeditionState, moraleDelta: number, trustDelta: number) {
+  return {
+    ...state,
+    participants: state.participants.map(participant => participant.status === 'DEAD' ? participant : {
+      ...participant,
+      morale: clamp(participant.morale + moraleDelta),
+      trust: clamp(participant.trust + trustDelta),
+    }),
+  };
 }
 
 function withIncident(
@@ -106,20 +131,27 @@ function damageParticipant(
       casualtyId = participant.memberId ?? participant.id;
     } else if (condition < 18 || energy <= 0) status = 'INCAPACITATED';
     else if (injury) status = 'INJURED';
-    return { ...participant, condition, energy, status, injury: injury ?? participant.injury };
+    return {
+      ...participant,
+      condition,
+      energy,
+      morale: clamp(participant.morale - Math.max(2, Math.round(conditionLoss / 5))),
+      status,
+      injury: injury ?? participant.injury,
+    };
   });
-  return {
+  return rebalanceLoads({
     ...state,
     participants,
     injuries: injury && !state.injuries.includes(injury) ? [...state.injuries, injury] : state.injuries,
     casualties: casualtyId && !state.casualties.includes(casualtyId) ? [...state.casualties, casualtyId] : state.casualties,
-  };
+  });
 }
 
 function weakestParticipant(state: IntegratedExpeditionState) {
-  return activeIntegratedParticipants(state)
-    .filter(participant => participant.status !== 'INCAPACITATED')
-    .sort((a, b) => (a.condition + a.energy) - (b.condition + b.energy))[0] ?? integratedLeader(state);
+  return mobileIntegratedParticipants(state)
+    .sort((a, b) => (a.condition + a.energy - a.loadKg * 1.5) - (b.condition + b.energy - b.loadKg * 1.5))[0]
+    ?? integratedLeader(state);
 }
 
 function forceRetreat(
@@ -135,7 +167,7 @@ function forceRetreat(
   const text = alreadyAtStart ? 'Группа отказалась от выхода и вернулась в базовый лагерь.' : reason;
   return {
     ...state,
-    phase: alreadyAtStart ? 'RETREATED' as const : 'DESCENT' as const,
+    phase: alreadyAtStart ? 'RETREATED' : 'DESCENT',
     retreating: true,
     forcedRetreat: forced,
     currentElevation: alreadyAtStart ? state.startElevation : state.currentElevation,
@@ -147,40 +179,53 @@ function forceRetreat(
 }
 
 function checkExpeditionViability(state: IntegratedExpeditionState, context: IntegratedExpeditionContext) {
-  const active = activeIntegratedParticipants(state);
-  const mobile = active.filter(participant => participant.status === 'ACTIVE' || participant.status === 'INJURED');
+  const mobile = mobileIntegratedParticipants(state);
   if (!mobile.length) return forceRetreat(state, context, 'Группа потеряла возможность двигаться. Нужна спасательная операция.');
-  if (state.supplies.waterUnits <= 0) return forceRetreat(state, context, 'Вода закончилась. Продолжение подъёма запрещено, группа начинает аварийный отход.');
+  if (state.supplies.waterUnits <= 0) return forceRetreat(state, context, 'Вода закончилась. Группа начинает аварийный отход.');
   if (integratedTeamCondition(state) <= 18) return forceRetreat(state, context, 'Состояние группы критическое. Руководитель разворачивает экспедицию.');
   return state;
 }
 
 function applyMovementFatigue(state: IntegratedExpeditionState, energyCost: number, minutes: number): IntegratedExpeditionState {
   const tuning = integratedDifficultyTuning(state.difficulty);
+  const pace = integratedPaceTuning(state.pace);
   const noFood = state.supplies.foodUnits <= 0;
   const noWater = state.supplies.waterUnits <= 0;
   const cold = Math.max(0, -state.weatherWindow.temperatureC - 12) / 20;
   const participants = state.participants.map((participant, index) => {
     if (participant.status === 'DEAD') return participant;
-    const roleFactor = index === 0 ? 1 : index === state.participants.length - 1 ? 0.76 : 0.66;
+    const roleFactor = index === 0 ? 1 : index === state.participants.length - 1 ? 0.78 : 0.68;
     const enduranceMitigation = participant.skills.ENDURANCE * 0.035;
-    const energyLoss = Math.max(1, Math.round(energyCost * roleFactor * (1 - Math.min(0.32, enduranceMitigation))));
+    const loadRatio = participant.carryCapacityKg > 0 ? participant.loadKg / participant.carryCapacityKg : 1.5;
+    const loadFactor = 1 + Math.max(-.12, loadRatio - .72) * .72;
+    const energyLoss = Math.max(1, Math.round(energyCost * roleFactor * loadFactor * (1 - Math.min(0.32, enduranceMitigation))));
     const fatigue = clamp(participant.fatigue + energyLoss * 1.25 + minutes / 100);
     const supplyLoss = (noFood ? 2.2 : 0) + (noWater ? 5.5 : 0);
     const conditionLoss = Math.max(0, Math.round((fatigue > 72 ? (fatigue - 72) / 22 : 0) * tuning.condition + supplyLoss + cold));
     const energy = clamp(participant.energy - energyLoss);
     const condition = clamp(participant.condition - conditionLoss);
+    const strained = loadRatio > 1 || energy < 28;
+    const moraleDelta = state.pace === 'FAST' && strained ? -2 : state.pace === 'CAUTIOUS' && energy < 45 ? 1 : 0;
     let status: IntegratedParticipantState['status'] = participant.status;
     if (condition <= 0) status = 'DEAD';
     else if (condition < 18 || energy <= 0) status = 'INCAPACITATED';
-    return { ...participant, energy, fatigue, condition, status };
+    return { ...participant, energy, fatigue, condition, morale: clamp(participant.morale + moraleDelta), status };
   });
   const casualties = [...state.casualties];
   for (const participant of participants) {
     const casualtyId = participant.memberId ?? participant.id;
     if (participant.status === 'DEAD' && !casualties.includes(casualtyId)) casualties.push(casualtyId);
   }
-  return { ...state, participants, casualties };
+  return rebalanceLoads({
+    ...state,
+    participants,
+    casualties,
+    gear: {
+      ...state.gear,
+      hardwareCondition: clamp(state.gear.hardwareCondition - Math.max(0, Math.round((energyCost - 7) / 12))),
+      ropeCondition: clamp(state.gear.ropeCondition - (state.phase === 'DESCENT' ? .35 : .18)),
+    },
+  });
 }
 
 function hazardBlockReason(state: IntegratedExpeditionState, context: IntegratedExpeditionContext, point: GridPoint, protectedByRope: boolean) {
@@ -189,33 +234,74 @@ function hazardBlockReason(state: IntegratedExpeditionState, context: Integrated
   if (cell.hazard === 'AVALANCHE' && context.weather.snowSoftness >= (state.difficulty === 'EXPLORER' ? 66 : 54)) return 'Снег размягчён. Лавинный склон сейчас закрыт.';
   if (cell.hazard === 'ROCKFALL' && context.weather.temperatureC >= (state.difficulty === 'EXPEDITION' ? -2 : 0)) return 'Прогрев усилил камнепад. Нужен обход или ожидание холода.';
   if (cell.hazard === 'CORNICE') return 'Карниз нельзя пересекать. Перестрой линию ниже гребня.';
+  if ((cell.ropeRequired || protectedByRope) && state.gear.ropeCondition < 18) return 'Рабочая верёвка критически изношена. Технический участок закрыт.';
+  if ((cell.terrain === 'ROCK' || cell.terrain === 'GLACIER' || cell.terrain === 'RIDGE') && state.gear.hardwareCondition < 14) return 'Кошки, крючья и карабины больше не держат рабочую нагрузку.';
   return null;
 }
 
 function resolveIncident(state: IntegratedExpeditionState, context: IntegratedExpeditionContext, riskScore: number): IntegratedExpeditionState {
   const rng = createRng(`${state.seed}:integrated:${context.stageId}:${state.actionSerial + 1}`);
   const target = rng.chance(0.58) ? integratedLeader(state) : weakestParticipant(state);
+  const medic = integratedSpecialist(state, 'MEDICINE');
+  const medicalMitigation = Math.min(.32, medic.skills.MEDICINE * .035 + (state.gear.medkitCharges > 0 ? .08 : 0));
   const weather = context.weather;
   const severe = riskScore >= 72 || rng.chance(state.difficulty === 'EXPEDITION' ? 0.28 : 0.12);
+  const severityFactor = 1 - medicalMitigation;
+  let next = adjustTeamMindset(state, severe ? -6 : -3, severe ? -4 : -2);
+
   if (weather.temperatureC <= -14 && rng.chance(0.34)) {
     const injury = `${target.name}: обморожение`;
-    const damaged = damageParticipant(state, target.id, severe ? 14 : 7, 7, injury);
-    return withIncident(damaged, context, 'FROSTBITE', target, 'Обморожение', `${target.name} теряет чувствительность в пальцах.`, severe ? 'CRITICAL' : 'DANGER');
+    next = damageParticipant(next, target.id, Math.round((severe ? 14 : 7) * severityFactor), 7, injury);
+    return withIncident(next, context, 'FROSTBITE', target, 'Обморожение', `${target.name} теряет чувствительность в пальцах. ${medic.name} начинает первую помощь.`, severe ? 'CRITICAL' : 'DANGER');
   }
   if (state.currentElevation >= state.startElevation + (state.summitElevation - state.startElevation) * 0.64 && state.acclimatizationDays < 4 && rng.chance(0.42)) {
     const injury = `${target.name}: высотные симптомы`;
-    const damaged = damageParticipant(state, target.id, severe ? 18 : 9, 12, injury);
-    return withIncident(damaged, context, 'ALTITUDE', target, 'Высотные симптомы', `${target.name} резко сдал по состоянию.`, severe ? 'CRITICAL' : 'DANGER');
+    next = damageParticipant(next, target.id, Math.round((severe ? 18 : 9) * severityFactor), 12, injury);
+    return withIncident(next, context, 'ALTITUDE', target, 'Высотные симптомы', `${target.name} резко сдал по состоянию. ${medic.name} контролирует симптомы.`, severe ? 'CRITICAL' : 'DANGER');
   }
   if (rng.chance(0.18) && state.ropeMeters >= 20) {
-    return withIncident({ ...state, ropeMeters: Math.max(0, state.ropeMeters - 20) }, context, 'GEAR_LOSS', null, 'Потеря снаряжения', 'Двадцать метров верёвки сорвало со склона.', 'DANGER');
+    next = {
+      ...next,
+      ropeMeters: Math.max(0, next.ropeMeters - 20),
+      gear: {
+        ...next.gear,
+        ropeCondition: clamp(next.gear.ropeCondition - 9),
+        hardwareCondition: clamp(next.gear.hardwareCondition - 5),
+        lostWeightKg: next.gear.lostWeightKg + 2.4,
+      },
+    };
+    return withIncident(rebalanceLoads(next), context, 'GEAR_LOSS', null, 'Потеря снаряжения', 'Двадцать метров верёвки и часть железа сорвало со склона.', 'DANGER');
   }
   const injury = `${target.name}: ${severe ? 'серьёзная травма после срыва' : 'ушиб после срыва'}`;
-  const damaged = damageParticipant(state, target.id, severe ? 28 : 11, severe ? 20 : 9, injury);
-  return withIncident(damaged, context, 'FALL', target, 'Срыв', `${target.name} получил ${severe ? 'серьёзную травму' : 'ушиб'}.`, severe ? 'CRITICAL' : 'DANGER');
+  next = damageParticipant(next, target.id, Math.round((severe ? 28 : 11) * severityFactor), severe ? 20 : 9, injury);
+  return withIncident(next, context, 'FALL', target, 'Срыв', `${target.name} получил ${severe ? 'серьёзную травму' : 'ушиб'}.`, severe ? 'CRITICAL' : 'DANGER');
+}
+
+function teamRefusesFastPush(state: IntegratedExpeditionState, context: IntegratedExpeditionContext) {
+  if (state.pace !== 'FAST' || state.phase !== 'ASCENT') return null;
+  const trust = integratedTeamTrust(state);
+  const morale = integratedTeamMorale(state);
+  if (trust >= 45 || morale >= 48) return null;
+  const rng = createRng(`${state.seed}:refusal:${context.stageId}:${state.actionSerial + 1}`);
+  const chance = Math.min(.72, .14 + Math.max(0, 45 - trust) / 70 + Math.max(0, 48 - morale) / 85);
+  if (!rng.chance(chance)) return null;
+  const speaker = [...mobileIntegratedParticipants(state)].sort((a, b) => a.trust - b.trust)[0] ?? integratedLeader(state);
+  let next = applyTime({ ...state, actionSerial: state.actionSerial + 1 }, 18, .35);
+  next = adjustTeamMindset(next, -1, -3);
+  return withIncident(next, context, 'CONFLICT', speaker, 'Отказ от рывка', `${speaker.name} отказался идти быстрым темпом при таком состоянии группы.`, 'WARNING');
+}
+
+function rewardSuccessfulStep(state: IntegratedExpeditionState, riskScore: number) {
+  const leader = integratedLeader(state);
+  const trustGain = riskScore >= 45 && leader.skills.LEADERSHIP >= 6 ? 1 : 0;
+  const moraleGain = riskScore >= 60 ? 2 : riskScore >= 35 ? 1 : 0;
+  return adjustTeamMindset(state, moraleGain, trustGain);
 }
 
 function reduceStep(state: IntegratedExpeditionState, context: IntegratedExpeditionContext): IntegratedExpeditionState {
+  const refusal = teamRefusesFastPush(state, context);
+  if (refusal) return refusal;
+
   const path = state.paths[context.stageId] ?? [context.localMap.start];
   if (path.length < 2 || state.positionIndex >= path.length - 1) {
     const text = 'Сначала продолжи маршрут от текущей клетки.';
@@ -233,7 +319,7 @@ function reduceStep(state: IntegratedExpeditionState, context: IntegratedExpedit
   if (cell.hazard !== 'NONE' && !hazardKnown) {
     const revealed = [...new Set([...infra.revealed, id])];
     const nextState = updateInfrastructure(state, context.stageId, value => ({ ...value, revealed }));
-    const text = `Ведущий обнаружил: ${cell.hazard === 'CREVASSE' ? 'трещину' : cell.hazard === 'AVALANCHE' ? 'лавинный склон' : cell.hazard === 'ROCKFALL' ? 'камнепадный жёлоб' : 'карниз'}.`;
+    const text = `Группа обнаружила: ${cell.hazard === 'CREVASSE' ? 'трещину' : cell.hazard === 'AVALANCHE' ? 'лавинный склон' : cell.hazard === 'ROCKFALL' ? 'камнепадный жёлоб' : 'карниз'}.`;
     return { ...nextState, message: text, lastEvent: event(state, 'STOP', 'WARNING', text) };
   }
   const blocked = hazardBlockReason(state, context, next, protectedByRope);
@@ -270,6 +356,7 @@ function reduceStep(state: IntegratedExpeditionState, context: IntegratedExpedit
   };
 
   if (rng.chance(preview.incidentChance)) nextState = resolveIncident(nextState, context, preview.score);
+  else nextState = rewardSuccessfulStep(nextState, preview.score);
   nextState = checkExpeditionViability(nextState, context);
   if (nextState.forcedRetreat) return nextState;
 
@@ -305,7 +392,7 @@ function reduceStep(state: IntegratedExpeditionState, context: IntegratedExpedit
       };
     }
     if (state.stageIndex <= 0) {
-      const phase = state.retreating ? 'RETREATED' as const : 'COMPLETE' as const;
+      const phase = state.retreating ? 'RETREATED' : 'COMPLETE';
       const text = state.retreating ? 'Группа завершила отход и вернулась к старту.' : 'Группа вернулась к старту. Подъём и спуск завершены.';
       return {
         ...nextState,
@@ -325,7 +412,9 @@ function reduceStep(state: IntegratedExpeditionState, context: IntegratedExpedit
     };
   }
 
-  const text = nextState.lastEvent.kind === 'INCIDENT' ? nextState.message : `Группа прошла клетку. Высота ${cell.elevation} м.`;
+  const text = nextState.lastEvent.kind === 'INCIDENT'
+    ? nextState.message
+    : `${preview.specialistName} поддерживает линию. Высота ${cell.elevation} м.`;
   return {
     ...nextState,
     message: text,
@@ -334,12 +423,12 @@ function reduceStep(state: IntegratedExpeditionState, context: IntegratedExpedit
 }
 
 function restRecovery(mode: IntegratedRestMode) {
-  if (mode === 'BREAK') return { minutes: 30, energy: 9, condition: 0, fuel: 0 };
-  if (mode === 'BIVOUAC') return { minutes: 180, energy: 32, condition: 3, fuel: 1 };
-  return { minutes: 480, energy: 68, condition: 8, fuel: 2 };
+  if (mode === 'BREAK') return { minutes: 30, energy: 9, condition: 0, fuel: 0, morale: 1 };
+  if (mode === 'BIVOUAC') return { minutes: 180, energy: 32, condition: 3, fuel: 1, morale: 3 };
+  return { minutes: 480, energy: 68, condition: 8, fuel: 2, morale: 7 };
 }
 
-export function reduceIntegratedExpedition(
+function reduceIntegratedExpeditionCore(
   state: IntegratedExpeditionState,
   command: IntegratedExpeditionCommand,
   context: IntegratedExpeditionContext,
@@ -373,6 +462,12 @@ export function reduceIntegratedExpedition(
       lastEvent: event(state, 'INFO', 'CALM', 'Маршрут выбран.'),
     };
   }
+  if (command.type === 'SET_PACE') {
+    if (['COMPLETE', 'RETREATED', 'FAILED'].includes(state.phase)) return state;
+    const label = command.pace === 'CAUTIOUS' ? 'осторожный' : command.pace === 'FAST' ? 'быстрый' : 'рабочий';
+    const text = `Установлен ${label} темп. Он применяется ко всей группе автоматически.`;
+    return { ...state, pace: command.pace, message: text, lastEvent: event(state, 'INFO', 'CALM', text) };
+  }
   if (command.type === 'REGENERATE') {
     if (state.started) return state;
     return {
@@ -403,7 +498,7 @@ export function reduceIntegratedExpedition(
   }
   if (command.type === 'START') {
     if (state.started) return state;
-    const text = 'План зафиксирован. Все действия, ресурсы и последствия теперь записываются в карьерный сейв.';
+    const text = 'План зафиксирован. Специалисты, груз и снаряжение работают автоматически; ты управляешь линией, темпом, отдыхом и исходом.';
     return { ...state, started: true, message: text, lastEvent: event(state, 'INFO', 'SUCCESS', text) };
   }
   if (command.type === 'STEP') {
@@ -413,17 +508,20 @@ export function reduceIntegratedExpedition(
   if (command.type === 'SCOUT') {
     const currentPath = state.paths[context.stageId] ?? [context.localMap.start];
     const current = currentPath[state.positionIndex] ?? context.localMap.start;
+    const navigator = integratedSpecialist(state, 'NAVIGATION');
+    const radius = Math.max(command.radius, navigator.skills.NAVIGATION >= 7 ? 2 : 1);
+    const minutes = Math.max(8, Math.round(command.minutes * (1 - navigator.skills.NAVIGATION * .035)));
     const distance = Math.max(Math.abs(command.point.x - current.x), Math.abs(command.point.y - current.y));
-    if (distance > command.radius + 1) {
+    if (distance > radius + 1) {
       const text = 'Эта клетка слишком далеко. Сначала подведи группу ближе.';
       return { ...state, message: text, lastEvent: event(state, 'STOP', 'WARNING', text) };
     }
     const around = context.localMap.cells
-      .filter(cell => Math.max(Math.abs(cell.x - command.point.x), Math.abs(cell.y - command.point.y)) <= command.radius)
+      .filter(cell => Math.max(Math.abs(cell.x - command.point.x), Math.abs(cell.y - command.point.y)) <= radius)
       .map(pointKey);
     let next = updateInfrastructure(state, context.stageId, value => ({ ...value, revealed: [...new Set([...value.revealed, ...around])] }));
-    next = applyTime({ ...next, actionSerial: state.actionSerial + 1 }, command.minutes, 0.7);
-    const text = 'Разведаны клетка и ближайший рельеф.';
+    next = applyTime({ ...next, actionSerial: state.actionSerial + 1 }, minutes, 0.7);
+    const text = `${navigator.name} разведал район радиусом ${radius} клетки.`;
     return { ...next, message: text, lastEvent: event(next, 'INFO', 'CALM', text) };
   }
   if (command.type === 'TOGGLE_ROPE') {
@@ -440,13 +538,30 @@ export function reduceIntegratedExpedition(
       const text = 'Не хватает двадцати метров верёвки.';
       return { ...state, message: text, lastEvent: event(state, 'STOP', 'WARNING', text) };
     }
+    if (state.gear.ropeCondition < 18 || state.gear.hardwareCondition < 18) {
+      const text = 'Страховочное снаряжение критически изношено.';
+      return { ...state, message: text, lastEvent: event(state, 'STOP', 'DANGER', text) };
+    }
     if (cell.anchorQuality < 35) {
       const text = 'Нет надёжного крепления. Ищи соседнюю скалу или лёд с лучшим анкером.';
       return { ...state, message: text, lastEvent: event(state, 'STOP', 'DANGER', text) };
     }
+    const skillId = cell.terrain === 'GLACIER' ? 'ICE' : 'ROCK';
+    const technician = integratedSpecialist(state, skillId);
+    const minutes = Math.max(18, Math.round(44 - technician.skills[skillId] * 3));
+    const wear = Math.max(1, 5 - Math.floor(technician.skills[skillId] / 3));
     let next = updateInfrastructure(state, context.stageId, value => ({ ...value, ropes: [...value.ropes, id], revealed: [...new Set([...value.revealed, id])] }));
-    next = applyTime({ ...next, ropeMeters: next.ropeMeters - 20, actionSerial: next.actionSerial + 1 }, 35, 0.85);
-    const text = `Закреплено 20 м верёвки на участке ${cell.slope}°.`;
+    next = applyTime({
+      ...next,
+      ropeMeters: next.ropeMeters - 20,
+      actionSerial: next.actionSerial + 1,
+      gear: {
+        ...next.gear,
+        ropeCondition: clamp(next.gear.ropeCondition - wear),
+        hardwareCondition: clamp(next.gear.hardwareCondition - Math.max(1, wear - 1)),
+      },
+    }, minutes, 0.85);
+    const text = `${technician.name} закрепил 20 м верёвки на участке ${cell.slope}°.`;
     return { ...next, message: text, lastEvent: event(next, 'INFO', 'SUCCESS', text) };
   }
   if (command.type === 'MAKE_CAMP') {
@@ -455,16 +570,23 @@ export function reduceIntegratedExpedition(
       const text = 'Площадка слишком крутая, открытая или опасная.';
       return { ...state, message: text, lastEvent: event(state, 'STOP', 'WARNING', text) };
     }
-    if (state.campKits <= 0) {
-      const text = 'Свободных комплектов лагеря больше нет.';
+    if (state.campKits <= 0 || state.gear.shelterCondition < 12) {
+      const text = state.campKits <= 0 ? 'Свободных комплектов лагеря больше нет.' : 'Укрытие слишком изношено для нового лагеря.';
       return { ...state, message: text, lastEvent: event(state, 'STOP', 'WARNING', text) };
     }
     const id = pointKey(command.point);
     const infra = state.infrastructure[context.stageId] ?? EMPTY_INTEGRATED_INFRASTRUCTURE;
     if (infra.camps.includes(id)) return state;
+    const endurance = integratedSpecialist(state, 'ENDURANCE').skills.ENDURANCE;
+    const minutes = Math.max(60, Math.round(112 - endurance * 5));
     let next = updateInfrastructure(state, context.stageId, value => ({ ...value, camps: [...value.camps, id] }));
-    next = applyTime({ ...next, campKits: next.campKits - 1, actionSerial: next.actionSerial + 1 }, 95, 0.9);
-    const text = 'Лагерь установлен и останется на спуск.';
+    next = applyTime({
+      ...next,
+      campKits: next.campKits - 1,
+      actionSerial: next.actionSerial + 1,
+      gear: { ...next.gear, shelterCondition: clamp(next.gear.shelterCondition - 3) },
+    }, minutes, 0.9);
+    const text = 'Группа установила лагерь. Он останется на спуск.';
     return { ...next, message: text, lastEvent: event(next, 'INFO', 'SUCCESS', text) };
   }
   if (command.type === 'REST') {
@@ -482,22 +604,46 @@ export function reduceIntegratedExpedition(
       return { ...state, message: text, lastEvent: event(state, 'STOP', 'WARNING', text) };
     }
     const recovery = restRecovery(command.mode);
-    if (recovery.fuel > state.supplies.fuelUnits || (recovery.fuel > 0 && !state.hasStove)) {
-      const text = !state.hasStove ? 'Без горелки длительный отдых не восстанавливает группу.' : 'Не хватает топлива для отдыха.';
+    if (recovery.fuel > state.supplies.fuelUnits || (recovery.fuel > 0 && (!state.hasStove || state.gear.stoveCondition < 10))) {
+      const text = !state.hasStove || state.gear.stoveCondition < 10 ? 'Горелка недоступна. Длительный отдых не восстановит группу.' : 'Не хватает топлива для отдыха.';
       return { ...state, message: text, lastEvent: event(state, 'STOP', 'DANGER', text) };
     }
+    const medic = integratedSpecialist(state, 'MEDICINE');
+    const patient = [...activeIntegratedParticipants(state)]
+      .filter(participant => participant.injury)
+      .sort((a, b) => a.condition - b.condition)[0];
+    const canTreat = Boolean(patient && command.mode !== 'BREAK' && state.gear.medkitCharges > 0);
+    const treatment = canTreat ? 3 + Math.round(medic.skills.MEDICINE * .85) : 0;
     let next = applyTime({ ...state, actionSerial: state.actionSerial + 1 }, recovery.minutes, 0.72);
     next = {
       ...next,
       supplies: { ...next.supplies, fuelUnits: Math.max(0, next.supplies.fuelUnits - recovery.fuel) },
-      participants: next.participants.map(participant => participant.status === 'DEAD' ? participant : {
-        ...participant,
-        energy: clamp(participant.energy + recovery.energy),
-        condition: clamp(participant.condition + recovery.condition + (state.hasMedkit && participant.injury ? 3 : 0)),
-        fatigue: clamp(participant.fatigue - recovery.energy * 0.75),
+      gear: {
+        ...next.gear,
+        medkitCharges: Math.max(0, next.gear.medkitCharges - (canTreat ? 1 : 0)),
+        stoveCondition: clamp(next.gear.stoveCondition - recovery.fuel),
+        shelterCondition: clamp(next.gear.shelterCondition - (command.mode === 'SLEEP' ? 2 : command.mode === 'BIVOUAC' ? 1 : 0)),
+      },
+      participants: next.participants.map(participant => {
+        if (participant.status === 'DEAD') return participant;
+        const isPatient = patient?.id === participant.id;
+        const condition = clamp(participant.condition + recovery.condition + (isPatient ? treatment : 0));
+        const energy = clamp(participant.energy + recovery.energy);
+        const status = participant.status === 'INCAPACITATED' && condition >= 22 && energy >= 12 ? 'INJURED' : participant.status;
+        return {
+          ...participant,
+          energy,
+          condition,
+          fatigue: clamp(participant.fatigue - recovery.energy * 0.75),
+          morale: clamp(participant.morale + recovery.morale),
+          trust: clamp(participant.trust + (canTreat ? 1 : 0)),
+          status,
+        };
       }),
     };
-    const text = command.mode === 'BREAK' ? 'Короткий привал завершён.' : command.mode === 'BIVOUAC' ? 'Бивак завершён.' : 'Группа выспалась в лагере.';
+    next = rebalanceLoads(next);
+    const treatmentText = canTreat && patient ? ` ${medic.name} обработал травму: ${patient.name}.` : '';
+    const text = `${command.mode === 'BREAK' ? 'Короткий привал завершён.' : command.mode === 'BIVOUAC' ? 'Бивак завершён.' : 'Группа выспалась в лагере.'}${treatmentText}`;
     return { ...next, message: text, lastEvent: event(next, 'INFO', 'CALM', text) };
   }
   if (command.type === 'REORDER') {
@@ -506,8 +652,10 @@ export function reduceIntegratedExpedition(
     const participants = [...state.participants];
     [participants[command.index], participants[target]] = [participants[target]!, participants[command.index]!];
     const normalized = participants.map((participant, index) => ({ ...participant, role: index === 0 ? 'Ведущий' : index === participants.length - 1 ? 'Замыкающий' : 'Участник' }));
-    const text = `${normalized[0]!.name} теперь ведёт группу.`;
-    return { ...state, participants: normalized, message: text, lastEvent: event(state, 'INFO', 'CALM', text) };
+    const nextLeader = normalized[0]!;
+    const trustDelta = nextLeader.skills.LEADERSHIP >= 7 ? 1 : nextLeader.skills.LEADERSHIP <= 3 ? -1 : 0;
+    const text = `${nextLeader.name} теперь ведёт группу.`;
+    return { ...adjustTeamMindset({ ...state, participants: normalized }, 0, trustDelta), message: text, lastEvent: event(state, 'INFO', 'CALM', text) };
   }
   if (command.type === 'BEGIN_RETREAT') {
     if (state.phase !== 'ASCENT') return state;
@@ -515,17 +663,46 @@ export function reduceIntegratedExpedition(
   }
   if (command.type === 'REQUEST_RESCUE') {
     const stranded = state.participants.filter(participant => participant.status === 'INCAPACITATED').map(participant => participant.memberId ?? participant.id);
-    const base = applyTime({ ...state, actionSerial: state.actionSerial + 1 }, 360, 0.45);
-    const text = 'Спасательная группа вывела участников к старту. Экспедиция закрыта без вершины.';
-    const next = withIncident({
+    const elevationRatio = clamp((state.currentElevation - state.startElevation) / Math.max(1, state.summitElevation - state.startElevation), 0, 1);
+    const radioDelay = state.gear.radioCondition > 15 ? Math.round((100 - state.gear.radioCondition) * 1.2) : 180;
+    const duration = Math.round(240 + elevationRatio * 360 + context.weather.windKmh * 1.8 + radioDelay);
+    const rescueCost = Math.round(140 + stranded.length * 190 + elevationRatio * 520 + (state.difficulty === 'EXPEDITION' ? 160 : state.difficulty === 'CLIMBER' ? 80 : 0));
+    const shelterMitigation = state.gear.shelterCondition > 20 ? .52 : .9;
+    const coldLoss = Math.max(0, Math.round((Math.max(0, -context.weather.temperatureC - 8) / 6 + duration / 260) * shelterMitigation));
+    let base = applyTime({ ...state, actionSerial: state.actionSerial + 1 }, duration, 0.45);
+    base = {
       ...base,
+      participants: base.participants.map(participant => participant.status === 'DEAD' ? participant : {
+        ...participant,
+        energy: clamp(participant.energy - Math.max(4, Math.round(duration / 120))),
+        condition: clamp(participant.condition - coldLoss),
+        fatigue: clamp(participant.fatigue + Math.round(duration / 100)),
+        morale: clamp(participant.morale - 6),
+      }),
       phase: 'RETREATED',
       retreating: true,
       forcedRetreat: true,
       currentElevation: state.startElevation,
       rescuedMemberIds: [...new Set([...state.rescuedMemberIds, ...stranded])],
-    }, context, 'RESCUE', null, 'Спасательная операция', text, 'CRITICAL');
+      rescueCost: state.rescueCost + rescueCost,
+      rescueDurationMinutes: state.rescueDurationMinutes + duration,
+      gear: {
+        ...base.gear,
+        shelterCondition: clamp(base.gear.shelterCondition - Math.max(2, Math.round(duration / 180))),
+        radioCondition: clamp(base.gear.radioCondition - 4),
+      },
+    };
+    const text = `Спасатели добрались до группы за ${Math.round(duration / 60)} ч. Стоимость операции: ${rescueCost} кр.`;
+    const next = withIncident(base, context, 'RESCUE', null, 'Спасательная операция', text, 'CRITICAL');
     return { ...next, lastEvent: event(next, 'EXPEDITION_COMPLETE', 'WARNING', text), message: text };
   }
   return state;
+}
+
+export function reduceIntegratedExpedition(
+  state: IntegratedExpeditionState,
+  command: IntegratedExpeditionCommand,
+  context: IntegratedExpeditionContext,
+): IntegratedExpeditionState {
+  return finalizeTransition(state, reduceIntegratedExpeditionCore(state, command, context));
 }

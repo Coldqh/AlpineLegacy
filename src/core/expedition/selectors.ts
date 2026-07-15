@@ -1,5 +1,5 @@
 import { weatherAtGrid, type GridWeather } from '../../topography/mountainGridEngine';
-import type { IntegratedExpeditionState, IntegratedParticipantState } from './state';
+import type { IntegratedExpeditionState, IntegratedParticipantState, IntegratedSkillId } from './state';
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 
@@ -21,24 +21,56 @@ export function activeIntegratedParticipants(state: IntegratedExpeditionState) {
   return state.participants.filter(participant => participant.status !== 'DEAD');
 }
 
+export function mobileIntegratedParticipants(state: IntegratedExpeditionState) {
+  return activeIntegratedParticipants(state).filter(participant => participant.status === 'ACTIVE' || participant.status === 'INJURED');
+}
+
 export function integratedLeader(state: IntegratedExpeditionState): IntegratedParticipantState {
-  return activeIntegratedParticipants(state).find(participant => participant.status === 'ACTIVE' || participant.status === 'INJURED')
+  return mobileIntegratedParticipants(state)[0]
+    ?? activeIntegratedParticipants(state)[0]
     ?? state.participants[0]!;
 }
 
-export function integratedTeamCondition(state: IntegratedExpeditionState) {
+export function integratedSpecialist(state: IntegratedExpeditionState, skillId: IntegratedSkillId): IntegratedParticipantState {
+  return [...mobileIntegratedParticipants(state)]
+    .sort((a, b) => {
+      const aScore = a.skills[skillId] * 10 + a.energy * .12 + a.condition * .1 + a.trust * .05;
+      const bScore = b.skills[skillId] * 10 + b.energy * .12 + b.condition * .1 + b.trust * .05;
+      return bScore - aScore;
+    })[0] ?? integratedLeader(state);
+}
+
+function average(state: IntegratedExpeditionState, getter: (participant: IntegratedParticipantState) => number) {
   const active = activeIntegratedParticipants(state);
   if (!active.length) return 0;
-  return Math.round(active.reduce((sum, participant) => sum + participant.condition, 0) / active.length);
+  return Math.round(active.reduce((sum, participant) => sum + getter(participant), 0) / active.length);
+}
+
+export function integratedTeamCondition(state: IntegratedExpeditionState) {
+  return average(state, participant => participant.condition);
 }
 
 export function integratedTeamEnergy(state: IntegratedExpeditionState) {
-  const active = activeIntegratedParticipants(state);
-  if (!active.length) return 0;
-  return Math.round(active.reduce((sum, participant) => sum + participant.energy, 0) / active.length);
+  return average(state, participant => participant.energy);
+}
+
+export function integratedTeamMorale(state: IntegratedExpeditionState) {
+  return average(state, participant => participant.morale);
+}
+
+export function integratedTeamTrust(state: IntegratedExpeditionState) {
+  return average(state, participant => participant.trust);
+}
+
+export function integratedTeamLoadRatio(state: IntegratedExpeditionState) {
+  const mobile = mobileIntegratedParticipants(state);
+  if (!mobile.length) return 2;
+  const load = mobile.reduce((sum, participant) => sum + participant.loadKg, 0);
+  const capacity = mobile.reduce((sum, participant) => sum + participant.carryCapacityKg, 0);
+  return capacity > 0 ? load / capacity : 2;
 }
 
 export function integratedCanContinue(state: IntegratedExpeditionState) {
   return !['COMPLETE', 'RETREATED', 'FAILED'].includes(state.phase)
-    && activeIntegratedParticipants(state).some(participant => participant.status !== 'INCAPACITATED');
+    && mobileIntegratedParticipants(state).length > 0;
 }

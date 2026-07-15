@@ -10,6 +10,7 @@ import { beginSimulationDescent, beginSimulationRetreat, createExpeditionSimulat
 import { beginStrategicDescent, beginStrategicRetreat, createStrategicExpedition, hydrateStrategicExpedition, resolveStrategicRest, resolveStrategicSector } from './strategicEngine';
 import {
   createIntegratedExpeditionState,
+  normalizeIntegratedExpeditionState,
   integratedTeamCondition,
   integratedTeamEnergy,
   integratedWeatherAt,
@@ -1037,6 +1038,8 @@ function integratedParticipants(career: CareerState, team: TeamMember[], startEn
     skills: integratedSkillsFromHero(career.hero.skills),
     status: 'ACTIVE',
     injury: career.hero.injuries.at(-1) ?? null,
+    loadKg: 0,
+    carryCapacityKg: 0,
   };
   const members = team.map((member): IntegratedParticipantState => ({
     id: `topo-${member.id}`,
@@ -1052,6 +1055,8 @@ function integratedParticipants(career: CareerState, team: TeamMember[], startEn
     skills: integratedSkillsFromMember(member),
     status: member.status === 'DEAD' ? 'DEAD' : member.status === 'INJURED' ? 'INJURED' : 'ACTIVE',
     injury: member.injuries.at(-1) ?? null,
+    loadKg: 0,
+    carryCapacityKg: 0,
   }));
   if (career.expeditionPlan.authorityMode === 'COMMAND') return [hero, ...members].map((participant, index, list) => ({ ...participant, role: index === 0 ? 'Ведущий' : index === list.length - 1 ? 'Замыкающий' : participant.role }));
   const leaderIndex = members.findIndex(participant => participant.memberId === career.expeditionPlan.leaderNpcId || participant.role === 'Ведущий');
@@ -1078,6 +1083,16 @@ function createCareerIntegratedExpedition(
     campKits: Math.max(0, (gear.tent ?? 0) + (gear.bivy ?? 0)),
     participants: integratedParticipants(career, team, startEnergy),
     supplies,
+    gear: {
+      ropeCondition: (gear.rope ?? 0) > 0 ? 100 : 72,
+      hardwareCondition: (gear['rock-kit'] ?? 0) > 0 && (gear['ice-kit'] ?? 0) > 0 ? 100 : (gear['rock-kit'] ?? 0) > 0 || (gear['ice-kit'] ?? 0) > 0 ? 76 : 42,
+      shelterCondition: (gear.tent ?? 0) + (gear.bivy ?? 0) > 0 ? 100 : 0,
+      stoveCondition: (gear.stove ?? 0) > 0 ? 100 : 0,
+      radioCondition: (gear.radio ?? 0) > 0 ? 100 : 0,
+      medkitCharges: Math.max(0, (gear.medkit ?? 0) * 3),
+      oxygenUnits: 0,
+      lostWeightKg: 0,
+    },
     packWeightKg: packWeight(career),
     acclimatizationDays: career.expeditionPlan.acclimatizationDays,
     hasMedkit: (gear.medkit ?? 0) > 0,
@@ -1196,7 +1211,11 @@ export function startQualificationClimb(career: CareerState, _world?: WorldState
 
 export function ensureIntegratedExpedition(career: CareerState): CareerState {
   const climb = career.activeClimb;
-  if (!climb || climb.topo || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) return career;
+  if (!climb || ['COMPLETE', 'FAILED', 'RETREATED'].includes(climb.phase)) return career;
+  if (climb.topo) {
+    const normalized = normalizeIntegratedExpeditionState(climb.topo);
+    return normalized === climb.topo ? career : { ...career, activeClimb: { ...climb, topo: normalized } };
+  }
   const route = career.routes.find(item => item.id === climb.routeId) ?? getSelectedRoute(career);
   const window = getSelectedWeather(career);
   const team = career.teamRoster.filter(member => climb.teamMemberIds.includes(member.id));
@@ -1491,7 +1510,9 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
   }
   const casualtyPenalty = climb.casualties.length * 18;
   const sponsorBonus = successful ? (normalizeCareerProgression(career).sponsor?.summitBonus ?? 0) : 0;
-  const reward = successful ? Math.max(0, 150 + Math.round(getSelectedRoute(career).objectiveRisk * 1.2) - casualtyPenalty * 3 + sponsorBonus) : 0;
+  const grossReward = successful ? Math.max(0, 150 + Math.round(getSelectedRoute(career).objectiveRisk * 1.2) - casualtyPenalty * 3 + sponsorBonus) : 0;
+  const rescueCost = climb.topo?.rescueCost ?? 0;
+  const reward = grossReward - rescueCost;
   const reputation = successful ? Math.max(-12, 8 + Math.round(getSelectedRoute(career).technicality / 12) - casualtyPenalty) : climb.retreating ? 1 : -4;
   const participantEvaluation = climb.participant
     ? climb.participant.evaluation ?? evaluateParticipant(climb.participant, successful, climb.casualties.length)
@@ -1503,7 +1524,7 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     earnedReputation: reputation,
     participant: climb.participant ? { ...climb.participant, evaluation: participantEvaluation } : null,
     currentElevation: climb.startElevation,
-    log: [...climb.log, `${clock(climb.elapsedMinutes)} — группа вернулась к исходной точке. ${successful ? 'Восхождение засчитано.' : 'Выход закрыт без вершины.'}`],
+    log: [...climb.log, `${clock(climb.elapsedMinutes)} — группа вернулась к исходной точке. ${successful ? 'Восхождение засчитано.' : 'Выход закрыт без вершины.'}${rescueCost > 0 ? ` Спасательная операция обошлась в ${rescueCost} кр.` : ''}`],
   };
   const roster = finalizeRosterAfterClimb(career, completed, successful);
   const report = { ...buildExpeditionReport(career, completed, reputation, reward), participantEvaluation: participantEvaluation ?? undefined };

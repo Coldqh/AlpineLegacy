@@ -586,3 +586,106 @@ button:disabled { cursor: not-allowed; opacity: .42; }
 }
 .mg-incident-list strong { font-size: 11px; }
 .mg-incident-list small { color: #d7aaa0; font-size: 9px; line-height: 1.4; }
+
+/* 0.9.5 — team automation, expedition pace and compact logistics */
+.mg-pace-controls {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid #3b4642;
+  border-radius: 9px;
+  background: #141c1a;
+}
+.mg-pace-controls > span {
+  color: #9ba6a0;
+  font-size: 9px;
+  letter-spacing: .16em;
+}
+.mg-pace-controls > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+.mg-pace-controls button {
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  padding: 7px 8px;
+  text-align: left;
+}
+.mg-pace-controls button strong { font-size: 10px; }
+.mg-pace-controls button small { color: #9ea9a4; font-size: 8px; line-height: 1.25; }
+.mg-pace-controls button.is-active {
+  border-color: #d66545;
+  background: #d66545;
+}
+.mg-pace-controls button.is-active small { color: rgba(255,255,255,.82); }
+
+.mg-expedition-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, .9fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 20px;
+  background:
+    linear-gradient(135deg, rgba(75, 126, 105, .16), transparent 52%),
+    #151d1b;
+}
+.mg-summary-lead > span {
+  color: #9ba6a0;
+  font-size: 9px;
+  letter-spacing: .16em;
+}
+.mg-summary-lead h3 { margin: 6px 0; font-size: 22px; }
+.mg-summary-lead p { margin: 0; color: #b7c0bb; font-size: 12px; line-height: 1.55; }
+.mg-expedition-summary dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+.mg-expedition-summary dl > div {
+  padding: 9px;
+  border: 1px solid #3b4742;
+  border-radius: 8px;
+  background: rgba(8, 13, 12, .32);
+}
+.mg-expedition-summary dt { color: #87938d; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.mg-expedition-summary dd { margin: 4px 0 0; font-size: 12px; font-weight: 800; }
+.mg-expedition-summary > button { min-height: 48px; border-color: #df6847; background: #df6847; font-weight: 800; }
+
+.mg-event-log {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mg-event-log li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  padding: 7px 8px;
+  border: 1px solid #35403c;
+  border-radius: 7px;
+  background: rgba(12, 18, 16, .42);
+}
+.mg-event-log li > span { color: #79867f; font-size: 8px; font-weight: 900; }
+.mg-event-log li > p { margin: 0; color: #b8c1bc; font-size: 9px; line-height: 1.4; }
+.mg-event-log li.is-danger { border-color: #754239; background: rgba(70, 29, 23, .5); }
+.mg-event-log li.is-danger > p { color: #e7aea0; }
+.mg-event-log li.is-success { border-color: #3f6658; background: rgba(26, 62, 49, .44); }
+.mg-event-log li.is-success > p { color: #a9d5c4; }
+.mg-team-list article > div:first-child { min-width: 0; }
+.mg-team-list article > div:first-child small + small { margin-top: 3px; color: #8fa099; }
+
+@media (max-width: 940px) {
+  .mg-expedition-summary { grid-template-columns: 1fr; }
+  .mg-expedition-summary > button { width: 100%; }
+}
+@media (max-width: 760px) {
+  .mg-pace-controls > div { grid-template-columns: 1fr; }
+  .mg-expedition-summary { gap: 10px; padding: 12px; }
+  .mg-expedition-summary dl { grid-template-columns: 1fr 1fr; }
+}

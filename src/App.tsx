@@ -70,7 +70,7 @@ function App() {
   useScrollReset(screen, careerTab, selectedMountain?.id);
 
   if (topoPreview) {
-    if (!career?.activeClimb) return <main className="mg-app"><header className="mg-header"><div><span>ALPINE LEGACY / 0.8.5</span><h1>Нет активной экспедиции</h1></div><div className="mg-header-actions"><button onClick={() => setTopoPreview(false)}>Вернуться</button></div></header></main>;
+    if (!career?.activeClimb) return <main className="mg-app"><header className="mg-header"><div><span>ALPINE LEGACY / 0.9.5</span><h1>Нет активной экспедиции</h1></div><div className="mg-header-actions"><button onClick={() => setTopoPreview(false)}>Вернуться</button></div></header></main>;
     return <TopoExpeditionPrototype career={career} onPersist={next => { setCareer(next); saveCareer(next); }} onExit={() => setTopoPreview(false)} allowRegenerate={false} />;
   }
 
@@ -174,7 +174,7 @@ function App() {
             <p className="eyebrow">NEW WORLD / NEW LIFE</p>
             <h1>Создай мир, который переживёт тебя.</h1>
             <p className="lead">Один seed определит географию, историю, вершины и людей. Смерть героя завершит карьеру, но не обязательно уничтожит мир.</p>
-            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.8.5</small></div>
+            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.9.5</small></div>
           </div>
 
           <div className="setup-form">
@@ -405,7 +405,7 @@ function App() {
   const archiveCount = career?.log.length ?? 0;
   if (mobile) return <MobileMenu world={world} career={career} onNew={() => setScreen('SETUP')} onContinue={continueCareer} onAtlas={() => setScreen(world ? 'REGION' : 'SETUP')} onArchive={() => { if (career) { setCareerTab('JOURNAL'); setScreen('CAREER'); } else setScreen('ARCHIVE'); }} onTopo={() => setTopoPreview(true)} />;
   return (
-    <ScreenShell rightLabel="EDITION 0.8.5 / INTEGRATED EXPEDITION">
+    <ScreenShell rightLabel="EDITION 0.9.5 / INTEGRATED EXPEDITION">
       <section className="menu-page page-enter">
         <div className="menu-hero-copy">
           <p className="eyebrow">A MOUNTAINEERING CAREER ROGUELIKE</p>
