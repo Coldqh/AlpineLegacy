@@ -1,0 +1,681 @@
+.topo-expedition {
+  min-height: 100dvh;
+  background: #111817;
+  color: #ecede7;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow: hidden;
+}
+
+.topo-expedition button {
+  font: inherit;
+}
+
+.topo-header {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 9px 16px;
+  border-bottom: 1px solid rgba(231, 235, 223, .16);
+  background: #151e1c;
+}
+
+.topo-header > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.topo-header span,
+.topo-panel__head span,
+.topo-map-head span {
+  font-size: 9px;
+  letter-spacing: .16em;
+  color: #9ba79f;
+}
+
+.topo-header strong {
+  font-size: 15px;
+  letter-spacing: .025em;
+}
+
+.topo-header__weather {
+  text-align: right;
+}
+
+.topo-header__weather b {
+  font-size: 11px;
+  font-weight: 600;
+  color: #c8cec7;
+}
+
+.topo-exit {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(231, 235, 223, .2);
+  background: transparent;
+  color: #ecede7;
+  cursor: pointer;
+}
+
+.topo-workspace {
+  height: calc(100dvh - 58px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 292px;
+}
+
+.topo-map-column {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-right: 1px solid rgba(231, 235, 223, .14);
+}
+
+.topo-map-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 10px 14px;
+  background: #18211f;
+  border-bottom: 1px solid rgba(231, 235, 223, .13);
+}
+
+.topo-map-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.topo-map-head strong {
+  font-size: 21px;
+  line-height: 1;
+}
+
+.topo-map-head small {
+  font-size: 10px;
+  color: #b5bdb6;
+}
+
+.topo-map-head__route {
+  text-align: right;
+}
+
+.topo-map-frame {
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: #566452;
+}
+
+.topo-map {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+}
+
+.topo-map-frame.is-running .topo-map {
+  cursor: default;
+}
+
+.topo-map-frame.tool-rope .topo-map { cursor: cell; }
+.topo-map-frame.tool-camp .topo-map { cursor: copy; }
+.topo-map-frame.tool-scout .topo-map { cursor: zoom-in; }
+.topo-map-frame.tool-marker .topo-map { cursor: alias; }
+
+.terrain polygon:first-child {
+  stroke: rgba(26, 36, 31, .22);
+  stroke-width: 2;
+}
+
+.terrain-valley polygon { fill: rgba(103, 123, 98, .6); }
+.terrain-scree polygon:first-child { fill: #7e786b; }
+.terrain-glacier polygon:first-child { fill: #b4d1d2; }
+.terrain-snow polygon:first-child { fill: #d9ded7; }
+.terrain-ridge polygon:first-child { fill: #899186; }
+.terrain-rock polygon:first-child { fill: #5c5c55; }
+
+.topo-contours path {
+  fill: none;
+  stroke: rgba(28, 36, 31, .34);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.topo-contours path.major {
+  stroke: rgba(18, 25, 21, .58);
+  stroke-width: 2.1;
+}
+
+.topo-camp-terrain ellipse {
+  fill: rgba(239, 227, 181, .14);
+  stroke: rgba(239, 227, 181, .38);
+  stroke-width: 2;
+  stroke-dasharray: 5 8;
+}
+
+.topo-crevasses line {
+  stroke: #29494f;
+  stroke-width: 5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.topo-crevasses .is-discovered line {
+  stroke: #853b2f;
+  stroke-dasharray: 8 6;
+}
+
+.topo-fixed-ropes line {
+  stroke: #f2a64b;
+  stroke-width: 4;
+  stroke-dasharray: 4 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.topo-fixed-ropes circle {
+  fill: #f0d3a3;
+  stroke: #6e4217;
+  stroke-width: 3;
+}
+
+.topo-fixed-ropes .is-damaged line {
+  stroke: #ae4c3c;
+}
+
+.rope-pending {
+  fill: rgba(242, 166, 75, .28);
+  stroke: #f2a64b;
+  stroke-width: 3;
+}
+
+.topo-camps path {
+  fill: #efdfb1;
+  stroke: #27291f;
+  stroke-width: 3;
+}
+
+.topo-camps text,
+.topo-markers text,
+.topo-objectives text,
+.topo-group text {
+  font-size: 12px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(237, 239, 232, .85);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  fill: #18201c;
+}
+
+.topo-markers path {
+  fill: none;
+  stroke: #ad3e31;
+  stroke-width: 4;
+}
+
+.topo-route path {
+  fill: none;
+  stroke: #f0bd55;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.topo-route path.draft {
+  stroke: #fff4c9;
+  stroke-width: 5;
+  stroke-dasharray: 8 7;
+}
+
+.topo-route path.travelled {
+  stroke: #e35a3d;
+  stroke-width: 7;
+}
+
+.topo-objectives circle {
+  fill: #eae8d8;
+  stroke: #152019;
+  stroke-width: 5;
+}
+
+.topo-objectives .summit-marker path {
+  fill: #e15a3e;
+  stroke: #1c211b;
+  stroke-width: 4;
+}
+
+.topo-group circle {
+  fill: #f1eee1;
+  stroke: #17211c;
+  stroke-width: 4;
+}
+
+.topo-group .is-leader circle {
+  fill: #e75b3d;
+}
+
+.topo-group line {
+  stroke: #f4d9a4;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.topo-weather-mask {
+  fill: #e8ece5;
+  pointer-events: none;
+}
+
+.topo-wind path {
+  fill: none;
+  stroke: #eef1ec;
+  stroke-width: 4;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.topo-map-message {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: center;
+  max-width: 760px;
+  padding: 9px 11px;
+  background: rgba(19, 27, 24, .9);
+  border: 1px solid rgba(239, 235, 215, .18);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.topo-map-message span {
+  padding: 5px 7px;
+  background: #e05c3f;
+  color: white;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.topo-map-message p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.topo-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #151e1c;
+  border-top: 1px solid rgba(231, 235, 223, .14);
+}
+
+.topo-tools {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(86px, 1fr));
+  gap: 6px;
+}
+
+.topo-tools button,
+.topo-time-controls button,
+.topo-wide-button,
+.topo-order-buttons button {
+  border: 1px solid rgba(231, 235, 223, .17);
+  background: #1d2825;
+  color: #e6e9e2;
+  cursor: pointer;
+}
+
+.topo-tools button {
+  min-height: 43px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 5px 8px;
+}
+
+.topo-tools button strong {
+  font-size: 11px;
+}
+
+.topo-tools button small {
+  font-size: 8px;
+  color: #94a099;
+}
+
+.topo-tools button.is-active,
+.topo-time-controls button.is-active,
+.topo-wide-button.is-active {
+  background: #e15a3e;
+  border-color: #e15a3e;
+  color: #fff;
+}
+
+.topo-tools button:disabled,
+.topo-time-controls button:disabled,
+.topo-wide-button:disabled,
+.topo-order-buttons button:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.topo-time-controls {
+  display: flex;
+  gap: 5px;
+}
+
+.topo-time-controls button {
+  width: 37px;
+  min-height: 43px;
+}
+
+.topo-time-controls .topo-play {
+  width: 52px;
+  background: #e9e4d3;
+  color: #17201c;
+  font-size: 18px;
+}
+
+.topo-side {
+  min-height: 0;
+  overflow-y: auto;
+  background: #131b19;
+  padding: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topo-panel {
+  border: 1px solid rgba(231, 235, 223, .14);
+  background: #18211f;
+  padding: 10px;
+}
+
+.topo-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.topo-panel__head strong {
+  font-size: 10px;
+  font-weight: 700;
+  color: #e2e6df;
+}
+
+.topo-team-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.topo-team-list article {
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  padding: 7px 0;
+  border-top: 1px solid rgba(231, 235, 223, .1);
+}
+
+.topo-team-list article > div:nth-child(2) {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topo-team-list strong {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topo-team-list span,
+.topo-team-list small {
+  font-size: 9px;
+  color: #aeb7b0;
+}
+
+.topo-order-index {
+  font-size: 13px;
+  color: #e15a3e;
+  font-weight: 900;
+}
+
+.topo-order-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.topo-order-buttons button {
+  width: 25px;
+  height: 22px;
+  line-height: 1;
+}
+
+.topo-wide-button {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 8px;
+  padding: 6px 9px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.topo-resource-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.topo-resource-grid div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 7px;
+  background: rgba(255, 255, 255, .035);
+}
+
+.topo-resource-grid span,
+.topo-resource-grid strong {
+  font-size: 9px;
+}
+
+.topo-observation-panel ul {
+  margin: 0;
+  padding: 0 0 0 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.topo-observation-panel li,
+.topo-goal-panel p {
+  font-size: 10px;
+  line-height: 1.38;
+  color: #b9c1ba;
+}
+
+.topo-goal-panel p {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .topo-expedition {
+    overflow: auto;
+  }
+
+  .topo-header {
+    min-height: 50px;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 7px 9px;
+  }
+
+  .topo-header__weather {
+    grid-column: 1 / -1;
+    flex-direction: row !important;
+    justify-content: space-between;
+    text-align: left;
+    padding-top: 4px;
+    border-top: 1px solid rgba(231, 235, 223, .1);
+  }
+
+  .topo-header__weather b {
+    font-size: 9px;
+  }
+
+  .topo-workspace {
+    height: auto;
+    min-height: calc(100dvh - 50px);
+    grid-template-columns: 1fr;
+  }
+
+  .topo-map-column {
+    height: 72dvh;
+    min-height: 500px;
+    border-right: 0;
+  }
+
+  .topo-map-head {
+    padding: 7px 9px;
+  }
+
+  .topo-map-head strong {
+    font-size: 17px;
+  }
+
+  .topo-map-head small {
+    font-size: 8px;
+  }
+
+  .topo-tools {
+    overflow-x: auto;
+    grid-template-columns: repeat(5, 92px);
+    scrollbar-width: none;
+  }
+
+  .topo-toolbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 8;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .topo-map-message {
+    left: 7px;
+    right: 7px;
+    bottom: 7px;
+    grid-template-columns: 1fr;
+    gap: 5px;
+    padding: 7px;
+  }
+
+  .topo-map-message span {
+    width: max-content;
+  }
+
+  .topo-side {
+    overflow: visible;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .topo-team-panel,
+  .topo-goal-panel {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .topo-header > div:nth-child(2) span {
+    display: none;
+  }
+
+  .topo-header strong {
+    font-size: 12px;
+  }
+
+  .topo-exit {
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  .topo-map-column {
+    height: 68dvh;
+    min-height: 460px;
+  }
+
+  .topo-map-head {
+    gap: 8px;
+  }
+
+  .topo-map-head__route small,
+  .topo-map-head__route span {
+    display: none;
+  }
+
+  .topo-map-head__route strong {
+    font-size: 11px;
+  }
+
+  .topo-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 5px;
+    padding: 5px;
+  }
+
+  .topo-tools {
+    grid-template-columns: repeat(5, 76px);
+    gap: 4px;
+  }
+
+  .topo-tools button {
+    min-height: 38px;
+    padding: 4px 6px;
+  }
+
+  .topo-tools button strong {
+    font-size: 9px;
+  }
+
+  .topo-tools button small {
+    display: none;
+  }
+
+  .topo-time-controls button {
+    width: 29px;
+    min-height: 38px;
+    font-size: 9px;
+  }
+
+  .topo-time-controls .topo-play {
+    width: 42px;
+  }
+
+  .topo-side {
+    grid-template-columns: 1fr;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .topo-team-panel,
+  .topo-goal-panel {
+    grid-column: auto;
+  }
+}

@@ -1,6 +1,5 @@
 import { CareerShell } from '../components/CareerShell';
 import { MobileCareerShell } from '../mobile/MobileCareerShell';
-import { MobileClimbScreen } from '../mobile/MobileClimbScreen';
 import { useIsMobile, useScrollReset } from '../mobile/useMobile';
 import {
   MobileEquipment,
@@ -21,21 +20,8 @@ import {
   applyEquipmentPreset,
   availableExpeditionOffers,
   dismissOnboarding,
-  beginDescent,
   closeClimb,
-  chooseRouteDecision,
-  establishCamp,
   expeditionReadiness,
-  fixRope,
-  issueClimbOrder,
-  leaveCache,
-  meltSnow,
-  resolveClimbStep,
-  resolveParticipantAction,
-  resolveExpeditionFieldAction,
-  resolveStrategicRestChoice,
-  resolveStrategicSectorPlan,
-  retreatClimb,
   selectMountain,
   selectRoute,
   selectWeatherWindow,
@@ -43,21 +29,20 @@ import {
   startPlannedClimb,
   toggleTeamMember,
   updateExpeditionPlan,
-  waitWeather,
 } from '../core/career';
-import type { CareerState, CareerTabId, ClimbOrderId, ClimbPace, ClimbStepResult, ExpeditionFieldActionId, ExpeditionPlan, StrategicRestId, StrategicSectorPlan, TrainingId, WorldState } from '../core/types';
+import type { CareerState, CareerTabId, ExpeditionPlan, TrainingId, WorldState } from '../core/types';
 import { CareerOverviewScreen } from './CareerOverviewScreen';
 import { NewsScreen } from './NewsScreen';
 import { RecordsScreen } from './RecordsScreen';
 import { RivalsScreen } from './RivalsScreen';
 import { WorldScreen } from './WorldScreen';
-import { ClimbScreen } from './ClimbScreen';
 import { EquipmentScreen } from './EquipmentScreen';
 import { ExpeditionScreen } from './ExpeditionScreen';
 import { JournalScreen } from './JournalScreen';
 import { PeopleScreen } from './PeopleScreen';
 import { RoutePlanningScreen } from './RoutePlanningScreen';
 import { TeamScreen } from './TeamScreen';
+import { TopoExpeditionPrototype } from '../topography/TopoExpeditionPrototype';
 
 type Props = {
   world: WorldState;
@@ -107,11 +92,9 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   const tab = expeditionLocked ? 'CLIMB' as const : activeTab;
   const navigate = (next: CareerTabId) => { if (!expeditionLocked || next === 'CLIMB') onTab(next); };
   useScrollReset(tab);
-  function persistResult(result: ClimbStepResult) {
-    onPersist(result.career);
-    return result;
+  if (tab === 'CLIMB' && career.activeClimb) {
+    return <TopoExpeditionPrototype onExit={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }} />;
   }
-
   function renderMobileTab() {
     if (tab === 'OVERVIEW') return <MobileOverview world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} />;
     if (tab === 'WORLD') return <MobileWorld world={world} career={career} />;
@@ -124,7 +107,6 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     if (tab === 'TEAM') return <MobileTeam career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
     if (tab === 'EQUIPMENT') return <MobileEquipment career={career} onSetQuantity={(gearId, quantity) => onPersist(setGearQuantity(career, gearId, quantity))} onSetPlan={(patch: Partial<ExpeditionPlan>) => onPersist(updateExpeditionPlan(career, patch))} onPreset={preset => onPersist(applyEquipmentPreset(career, preset))} onContinue={() => onTab('EXPEDITION')} />;
     if (tab === 'EXPEDITION') return <MobileExpedition career={career} difficulty={world.config.difficulty} onOpenTab={navigate} onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))} onSetAcclimatization={days => onPersist(updateExpeditionPlan(career, { acclimatizationDays: days }))} onLaunch={() => { const readiness = expeditionReadiness(career); const next = startPlannedClimb(career); onPersist(next); if (next.activeClimb && readiness.blockers.length === 0) onTab('CLIMB'); }} />;
-    if (tab === 'CLIMB' && career.activeClimb) return <MobileClimbScreen career={career} difficulty={world.config.difficulty} onStep={(pace: ClimbPace) => persistResult(resolveClimbStep(career, pace))} onCamp={() => persistResult(establishCamp(career))} onMeltSnow={() => persistResult(meltSnow(career))} onWait={() => persistResult(waitWeather(career))} onOrder={(order: ClimbOrderId) => persistResult(issueClimbOrder(career, order))} onChooseDecision={optionId => persistResult(chooseRouteDecision(career, optionId))} onFixRope={() => persistResult(fixRope(career))} onLeaveCache={() => persistResult(leaveCache(career))} onParticipantAction={optionId => persistResult(resolveParticipantAction(career, optionId))} onFieldAction={(actionId: ExpeditionFieldActionId) => persistResult(resolveExpeditionFieldAction(career, actionId))} onStrategicResolve={(plan: StrategicSectorPlan) => persistResult(resolveStrategicSectorPlan(career, plan))} onStrategicRest={(choice: StrategicRestId) => persistResult(resolveStrategicRestChoice(career, choice))} onBeginDescent={() => onPersist(beginDescent(career))} onRetreat={() => onPersist(retreatClimb(career))} onClose={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }} />;
     return <MobileJournal career={career} />;
   }
 
@@ -182,27 +164,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
       );
     }
     if (tab === 'CLIMB' && career.activeClimb) {
-      return (
-        <ClimbScreen
-          career={career}
-          difficulty={world.config.difficulty}
-          onStep={(pace: ClimbPace) => persistResult(resolveClimbStep(career, pace))}
-          onCamp={() => persistResult(establishCamp(career))}
-          onMeltSnow={() => persistResult(meltSnow(career))}
-          onWait={() => persistResult(waitWeather(career))}
-          onOrder={(order: ClimbOrderId) => persistResult(issueClimbOrder(career, order))}
-          onChooseDecision={optionId => persistResult(chooseRouteDecision(career, optionId))}
-          onFixRope={() => persistResult(fixRope(career))}
-          onLeaveCache={() => persistResult(leaveCache(career))}
-          onParticipantAction={optionId => persistResult(resolveParticipantAction(career, optionId))}
-          onFieldAction={(actionId: ExpeditionFieldActionId) => persistResult(resolveExpeditionFieldAction(career, actionId))}
-          onStrategicResolve={(plan: StrategicSectorPlan) => persistResult(resolveStrategicSectorPlan(career, plan))}
-          onStrategicRest={(choice: StrategicRestId) => persistResult(resolveStrategicRestChoice(career, choice))}
-          onBeginDescent={() => onPersist(beginDescent(career))}
-          onRetreat={() => onPersist(retreatClimb(career))}
-          onClose={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }}
-        />
-      );
+      return <TopoExpeditionPrototype onExit={() => { onPersist(closeClimb(career)); onTab('OVERVIEW'); }} />;
     }
     return <JournalScreen career={career} world={world} />;
   }
