@@ -78,6 +78,8 @@ export type LocalCell = {
   passable: boolean;
   campPossible: boolean;
   ropeRecommended: boolean;
+  ropeRequired: boolean;
+  rollbackCells: number;
   surface: LocalSurface;
   stability: number;
   exposure: number;
@@ -114,6 +116,8 @@ export type LocalRouteMetrics = {
   hazardCells: number;
   technicalCells: number;
   ropeMetresRecommended: number;
+  unprotectedRopeCells: number;
+  maxRollbackCells: number;
   maxSlope: number;
 };
 
@@ -369,7 +373,8 @@ function routeMetrics(grid: MountainGrid, route: GridPoint[]) {
 export function stageCountForMountain(grid: MountainGrid, route: GridPoint[] = findGuidedRoute(grid)) {
   const byRelief = Math.round(grid.relief / 430) + 4;
   const byDistance = Math.round(route.length / 9) + 4;
-  return clamp(Math.max(byRelief, byDistance), 7, 18);
+  const previousScale = clamp(Math.max(byRelief, byDistance), 7, 18);
+  return clamp(previousScale * 2, 14, 36);
 }
 
 const SIDE_ADJECTIVE: Record<EntrySide, string> = {
@@ -483,7 +488,7 @@ export function buildMountainStages(
     const title = titles[Math.min(occurrence, titles.length - 1)]!;
     const exposure = clamp(Math.round(cell.slope * 1.18 + (cell.hazard === 'NONE' ? 0 : 22) + ratio * 15), 0, 100);
     const difficulty = clamp(Math.round(exposure / 24 + ratio * 1.4), 1, 5);
-    const localMapSize = clamp(odd(11 + (difficulty >= 4 ? 2 : 0) + (grid.relief >= 5200 && index % 3 === 1 ? 2 : 0)), 11, 15);
+    const localMapSize = clamp(odd(11 + (difficulty >= 4 ? 2 : 0) + (grid.relief >= 5200 && index % 4 === 1 ? 2 : 0)), 11, 15);
     stages.push({
       id: `${grid.seed}:${side}:${routeProfile}:stage:${index + 1}`,
       index,
@@ -613,9 +618,12 @@ export function generateLocalStageMap(stage: StageDefinition, seed: string, expl
       const lateral = (x - center) * (stage.type === 'RIDGE' ? 4.6 : stage.type === 'ROCK_FACE' ? 3.4 : 1.8);
       const gully = -Math.max(0, 38 - Math.abs(x - directX) * 24) * (stage.type === 'SNOWFIELD' || stage.type === 'GLACIER' ? 1 : 0.35);
       const safeBench = Math.max(0, 22 - Math.abs(x - safeX) * 16) * Math.sin(progress * Math.PI * 2.2);
-      const wallStep = stage.type === 'ROCK_FACE' && y > size * 0.3 && y < size * 0.68 ? (y < size * 0.5 ? 42 : -22) : 0;
+      const wallStep = stage.type === 'ROCK_FACE' && y > size * 0.3 && y < size * 0.68 ? (y < size * 0.5 ? 52 : -28) : 0;
+      const directSteepness = Math.max(0, 1.45 - Math.abs(x - directX))
+        * Math.sin(progress * Math.PI * (stage.type === 'ROCK_FACE' ? 4.2 : 3.2))
+        * (stage.difficulty >= 3 ? 34 + stage.difficulty * 7 : 16);
       const rough = smoothNoise(`${seed}:${stage.id}:elevation`, x, y) * 18;
-      const elevation = Math.round(stage.startElevation + (stage.endElevation - stage.startElevation) * progress + lateral + gully + safeBench + wallStep + rough);
+      const elevation = Math.round(stage.startElevation + (stage.endElevation - stage.startElevation) * progress + lateral + gully + safeBench + wallStep + directSteepness + rough);
       elevations.push(elevation);
     }
   }
@@ -674,7 +682,23 @@ export function generateLocalStageMap(stage: StageDefinition, seed: string, expl
       const sunlight = clamp(Math.round(50 + Math.cos((aspect - 180) * Math.PI / 180) * 34), 0, 100);
       const campRow = Math.round(size * (stage.index % 2 ? 0.36 : 0.62));
       const campPossible = passable && hazard === 'NONE' && nearSafe && Math.abs(y - campRow) <= 1 && slope <= 25;
-      const ropeRecommended = passable && (nearTech || hazard === 'CREVASSE' || slope >= 40 || terrain === 'ROCK' || terrain === 'RIDGE');
+      const forcedDirectTechnical = nearDirect
+        && stage.difficulty >= 3
+        && ['SNOWFIELD', 'ROCK_FACE', 'RIDGE', 'SUMMIT'].includes(stage.type)
+        && y > 0 && y < size - 1
+        && (y + stage.index) % 3 !== 0;
+      const ropeRequired = passable && (
+        hazard === 'CREVASSE'
+        || slope >= 50
+        || forcedDirectTechnical
+        || ((terrain === 'ROCK' || terrain === 'RIDGE') && slope >= 43)
+      );
+      const ropeRecommended = passable && !ropeRequired && (nearTech || slope >= 34 || terrain === 'ROCK' || terrain === 'RIDGE');
+      const rollbackCells = ropeRequired
+        ? clamp(Math.round(1 + Math.max(0, slope - 38) / 9 + exposure / 55 + (hazard === 'NONE' ? 0 : 1)), 1, 5)
+        : ropeRecommended
+          ? clamp(Math.round(1 + Math.max(0, slope - 30) / 18), 1, 3)
+          : 0;
       const zone = nearSafe ? 'SAFE_TRAVERSE' : nearTech ? 'TECHNICAL_LINE' : nearDirect ? 'DIRECT_LINE' : 'OPEN_TERRAIN';
       cells.push({
         x,
@@ -687,10 +711,12 @@ export function generateLocalStageMap(stage: StageDefinition, seed: string, expl
         passable,
         campPossible,
         ropeRecommended,
+        ropeRequired,
+        rollbackCells,
         surface,
         stability,
         exposure,
-        anchorQuality,
+        anchorQuality: ropeRequired ? Math.max(anchorQuality, terrain === 'SNOW' ? 48 : 58) : anchorQuality,
         sunlight,
         zone,
       });
@@ -813,7 +839,7 @@ export function localMoveCost(
   from: GridPoint,
   to: GridPoint,
   weather: GridWeather,
-  options: { fixedRope: boolean; leaderEnergy: number },
+  options: { fixedRope: boolean; leaderEnergy: number; unprotectedTechnical?: boolean },
 ) {
   const a = localCellAt(map, from)!;
   const b = localCellAt(map, to)!;
@@ -825,12 +851,60 @@ export function localMoveCost(
   const visibility = Math.max(0, 55 - weather.visibility) / 135;
   const fatigue = 1 + Math.max(0, 58 - options.leaderEnergy) / 95;
   const instability = 1 + Math.max(0, 62 - b.stability) / 110;
-  const ropeFactor = options.fixedRope ? 0.73 : 1;
+  const ropeFactor = options.fixedRope ? 0.73 : options.unprotectedTechnical ? 1.22 : 1;
   const hazardFactor = b.hazard === 'NONE' ? 1 : 1.25;
   const distanceFactor = diagonal ? 1.18 : 1;
   const minutes = Math.max(5, Math.round((7 + vertical / 10 + b.slope * 0.24) * terrainFactor[b.terrain] * (1 + softSnow + ridgeWind + visibility) * fatigue * instability * ropeFactor * hazardFactor * distanceFactor));
-  const energy = Math.max(1, Math.round((1 + vertical / 78 + b.slope / 31) * terrainFactor[b.terrain] * fatigue * instability * (options.fixedRope ? 0.78 : 1)));
+  const energy = Math.max(1, Math.round((1 + vertical / 78 + b.slope / 31) * terrainFactor[b.terrain] * fatigue * instability * (options.fixedRope ? 0.78 : options.unprotectedTechnical ? 1.28 : 1)));
   return { minutes, energy };
+}
+
+export type LocalStepRiskBand = 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
+
+export type LocalStepRisk = {
+  band: LocalStepRiskBand;
+  score: number;
+  ropeRequired: boolean;
+  rollbackCells: number;
+  willRollback: boolean;
+  reason: string;
+};
+
+export function evaluateLocalStepRisk(
+  map: LocalStageMap,
+  from: GridPoint,
+  to: GridPoint,
+  weather: GridWeather,
+  options: { fixedRope: boolean; leaderEnergy: number; attempt?: number },
+): LocalStepRisk {
+  const a = localCellAt(map, from)!;
+  const b = localCellAt(map, to)!;
+  if (options.fixedRope) {
+    return { band: 'LOW', score: 0, ropeRequired: b.ropeRequired, rollbackCells: 0, willRollback: false, reason: 'Закреплённая верёвка удерживает группу и ускоряет повторный проход.' };
+  }
+  const vertical = Math.max(0, b.elevation - a.elevation);
+  const hazard = b.hazard === 'CREVASSE' ? 24 : b.hazard === 'ROCKFALL' ? 14 : b.hazard === 'AVALANCHE' ? 18 : b.hazard === 'CORNICE' ? 30 : 0;
+  const weatherPenalty = Math.max(0, weather.windKmh - 32) * 0.45 + Math.max(0, 55 - weather.visibility) * 0.3 + (b.terrain === 'SNOW' ? Math.max(0, weather.snowSoftness - 42) * 0.36 : 0);
+  const score = clamp(Math.round(
+    (b.ropeRequired ? 46 : b.ropeRecommended ? 20 : 2)
+    + Math.max(0, b.slope - 30) * 1.25
+    + Math.max(0, 62 - b.stability) * 0.45
+    + b.exposure * 0.18
+    + vertical * 0.08
+    + hazard
+    + weatherPenalty
+    + Math.max(0, 48 - options.leaderEnergy) * 0.55
+  ), 0, 96);
+  const band: LocalStepRiskBand = score >= 78 ? 'EXTREME' : score >= 55 ? 'HIGH' : score >= 30 ? 'MEDIUM' : 'LOW';
+  const attempt = options.attempt ?? 0;
+  const roll = hash(`${map.id}:${from.x}:${from.y}:${to.x}:${to.y}:attempt:${attempt}`) % 100;
+  const willRollback = b.rollbackCells > 0 && roll < score;
+  const reason = b.ropeRequired
+    ? `Уклон ${b.slope}° и экспозиция требуют страховки. Без неё возможен откат на ${b.rollbackCells} клеток.`
+    : b.ropeRecommended
+      ? `Страховка не обязательна, но уменьшит расход сил и риск отката на ${b.rollbackCells} клеток.`
+      : 'Участок проходится без стационарной верёвки.';
+  return { band, score, ropeRequired: b.ropeRequired, rollbackCells: b.rollbackCells, willRollback, reason };
 }
 
 export function evaluateLocalRoute(
@@ -846,20 +920,25 @@ export function evaluateLocalRoute(
   let hazardCells = 0;
   let technicalCells = 0;
   let ropeMetresRecommended = 0;
+  let unprotectedRopeCells = 0;
+  let maxRollbackCells = 0;
   let maxSlope = 0;
 
   for (let index = 1; index < route.length; index += 1) {
     const previous = localCellAt(map, route[index - 1]!)!;
     const current = localCellAt(map, route[index]!)!;
-    const cost = localMoveCost(map, route[index - 1]!, route[index]!, weather, { fixedRope: fixedRopes.has(pointKey(route[index]!)), leaderEnergy: 85 });
+    const fixedRope = fixedRopes.has(pointKey(route[index]!));
+    const cost = localMoveCost(map, route[index - 1]!, route[index]!, weather, { fixedRope, leaderEnergy: 85, unprotectedTechnical: current.ropeRequired && !fixedRope });
     minutes += cost.minutes;
     energy += cost.energy;
     const vertical = current.elevation - previous.elevation;
     if (vertical >= 0) ascentMetres += vertical;
     else descentMetres += Math.abs(vertical);
     if (current.hazard !== 'NONE') hazardCells += 1;
-    if (current.ropeRecommended) technicalCells += 1;
-    if (current.ropeRecommended && !fixedRopes.has(pointKey(route[index]!))) ropeMetresRecommended += 20;
+    if (current.ropeRecommended || current.ropeRequired) technicalCells += 1;
+    if ((current.ropeRecommended || current.ropeRequired) && !fixedRope) ropeMetresRecommended += 20;
+    if (current.ropeRequired && !fixedRope) unprotectedRopeCells += 1;
+    maxRollbackCells = Math.max(maxRollbackCells, current.rollbackCells);
     maxSlope = Math.max(maxSlope, current.slope);
   }
 
@@ -872,6 +951,8 @@ export function evaluateLocalRoute(
     hazardCells,
     technicalCells,
     ropeMetresRecommended,
+    unprotectedRopeCells,
+    maxRollbackCells,
     maxSlope,
   };
 }
