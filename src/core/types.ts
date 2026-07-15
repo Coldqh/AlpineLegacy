@@ -73,6 +73,102 @@ export type ExpeditionFieldActionId =
   | 'CHALLENGE_ORDER'
   | 'TURN_BACK';
 
+
+export type StrategicLineId = 'DIRECT' | 'SHELTERED' | 'TECHNICAL';
+export type StrategicPaceId = 'CONSERVE' | 'WORK' | 'PUSH';
+export type StrategicProtectionId = 'LIGHT' | 'STANDARD' | 'FULL';
+export type StrategicFormationId = 'COMPACT' | 'BALANCED' | 'SPREAD';
+export type StrategicFocusId = 'FOLLOW' | 'VERIFY' | 'SUPPORT' | 'CHALLENGE';
+export type StrategicPositionId = 'FRONT' | 'MIDDLE' | 'REAR';
+export type StrategicRestId = 'CONTINUE' | 'BIVY' | 'CAMP';
+export type StrategicOutcome = 'CLEAN' | 'COSTLY' | 'DELAYED' | 'INCIDENT' | 'BLOCKED';
+export type StrategicStatus = 'ACTIVE' | 'REST_REQUIRED' | 'SUMMIT' | 'SAFE' | 'DEAD';
+
+export interface StrategicLineOption {
+  id: StrategicLineId;
+  title: string;
+  description: string;
+  timeModifier: number;
+  energyModifier: number;
+  riskModifier: number;
+  skill: SkillId;
+}
+
+export interface StrategicSector {
+  id: string;
+  label: string;
+  terrainModuleId: TerrainModuleId;
+  terrain: string;
+  direction: ExpeditionDirection;
+  startElevation: number;
+  endElevation: number;
+  verticalMeters: number;
+  distanceKm: number;
+  baseMinutes: number;
+  difficulty: number;
+  exposure: number;
+  primarySkill: SkillId;
+  hazard: string;
+  visibleFacts: string[];
+  hiddenHazard: string;
+  lineOptions: StrategicLineOption[];
+  attempts: number;
+  completed: boolean;
+}
+
+export interface StrategicSectorPlan {
+  line: StrategicLineId;
+  pace: StrategicPaceId;
+  protection: StrategicProtectionId;
+  formation: StrategicFormationId;
+  focus: StrategicFocusId;
+  position: StrategicPositionId;
+}
+
+export interface StrategicPlanPreview {
+  timeMin: number;
+  timeMax: number;
+  energyMin: number;
+  energyMax: number;
+  reserveAfter: number;
+  warnings: string[];
+  knownAdvantages: string[];
+}
+
+export interface StrategicSectorResult {
+  id: string;
+  sectorId: string;
+  plan: StrategicSectorPlan;
+  outcome: StrategicOutcome;
+  title: string;
+  summary: string;
+  causes: string[];
+  durationMinutes: number;
+  energyCost: number;
+  conditionDelta: number;
+  teamDelta: number;
+  completedSector: boolean;
+  revealedFact: string | null;
+  elevationAfter: number;
+}
+
+export interface StrategicExpeditionState {
+  version: 1;
+  direction: ExpeditionDirection;
+  status: StrategicStatus;
+  ascentSectors: StrategicSector[];
+  descentSectors: StrategicSector[];
+  sectorIndex: number;
+  baselineMinutes: number;
+  leaderPlan: StrategicSectorPlan | null;
+  lastResult: StrategicSectorResult | null;
+  history: StrategicSectorResult[];
+  restReason: string | null;
+  previousCampElevation: number;
+  nights: number;
+  randomPlanFailures: number;
+}
+
 export interface RouteGraphNode {
   id: string;
   phase: ExpeditionPhaseNode;
@@ -834,6 +930,7 @@ export interface QualificationClimb {
   earnedMoney: number;
   participant: ParticipantExpeditionState | null;
   simulation: ExpeditionSimulationState | null;
+  strategic: StrategicExpeditionState | null;
 }
 
 export interface ReputationProfile {

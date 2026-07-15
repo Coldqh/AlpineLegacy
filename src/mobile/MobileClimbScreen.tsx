@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react';
 import { RouteBlueprint } from '../components/RouteBlueprint';
 import { ExpeditionHeightScale } from '../components/ExpeditionHeightScale';
 import { ExpeditionTurnPanel } from '../components/ExpeditionTurnPanel';
+import { StrategicExpeditionScreen } from '../components/StrategicExpeditionScreen';
 import { currentExpeditionStage, getCurrentRouteDecision, previewClimbAction, previewExpeditionActions, SKILL_LABELS } from '../core/career';
 import { getCurrentParticipantScene, nodeProgress, participantLeader } from '../core/expeditionEngine';
-import type { CareerState, ClimbOrderId, ClimbPace, ClimbStepResult, DifficultyId, ExpeditionFieldActionId } from '../core/types';
+import type { CareerState, ClimbOrderId, ClimbPace, ClimbStepResult, DifficultyId, ExpeditionFieldActionId, StrategicRestId, StrategicSectorPlan } from '../core/types';
 
 type Props = {
   career: CareerState;
@@ -19,6 +20,8 @@ type Props = {
   onLeaveCache: () => ClimbStepResult;
   onParticipantAction: (optionId: string) => ClimbStepResult;
   onFieldAction: (actionId: ExpeditionFieldActionId) => ClimbStepResult;
+  onStrategicResolve: (plan: StrategicSectorPlan) => ClimbStepResult;
+  onStrategicRest: (choice: StrategicRestId) => ClimbStepResult;
   onBeginDescent: () => void;
   onRetreat: () => void;
   onClose: () => void;
@@ -52,7 +55,7 @@ function conditionLabel(value: number) {
   return 'критическая';
 }
 
-export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onParticipantAction, onFieldAction, onBeginDescent, onRetreat, onClose }: Props) {
+export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSnow, onWait, onOrder, onChooseDecision, onFixRope, onLeaveCache, onParticipantAction, onFieldAction, onStrategicResolve, onStrategicRest, onBeginDescent, onRetreat, onClose }: Props) {
   const climb = career.activeClimb!;
   const [feedback, setFeedback] = useState<Pick<ClimbStepResult, 'headline' | 'detail' | 'severity'> | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -102,6 +105,8 @@ export function MobileClimbScreen({ career, difficulty, onStep, onCamp, onMeltSn
       </section>
     );
   }
+
+  if (climb.strategic) return <StrategicExpeditionScreen career={career} difficulty={difficulty} mobile onResolve={onStrategicResolve} onRest={onStrategicRest} onBeginDescent={onBeginDescent} onRetreat={onRetreat} />;
 
   if (climb.simulation && simulationStage) {
     const simulation = climb.simulation;

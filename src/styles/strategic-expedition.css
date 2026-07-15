@@ -1,0 +1,102 @@
+/* Alpine Legacy 0.6.7 — section planning instead of action clicking. */
+.strategic-expedition {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 22px 26px 80px;
+}
+.strategy-head { display: flex; justify-content: space-between; gap: 22px; align-items: end; }
+.strategy-head h1 { margin: 3px 0; font: 700 clamp(34px, 5vw, 68px)/.92 var(--serif); }
+.strategy-head > div:last-child { text-align: right; }
+.strategy-head > div:last-child strong { display: block; font: 600 42px/1 var(--serif); }
+.strategy-head > div:last-child small { color: var(--muted); }
+.strategy-summary-metrics { display: grid; grid-template-columns: repeat(4,1fr); border: 1px solid var(--line); border-top: 0; }
+.strategy-summary-metrics span { padding: 11px 13px; border-right: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.strategy-summary-metrics span:last-child { border-right: 0; }
+.strategy-summary-metrics b { display: block; margin-top: 3px; color: var(--ink); font-size: 14px; }
+.strategy-last-result { margin: 14px 0; padding: 13px 15px; border-left: 4px solid var(--line-strong); background: var(--paper-deep); }
+.strategy-last-result.is-clean { border-left-color: #4b8068; }
+.strategy-last-result.is-incident, .strategy-last-result.is-blocked { border-left-color: var(--red); }
+.strategy-last-result small, .strategy-last-result strong { display: block; }
+.strategy-last-result strong { margin-top: 4px; font: 600 23px/1.05 var(--serif); }
+.strategy-last-result p { margin: 7px 0; color: var(--muted); }
+.strategy-last-result details span { display: block; margin-top: 4px; font-size: 12px; }
+.strategy-sector-brief { margin: 16px 0; padding: 17px; border: 1px solid var(--line-strong); background: var(--paper); }
+.strategy-sector-brief header { display: flex; justify-content: space-between; gap: 18px; }
+.strategy-sector-brief h2 { margin: 4px 0 0; max-width: 680px; font: 600 28px/1.05 var(--serif); }
+.strategy-sector-brief header > b { white-space: nowrap; font: 500 20px/1 var(--serif); }
+.strategy-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 18px; margin-top: 14px; border-top: 1px solid var(--line); }
+.strategy-facts p { margin: 0; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.strategy-revealed { margin: 12px 0 0; padding: 10px 12px; border-left: 3px solid var(--red); background: color-mix(in srgb, var(--red) 8%, transparent); }
+.strategy-plan-builder, .strategy-participant-plan { display: grid; gap: 9px; }
+.strategy-choice-row { border: 1px solid var(--line); background: var(--paper); }
+.strategy-choice-row > header { padding: 8px 11px 0; }
+.strategy-choice-row > header small { letter-spacing: .15em; color: var(--muted); }
+.strategy-choice-row > div { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
+.strategy-choice-row button { min-height: 76px; padding: 10px 12px; border: 0; border-right: 1px solid var(--line); background: transparent; text-align: left; }
+.strategy-choice-row button:last-child { border-right: 0; }
+.strategy-choice-row button.is-active { background: color-mix(in srgb, var(--blue) 18%, var(--paper)); box-shadow: inset 0 -3px var(--red); }
+.strategy-choice-row button strong, .strategy-choice-row button span { display: block; }
+.strategy-choice-row button strong { font: 600 19px/1.05 var(--serif); }
+.strategy-choice-row button span { margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.25; }
+.strategy-leader-plan { padding: 15px; border: 1px solid var(--line-strong); background: color-mix(in srgb, var(--blue) 14%, var(--paper)); }
+.strategy-leader-plan small, .strategy-leader-plan h2, .strategy-leader-plan p { display: block; margin: 0; }
+.strategy-leader-plan h2 { margin-top: 4px; font: 600 28px/1 var(--serif); }
+.strategy-leader-plan p { margin-top: 7px; color: var(--muted); }
+.strategy-preview { margin: 14px 0; padding: 15px; border: 1px solid var(--line-strong); }
+.strategy-preview header { display: flex; justify-content: space-between; gap: 16px; align-items: end; }
+.strategy-preview header strong { font: 600 24px/1 var(--serif); }
+.strategy-preview > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.strategy-preview > div span { padding: 9px; background: var(--paper-deep); color: var(--muted); }
+.strategy-preview > div b { color: var(--ink); }
+.strategy-preview ul { margin: 11px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
+.strategy-feedback { margin: 12px 0; padding: 12px 14px; border-left: 4px solid var(--blue); background: var(--paper-deep); }
+.strategy-feedback.is-danger { border-left-color: var(--red); }
+.strategy-feedback strong, .strategy-feedback span { display: block; }
+.strategy-feedback span { margin-top: 4px; color: var(--muted); }
+.strategy-execute { width: 100%; min-height: 58px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--line-strong); background: var(--blue); color: #f3efe6; font: 600 22px/1 var(--serif); text-align: left; }
+.strategy-execute:disabled { opacity: .55; }
+.strategy-retreat { width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
+.strategy-field-details { margin-top: 13px; border-top: 1px solid var(--line); }
+.strategy-field-details summary { padding: 11px 0; cursor: pointer; }
+.strategy-field-details > div { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+.strategy-field-details > div span { padding: 9px; background: var(--paper-deep); color: var(--muted); }
+.strategy-field-details > div b { display: block; color: var(--ink); }
+.strategy-field-details p { color: var(--muted); font-size: 12px; }
+.strategic-summit, .strategic-rest { padding-top: 36px; }
+.strategic-summit h1, .strategic-rest h1 { margin: 5px 0 12px; font: 700 clamp(42px, 7vw, 78px)/.92 var(--serif); }
+.strategy-rest-options { display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; margin: 16px 0; }
+.strategy-rest-options button { min-height: 120px; padding: 15px; border: 1px solid var(--line); background: var(--paper); text-align: left; }
+.strategy-rest-options strong, .strategy-rest-options span { display: block; }
+.strategy-rest-options strong { font: 600 23px/1 var(--serif); }
+.strategy-rest-options span { margin-top: 8px; color: var(--muted); font-size: 12px; }
+
+@media (max-width: 720px) {
+  .strategic-expedition { padding: 8px 10px calc(72px + env(safe-area-inset-bottom)); }
+  .strategy-head { align-items: start; }
+  .strategy-head h1 { font-size: 34px; }
+  .strategy-head > div:last-child strong { font-size: 25px; }
+  .strategy-head > div:last-child small { font-size: 9px; }
+  .strategy-summary-metrics { grid-template-columns: repeat(2,1fr); }
+  .strategy-summary-metrics span:nth-child(2) { border-right: 0; }
+  .strategy-summary-metrics span:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .strategy-sector-brief { padding: 12px; }
+  .strategy-sector-brief header { display: block; }
+  .strategy-sector-brief h2 { font-size: 22px; }
+  .strategy-sector-brief header > b { display: block; margin-top: 8px; font-size: 17px; }
+  .strategy-facts { grid-template-columns: 1fr; }
+  .strategy-facts p { font-size: 11px; }
+  .strategy-choice-row > div { grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .strategy-choice-row button { min-height: 67px; padding: 8px; }
+  .strategy-choice-row button strong { font-size: 15px; }
+  .strategy-choice-row button span { font-size: 9px; }
+  .strategy-participant-plan .strategy-choice-row:last-child > div { grid-template-columns: repeat(2,1fr); }
+  .strategy-preview { padding: 11px; }
+  .strategy-preview header strong { font-size: 18px; }
+  .strategy-preview > div { font-size: 11px; }
+  .strategy-execute { min-height: 52px; font-size: 18px; }
+  .strategy-field-details > div { grid-template-columns: repeat(2,1fr); }
+  .strategy-rest-options { grid-template-columns: 1fr; }
+  .strategy-rest-options button { min-height: 82px; }
+  .strategic-summit, .strategic-rest { padding-top: 18px; }
+}
+.strategy-plan-required { margin: 10px 0 7px; color: var(--muted); font-size: 12px; text-align: center; }

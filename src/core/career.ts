@@ -7,6 +7,7 @@ import { advanceLivingWorld, createLivingWorld, registerHeroExpedition } from '.
 import { createCareerProgression, currentSeasonExpeditionCount, expeditionLimitForTier, hydrateCareerProgression, normalizeCareerProgression, rollCareerSeason, syncCareerProgression } from './progression';
 import { createParticipantExpeditionState, evaluateParticipant, getCurrentParticipantNode, getCurrentParticipantScene, leaderPace, resolveParticipantSkill } from './expeditionEngine';
 import { beginSimulationDescent, beginSimulationRetreat, createExpeditionSimulation, hydrateExpeditionSimulation, resolveExpeditionEventChoice, resolveExpeditionFieldAction as resolveSimulationFieldAction } from './simulationEngine';
+import { beginStrategicDescent, beginStrategicRetreat, createStrategicExpedition, hydrateStrategicExpedition, resolveStrategicRest, resolveStrategicSector } from './strategicEngine';
 export { currentExpeditionStage, previewExpeditionActions } from './simulationEngine';
 import type {
   CalendarEntry,
@@ -27,6 +28,8 @@ import type {
   ExpeditionFieldActionId,
   ExpeditionRank,
   ExpeditionReadiness,
+  StrategicRestId,
+  StrategicSectorPlan,
   ExpeditionRoute,
   GearDefinition,
   OriginDefinition,
@@ -438,10 +441,13 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     authorityMode: career.activeClimb.authorityMode ?? (membership.permissions.canIssueOrders ? 'COMMAND' : 'PARTICIPANT'),
     participant: career.activeClimb.participant ?? null,
     simulation: career.activeClimb.simulation ?? null,
+    strategic: career.activeClimb.strategic ?? null,
   } as QualificationClimb : null;
   const activeRoute = activeClimbBase ? routes.find((route: ExpeditionRoute) => route.id === activeClimbBase.routeId) ?? routes[0] : null;
   const activeRelative = activeClimbBase
-    ? Math.max(0, activeClimbBase.simulation?.relativeElevation ?? activeClimbBase.currentElevation - activeClimbBase.startElevation)
+    ? Math.max(0, activeClimbBase.strategic
+      ? activeClimbBase.currentElevation - activeClimbBase.startElevation
+      : activeClimbBase.simulation?.relativeElevation ?? activeClimbBase.currentElevation - activeClimbBase.startElevation)
     : 0;
   const normalizedActiveClimb = activeClimbBase && activeRoute ? {
     ...activeClimbBase,
@@ -452,7 +458,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     ascentRoute: activeRoute.segments,
     descentRoute: activeRoute.descentSegments ?? defaultDescentSegments(activeRoute),
   } : activeClimbBase;
-  const activeClimb = normalizedActiveClimb && activeRoute ? { ...normalizedActiveClimb, simulation: hydrateExpeditionSimulation(normalizedActiveClimb, activeRoute) } : normalizedActiveClimb;
+  const activeClimb = normalizedActiveClimb && activeRoute ? { ...normalizedActiveClimb, simulation: normalizedActiveClimb.simulation ? hydrateExpeditionSimulation(normalizedActiveClimb, activeRoute) : null, strategic: hydrateStrategicExpedition(normalizedActiveClimb, activeRoute) } : normalizedActiveClimb;
   return hydrateCareerProgression({
     ...career,
     schemaVersion: 15,
@@ -993,8 +999,8 @@ export function startPlannedClimb(career: CareerState): CareerState {
   const cost = expeditionCost(career);
   const startEnergy = clamp(96 - career.hero.fatigue * .28 - Math.max(0, packWeight(career) - 13) * 1.2, 58, 96);
   const simulation = createExpeditionSimulation(route);
-  const expeditionStageCount = simulation.ascentStages.length + simulation.descentStages.length;
-  const plannedDays = Math.max(career.expeditionPlan.foodDays, Math.ceil(expeditionStageCount / 8));
+  const strategic = createStrategicExpedition(route);
+  const plannedDays = Math.max(career.expeditionPlan.foodDays, Math.ceil(strategic.baselineMinutes / 1440) + 1);
   const groupSize = team.length + 1;
   const climb: QualificationClimb = {
     id: `exp-${career.id}-${career.completedClimbs + 1}-${route.id}`,
@@ -1053,9 +1059,10 @@ export function startPlannedClimb(career: CareerState): CareerState {
     earnedMoney: 0,
     participant: career.expeditionPlan.authorityMode === 'PARTICIPANT' ? createParticipantExpeditionState(route) : null,
     simulation,
+    strategic,
   };
-  if (climb.participant && climb.simulation) {
-    climb.participant.targetActions = climb.simulation.ascentStages.length + climb.simulation.descentStages.length;
+  if (climb.participant && climb.strategic) {
+    climb.participant.targetActions = climb.strategic.ascentSectors.length + climb.strategic.descentSectors.length;
   }
   const timeline = advanceDays(career, window.startsInDays + career.expeditionPlan.acclimatizationDays);
   const next: CareerState = {
@@ -1370,6 +1377,9 @@ function descentStartIndex(climb: QualificationClimb, descentRoute: RouteSegment
 }
 
 export function beginDescent(career: CareerState): CareerState {
+  if (career.activeClimb?.strategic?.status === 'SUMMIT') return beginStrategicDescent(career);
+  if (career.activeClimb?.simulation?.status === 'SUMMIT') return beginSimulationDescent(career);
+  if (career.activeClimb?.strategic) return beginStrategicDescent(career);
   if (career.activeClimb?.simulation) return beginSimulationDescent(career);
   const climb = career.activeClimb;
   if (!climb || climb.phase !== 'SUMMIT') return career;
@@ -1390,6 +1400,7 @@ export function beginDescent(career: CareerState): CareerState {
 }
 
 export function retreatClimb(career: CareerState): CareerState {
+  if (career.activeClimb?.strategic) return beginStrategicRetreat(career);
   if (career.activeClimb?.simulation) return beginSimulationRetreat(career);
   const climb = career.activeClimb;
   if (!climb || !['ASCENT', 'SUMMIT'].includes(climb.phase)) return career;
@@ -2005,6 +2016,14 @@ export function waitWeather(career: CareerState): ClimbStepResult {
 
 export function resolveExpeditionFieldAction(career: CareerState, actionId: ExpeditionFieldActionId): ClimbStepResult {
   return resolveSimulationFieldAction(career, actionId);
+}
+
+export function resolveStrategicSectorPlan(career: CareerState, plan: StrategicSectorPlan): ClimbStepResult {
+  return resolveStrategicSector(career, plan);
+}
+
+export function resolveStrategicRestChoice(career: CareerState, choice: StrategicRestId): ClimbStepResult {
+  return resolveStrategicRest(career, choice);
 }
 
 export function closeClimb(career: CareerState): CareerState {
