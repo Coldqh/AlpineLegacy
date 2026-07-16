@@ -1,4 +1,5 @@
-import { SKILL_LABELS } from '../core/career';
+import { SKILL_LABELS, schoolExpeditionBoard } from '../core/career';
+import { SCHOOL_EXPEDITION_PHASE_LABELS, schoolExpeditionPhase } from '../core/schoolExpeditions';
 import type { CareerState, ClubRiskProfile, WorldState } from '../core/types';
 
 const outcomeLabel = { SUMMIT: 'ВЕРШИНА', RETREAT: 'ОТХОД', FAILED: 'АВАРИЯ', TRAGEDY: 'ТРАГЕДИЯ' } as const;
@@ -11,6 +12,7 @@ export function WorldScreen({ world, career }: { world: WorldState; career: Care
   const losses = living.athletes.filter(item => item.status === 'DEAD' || item.status === 'MISSING').length;
   const unclimbed = living.mountainHistory.filter(item => item.firstAscentYear === null).length;
   const latest = living.expeditions.slice(-7).reverse();
+  const schoolPlans = schoolExpeditionBoard(world, career, true);
 
   return (
     <section className="workspace-page world-page">
@@ -25,6 +27,19 @@ export function WorldScreen({ world, career }: { world: WorldState; career: Care
         <article><small>НЕПОКОРЁННЫЕ ВЕРШИНЫ</small><strong>{unclimbed}</strong><p>Клубы могут забрать первое восхождение раньше игрока.</p></article>
         <article className={losses ? 'is-danger' : ''}><small>ПОГИБШИЕ И ПРОПАВШИЕ</small><strong>{losses}</strong><p>Потери навсегда остаются в истории региона.</p></article>
       </div>
+
+      <section className="workspace-panel regional-expedition-board">
+        <div className="panel-heading"><div><p className="eyebrow">SCHOOL PROGRAMS</p><h2>Кто куда собирается</h2></div><span>{schoolPlans.length} ПЛАНОВ</span></div>
+        <div className="regional-expedition-list">
+          {schoolPlans.map(plan => {
+            const route = career.routes.find(item => item.id === plan.routeId);
+            const leader = plan.leaderNpcId ? world.ecosystem.content.npcs.byId[plan.leaderNpcId] : null;
+            const club = living.clubs.find(item => item.id === plan.organizationId);
+            const phase = schoolExpeditionPhase(plan, career.seasonDay);
+            return <article key={plan.id} className={`is-${phase.toLowerCase()}`}><span>{SCHOOL_EXPEDITION_PHASE_LABELS[phase]}</span><div><small>{club?.name ?? 'Независимая группа'} · {leader?.name ?? 'Инструктор'}</small><strong>{route?.mountainName ?? 'Неизвестная гора'} · {route?.name ?? 'Маршрут'}</strong><p>{plan.briefing}</p></div><b>день {plan.departureDay ?? '—'}</b></article>;
+          })}
+        </div>
+      </section>
 
       <section className="workspace-panel mountain-state-board">
         <div className="panel-heading"><div><p className="eyebrow">MOUNTAIN STATE</p><h2>{world.region.name}</h2></div><span>{living.mountainHistory.length} SUMMITS</span></div>

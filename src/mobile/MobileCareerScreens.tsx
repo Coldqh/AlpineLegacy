@@ -12,8 +12,10 @@ import {
   getSelectedWeather,
   routesForMountain,
   selectedTeam,
+  schoolExpeditionBoard,
 } from '../core/career';
 import { buildMountainDynamics } from '../core/mountainDynamics';
+import { SCHOOL_EXPEDITION_PHASE_LABELS, schoolExpeditionPhase, schoolOfferCanAccept } from '../core/schoolExpeditions';
 import { CAREER_TIER_LABELS, SEASON_PHASE_LABELS, careerSeasonPhase, careerWorldRank, currentSeasonExpeditionCount, expeditionLimitForTier, nextCareerMilestone, normalizeCareerProgression } from '../core/progression';
 import { buildMountainMemory } from '../core/mountainMemory';
 import type {
@@ -24,6 +26,7 @@ import type {
   ExpeditionPlan,
   GearCategory,
   MountainData,
+  PermanentTeamStyle,
   TrainingId,
   WorldEventType,
   WorldState,
@@ -32,6 +35,9 @@ import type {
 const trainingOrder: TrainingId[] = ['CONDITIONING', 'ROCK_PRACTICE', 'ICE_PRACTICE', 'MAP_ROOM', 'FIRST_AID', 'CLUB_DUTY', 'RECOVERY'];
 const roleLabel = { LEADER: 'Руководитель', ROPE_LEAD: 'Ведущий', MEDIC: 'Медик', NAVIGATOR: 'Навигатор', SUPPORT: 'Участник' } as const;
 const categoryLabel: Record<GearCategory, string> = { PROTECTION: 'Страховка', SHELTER: 'Укрытие', SURVIVAL: 'Запасы', COMMUNICATION: 'Связь' };
+
+const expeditionRankOrder = ['NOVICE', 'MEMBER', 'SPECIALIST', 'ROPE_LEAD', 'DEPUTY', 'LEADER', 'ORGANIZER'] as const;
+function rankAllows(actual: CareerState['membership']['rank'], required: ExpeditionOffer['requiredRank']) { return expeditionRankOrder.indexOf(actual) >= expeditionRankOrder.indexOf(required); }
 
 function signed(value: number) { return value > 0 ? `+${value}` : String(value); }
 function level(value: number) { return value < 38 ? 'низкий' : value < 58 ? 'средний' : value < 76 ? 'высокий' : 'предельный'; }
@@ -93,19 +99,22 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
   };
 
   const renderOffer = (offer: ExpeditionOffer) => {
-    const offerRoute = world.ecosystem.content.routes.byId[offer.routeId];
+    const offerRoute = world.ecosystem.content.routes.byId[offer.routeId] ?? career.routes.find(item => item.id === offer.routeId);
     const offerMountain = offerRoute ? world.ecosystem.content.mountains.byId[offerRoute.mountainId] : null;
     const leader = offer.leaderNpcId ? world.ecosystem.content.npcs.byId[offer.leaderNpcId] : null;
     const application = applicationFor(offer.id);
     const active = career.selectedOfferId === offer.id;
-    const status = active || application?.status === 'ACCEPTED' ? 'ПРИНЯТО' : application?.status === 'REJECTED' ? 'ОТКАЗ' : 'ОТКРЫТО';
-    return <button key={offer.id} className={`${active ? 'is-active' : ''} ${application?.status === 'REJECTED' ? 'is-rejected' : ''}`} onClick={() => onAcceptOffer(offer.id)}><div><small>{status} · {roleLabel[offer.playerRole]} · {offer.memberNpcIds.length + (offer.leaderNpcId ? 1 : 0)} чел.</small><strong>{offerMountain?.name ?? offerRoute?.mountainName ?? 'Неизвестная гора'}</strong><span>{offerRoute?.name ?? 'Маршрут'} · {offerRoute?.estimatedDecisionCount ?? 20} решений · ≈ {offerRoute?.expectedPlayMinutes ?? 20} мин</span>{leader && <em>Руководитель: {leader.name}</em>}{application && <i>{application.reason}</i>}</div><b>{active ? '✓' : application?.status === 'REJECTED' ? '↻' : '›'}</b></button>;
+    const phase = schoolExpeditionPhase(offer, career.seasonDay);
+    const rankOk = rankAllows(career.membership.rank, offer.requiredRank);
+    const canApply = rankOk && schoolOfferCanAccept(offer, career.seasonDay);
+    const status = active || application?.status === 'ACCEPTED' ? 'МЕСТО' : !rankOk ? 'РАНГ' : SCHOOL_EXPEDITION_PHASE_LABELS[phase].toUpperCase();
+    return <button key={offer.id} disabled={!canApply && !active} className={`${active ? 'is-active' : ''} is-${phase.toLowerCase()} ${application?.status === 'REJECTED' ? 'is-rejected' : ''}`} onClick={() => onAcceptOffer(offer.id)}><div><small>{status} · {leader?.name ?? 'Инструктор'}</small><strong>{offerMountain?.name ?? offerRoute?.mountainName ?? 'Неизвестная гора'}</strong><span>{offerRoute?.name ?? 'Маршрут'} · выход день {offer.departureDay ?? '—'} · {offer.memberNpcIds.length + 1} чел.</span><em>{offer.briefing}</em>{application && <i>{application.reason}</i>}</div><b>{active ? '✓' : canApply ? '›' : '—'}</b></button>;
   };
 
   if (!canPlan) {
     return <section className="m-screen m-screen--with-action">
-      <StepLine step="1/4" title="Доска экспедиций" value={EXPEDITION_RANK_LABELS[career.membership.rank]} />
-      <div className="m-status-line"><strong>{career.selectedOfferId ? 'Место подтверждено' : 'Подай заявку на роль'}</strong><span>{career.applications.filter(item => item.status === 'REJECTED').length} отказов</span></div>
+      <StepLine step="1/4" title="Планы инструкторов" value={EXPEDITION_RANK_LABELS[career.membership.rank]} />
+      <div className="m-status-line"><strong>{career.selectedOfferId ? `Выход: день ${career.acceptedOffer?.departureDay ?? career.seasonDay}` : 'Выбери план и дождись выхода'}</strong><span>{offers.length} планов</span></div>
       <div className="m-offer-list">{offers.map(renderOffer)}</div>
       {!offers.length && <div className="m-note">Сейчас нет доступных заявок. Продвигай время тренировками.</div>}
       {career.selectedOfferId && <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>НАЗНАЧЕННАЯ ЦЕЛЬ</small><strong>{mountain.name}</strong><span>{route.name} · роль: {roleLabel[career.expeditionPlan.playerRole]}</span></div><b>{route.estimatedDecisionCount ?? 20} реш.</b></footer></section>}
@@ -139,16 +148,23 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
   </section>;
 }
 
-export function MobileTeam({ career, onToggle, onContinue, onPeople }: { career: CareerState; onToggle: (id: string) => void; onContinue: () => void; onPeople: () => void }) {
+export function MobileTeam({ career, onToggle, onSavePermanent, onTeamStyle, onUsePermanent, onContinue, onPeople }: { career: CareerState; onToggle: (id: string) => void; onSavePermanent: () => void; onTeamStyle: (style: PermanentTeamStyle) => void; onUsePermanent: () => void; onContinue: () => void; onPeople: () => void }) {
   const team = selectedTeam(career);
   const route = getSelectedRoute(career);
   const canChoose = career.membership.permissions.canChooseTeam;
   const enough = career.membership.mode === 'INDEPENDENT' ? true : team.length + 1 >= route.recommendedTeamSize;
   const visibleRoster = canChoose ? career.teamRoster : career.teamRoster.filter(member => career.expeditionPlan.teamMemberIds.includes(member.id));
   const heroRole = roleLabel[career.expeditionPlan.playerRole];
+  const permanentMembers = career.teamRoster.filter(member => career.permanentTeam.memberIds.includes(member.id));
   return <section className="m-screen m-screen--with-action">
     <StepLine step="2/4" title={canChoose ? 'Команда' : 'Состав экспедиции'} value={career.membership.mode === 'INDEPENDENT' && team.length === 0 ? 'соло' : `${team.length + 1}`} />
     <div className={`m-status-line ${enough ? 'is-good' : 'is-warning'}`}><strong>{career.membership.mode === 'INDEPENDENT' && team.length === 0 ? 'Одиночный выход' : canChoose ? (enough ? 'Состав готов' : `Нужно минимум ${route.recommendedTeamSize}`) : `Твоя роль: ${heroRole}`}</strong>{career.teamRoster.length > 0 && <button onClick={onPeople}>Досье</button>}</div>
+    <section className="m-permanent-team">
+      <header><div><small>ПОСТОЯННАЯ СВЯЗКА</small><strong>{career.permanentTeam.name}</strong></div><b>{career.permanentTeam.cohesion}</b></header>
+      <p>{permanentMembers.length ? permanentMembers.map(member => member.name.split(' ')[0]).join(' · ') : 'Состав пока не закреплён.'}</p>
+      <div className="m-permanent-team__facts"><span>{career.permanentTeam.climbs} выходов</span><span>{career.permanentTeam.summits} вершин</span><span>{career.permanentTeam.losses} потерь</span></div>
+      {canChoose && <><div className="m-segmented m-segmented--team">{([['CAUTIOUS', 'Осторожно'], ['BALANCED', 'Рабоче'], ['AGGRESSIVE', 'Риск']] as Array<[PermanentTeamStyle, string]>).map(([style, label]) => <button key={style} className={career.permanentTeam.style === style ? 'is-active' : ''} onClick={() => onTeamStyle(style)}>{label}</button>)}</div><div className="m-permanent-team__actions"><button onClick={onSavePermanent} disabled={team.length === 0}>Сохранить состав</button><button onClick={onUsePermanent} disabled={!permanentMembers.length}>Взять связку</button></div></>}
+    </section>
     <div className="m-person-list"><article className="is-active"><span>{initials(career.hero.name)}</span><div><strong>{career.hero.name}</strong><small>{heroRole}{career.expeditionPlan.authorityMode === 'COMMAND' ? ' · право приказов' : ' · подчиняется руководителю'}</small></div><b>✓</b></article>{visibleRoster.map(member => { const active = career.expeditionPlan.teamMemberIds.includes(member.id); const unavailable = member.status !== 'ACTIVE' || member.availability < 45; const leader = career.expeditionPlan.leaderNpcId === member.id; return <button key={member.id} disabled={!canChoose || member.required || unavailable} className={active ? 'is-active' : ''} onClick={() => onToggle(member.id)}><span>{initials(member.name)}</span><div><strong>{member.name}</strong><small>{leader ? 'Руководитель экспедиции' : roleLabel[member.role]} · {SKILL_LABELS[member.specialty]} {member.skill}/10</small></div><b>{unavailable ? '—' : active ? '✓' : '+'}</b></button>; })}</div>
     {!canChoose && career.membership.mode === 'ORGANIZATION' && !career.selectedOfferId && <div className="m-note">Состав появится после принятия заявки на чужую экспедицию.</div>}
     <button className="m-sticky-action" onClick={onContinue}><span>Снаряжение</span><b>→</b></button>
@@ -203,8 +219,11 @@ export function MobileWorld({ world, career }: { world: WorldState; career: Care
   const recovering = living.athletes.filter(item => item.status === 'INJURED' || item.recoveryDays > 0).length;
   const losses = living.athletes.filter(item => item.status === 'DEAD' || item.status === 'MISSING').length;
   const latest = [...living.expeditions].reverse().slice(0, 6);
+  const plans = schoolExpeditionBoard(world, career, true);
   return <section className="m-screen">
     <div className="m-state-strip"><span>В строю <b>{active}</b></span><span>Восстановление <b>{recovering}</b></span><span>Потери <b>{losses}</b></span></div>
+    <div className="m-section-head"><h2>Планы школ</h2><span>{plans.length}</span></div>
+    <div className="m-school-plan-list">{plans.map(plan => { const route = career.routes.find(item => item.id === plan.routeId); const leader = plan.leaderNpcId ? world.ecosystem.content.npcs.byId[plan.leaderNpcId] : null; const club = living.clubs.find(item => item.id === plan.organizationId); const phase = schoolExpeditionPhase(plan, career.seasonDay); return <article key={plan.id} className={`is-${phase.toLowerCase()}`}><small>{SCHOOL_EXPEDITION_PHASE_LABELS[phase]} · день {plan.departureDay ?? '—'}</small><strong>{route?.mountainName ?? 'Гора'} · {route?.name ?? 'Маршрут'}</strong><span>{club?.name ?? 'Школа'} · {leader?.name ?? 'Инструктор'}</span></article>; })}</div>
     <div className="m-section-head"><h2>Школы региона</h2></div>
     <div className="m-club-list">{living.clubs.slice().sort((a, b) => b.prestige - a.prestige).map(club => <article key={club.id} className={club.id === career.club.id ? 'is-player' : ''}><div><strong>{club.name}</strong><small>{SKILL_LABELS[club.focusSkill]} · {club.riskProfile === 'CAUTIOUS' ? 'осторожная' : club.riskProfile === 'AGGRESSIVE' ? 'агрессивная' : 'сбалансированная'} школа</small></div><b>{club.prestige}</b></article>)}</div>
     <div className="m-section-head"><h2>Последние выходы</h2><span>{living.expeditions.length}</span></div>

@@ -4252,3 +4252,92 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
   .mountain-dynamic-banner > span { border-left: 0; border-top: 1px solid var(--line); padding: 10px 0 0; }
   .mountain-dynamic-banner strong { font-size: 20px; }
 }
+
+/* 0.15.0 persistent teams and rotating school expeditions */
+.school-expedition-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.school-expedition-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 9px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(9, 16, 14, .48);
+}
+
+.school-expedition-card.is-active { border-color: rgba(99, 188, 151, .78); box-shadow: inset 0 0 0 1px rgba(99, 188, 151, .18); }
+.school-expedition-card.is-on_route,
+.school-expedition-card.is-recovering { opacity: .72; }
+.school-expedition-card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.school-expedition-card > header span { font-family: var(--serif); font-size: 22px; color: var(--muted); }
+.school-expedition-card > header b { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.school-expedition-card > small { font-size: 9px; letter-spacing: .08em; color: var(--muted); }
+.school-expedition-card h3 { margin: 3px 0 0; font-family: var(--serif); font-size: 28px; font-weight: 500; }
+.school-expedition-card > strong { font-size: 12px; }
+.school-expedition-card > p { min-height: 58px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.school-expedition-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 2px 0 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+.school-expedition-card dl div { padding: 9px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.school-expedition-card dt { color: var(--muted); font-size: 8px; text-transform: uppercase; }
+.school-expedition-card dd { margin: 4px 0 0; font-size: 10px; }
+.school-expedition-card > button { margin-top: auto; min-height: 38px; border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(21, 35, 30, .88); color: var(--text); font-size: 9px; font-weight: 700; letter-spacing: .06em; }
+.school-expedition-card > button:disabled { opacity: .48; }
+.school-expedition-card.is-recruiting > header b { color: #75c49d; }
+.school-expedition-card.is-weather_hold > header b { color: #d5b66f; }
+.school-expedition-card.is-departing > header b { color: #df835d; }
+
+.permanent-team-panel {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.25fr) minmax(280px, .85fr);
+  gap: 14px 28px;
+  margin: 20px 0 26px;
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(17, 30, 26, .92), rgba(8, 15, 13, .72));
+}
+
+.permanent-team-panel__lead small { font-size: 9px; letter-spacing: .12em; color: var(--muted); }
+.permanent-team-panel__lead h2 { margin: 6px 0 7px; font-family: var(--serif); font-size: 31px; font-weight: 500; }
+.permanent-team-panel__lead p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.permanent-team-panel__stats { display: grid; grid-template-columns: repeat(4, 1fr); align-items: stretch; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.permanent-team-panel__stats span { display: grid; place-items: center; gap: 4px; padding: 10px 6px; border-right: 1px solid var(--line); }
+.permanent-team-panel__stats span:last-child { border-right: 0; }
+.permanent-team-panel__stats b { font-family: var(--serif); font-size: 23px; font-weight: 500; }
+.permanent-team-panel__stats small { color: var(--muted); font-size: 7px; text-transform: uppercase; }
+.permanent-team-panel__controls { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: 13px; }
+.permanent-team-panel__controls > button,
+.permanent-team-style button { min-height: 34px; padding: 0 13px; border: 1px solid var(--line); border-radius: 8px; background: rgba(8, 15, 13, .58); color: var(--text); font-size: 9px; }
+.permanent-team-panel__controls > button { margin-left: auto; }
+.permanent-team-panel__controls > button + button { margin-left: 0; }
+.permanent-team-style { display: flex; gap: 5px; }
+.permanent-team-style button.is-active { border-color: rgba(99, 188, 151, .72); background: rgba(58, 111, 89, .32); }
+
+.regional-expedition-list { display: grid; gap: 7px; }
+.regional-expedition-list article { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 15px; align-items: center; padding: 13px 14px; border: 1px solid var(--line); border-radius: 11px; background: rgba(9, 16, 14, .42); }
+.regional-expedition-list article > span { font-size: 8px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.regional-expedition-list article.is-recruiting > span { color: #75c49d; }
+.regional-expedition-list article.is-weather_hold > span { color: #d5b66f; }
+.regional-expedition-list article.is-departing > span { color: #df835d; }
+.regional-expedition-list article small { color: var(--muted); font-size: 8px; }
+.regional-expedition-list article strong { display: block; margin-top: 4px; font-size: 12px; }
+.regional-expedition-list article p { margin: 4px 0 0; color: var(--muted); font-size: 9px; }
+.regional-expedition-list article > b { font-size: 10px; white-space: nowrap; }
+
+@media (max-width: 1050px) {
+  .school-expedition-grid { grid-template-columns: 1fr 1fr; }
+  .permanent-team-panel { grid-template-columns: 1fr; }
+  .permanent-team-panel__controls { grid-column: 1; flex-wrap: wrap; }
+  .permanent-team-panel__controls > button { margin-left: 0; }
+}
+
+@media (max-width: 720px) {
+  .school-expedition-grid { grid-template-columns: 1fr; }
+  .regional-expedition-list article { grid-template-columns: 1fr auto; }
+  .regional-expedition-list article > span { grid-column: 1 / -1; }
+}

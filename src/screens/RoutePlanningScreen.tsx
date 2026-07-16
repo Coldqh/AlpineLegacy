@@ -3,6 +3,7 @@ import { EXPEDITION_RANK_LABELS, expeditionReadiness, getSelectedRoute, routesFo
 import type { CareerState, ExpeditionOffer, WorldState } from '../core/types';
 import { buildMountainMemory } from '../core/mountainMemory';
 import { buildMountainDynamics } from '../core/mountainDynamics';
+import { SCHOOL_EXPEDITION_PHASE_LABELS, schoolExpeditionPhase, schoolOfferCanAccept } from '../core/schoolExpeditions';
 
 type Props = {
   world: WorldState;
@@ -19,6 +20,12 @@ function level(value: number) {
   if (value < 58) return 'Средняя';
   if (value < 76) return 'Высокая';
   return 'Предельная';
+}
+
+
+const expeditionRankOrder = ['NOVICE', 'MEMBER', 'SPECIALIST', 'ROPE_LEAD', 'DEPUTY', 'LEADER', 'ORGANIZER'] as const;
+function rankAllows(actual: CareerState['membership']['rank'], required: ExpeditionOffer['requiredRank']) {
+  return expeditionRankOrder.indexOf(actual) >= expeditionRankOrder.indexOf(required);
 }
 
 function mountainScore(mountain: WorldState['region']['mountains'][number]) {
@@ -38,11 +45,43 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
   if (!career.membership.permissions.canChooseRoute) {
     return (
       <section className="workspace-page route-planning-page">
-        <header className="workspace-title workspace-title--compact"><div><p className="eyebrow">ШАГ 1 ИЗ 4 · ЧУЖИЕ ЭКСПЕДИЦИИ</p><h1>Получи место в группе.</h1><p>Пока ты новичок, маршрут, состав и общую стратегию определяет руководитель. Ты выбираешь, к какой экспедиции подать заявку.</p></div><div className="workspace-title__mark"><span>{EXPEDITION_RANK_LABELS[career.membership.rank]}</span><small>ТВОЙ РАНГ</small></div></header>
+        <header className="workspace-title workspace-title--compact">
+          <div><p className="eyebrow">ШАГ 1 ИЗ 4 · ПЛАНЫ ШКОЛЫ</p><h1>Найди место в группе.</h1><p>Инструкторы ведут разные экспедиции параллельно. Сначала объявляют цель, потом набирают людей, готовят груз, ждут погоду и только после этого выходят.</p></div>
+          <div className="workspace-title__mark"><span>{EXPEDITION_RANK_LABELS[career.membership.rank]}</span><small>ТВОЙ РАНГ</small></div>
+        </header>
         {latestApplication && <section className={`application-result is-${latestApplication.status.toLowerCase()}`}><strong>{latestApplication.status === 'ACCEPTED' ? 'Заявка принята' : 'Заявка отклонена'}</strong><p>{latestApplication.reason}</p><span>Оценка заявки: {latestApplication.score}</span></section>}
-        <section className="workspace-panel"><div className="panel-heading"><div><p className="eyebrow">OPEN EXPEDITIONS</p><h2>Доступные заявки</h2></div><span>{offers.length}</span></div><div className="route-choice-grid route-choice-grid--clear expedition-offer-grid">{offers.map((offer, index) => { const offerRoute = world.ecosystem.content.routes.byId[offer.routeId]; const offerMountain = offerRoute ? world.ecosystem.content.mountains.byId[offerRoute.mountainId] : null; const active = career.selectedOfferId === offer.id; return <button key={offer.id} className={active ? 'is-active' : ''} onClick={() => onAcceptOffer(offer.id)}><div><span>{String(index + 1).padStart(2, '0')}</span><i /></div><small>{offer.playerRole} · ПОД РУКОВОДСТВОМ NPC</small><h3>{offerMountain?.name ?? offerRoute?.mountainName}</h3><p>{offerRoute?.name}. Ты отвечаешь за личные решения и свою роль, но не формируешь всю группу.</p><dl><div><dt>Роль</dt><dd>{offer.playerRole}</dd></div><div><dt>Состав</dt><dd>{offer.memberNpcIds.length + (offer.leaderNpcId ? 1 : 0)} NPC</dd></div><div><dt>Игра</dt><dd>≈ {offerRoute?.expectedPlayMinutes ?? 20} мин</dd></div><div><dt>Ранг</dt><dd>{offer.requiredRank}</dd></div></dl><footer>{active ? 'МЕСТО ПОДТВЕРЖДЕНО' : 'ПОДАТЬ ЗАЯВКУ'}</footer></button>; })}</div>{!offers.length && <p>Сейчас нет открытых заявок. Продвинь время тренировками.</p>}</section>
-        {career.selectedOfferId && <section className="route-summary-panel"><div><p className="eyebrow">ASSIGNED ROUTE</p><h2>{route.mountainName} · {route.name}</h2><p>Руководитель назначил тебе роль {career.expeditionPlan.playerRole}. Общие приказы недоступны до повышения ранга.</p></div><div className="route-summary-panel__metrics"><span><small>ВЕРШИНА</small><strong>{route.summitElevation} м</strong></span><span><small>ИГРОВОЕ ВРЕМЯ</small><strong>≈ {route.expectedPlayMinutes ?? 20} мин</strong></span><span><small>УЗЛЫ</small><strong>{route.graph?.nodes.length ?? route.segments.length}</strong></span><span><small>РОЛЬ</small><strong>{career.expeditionPlan.playerRole}</strong></span></div></section>}
-        <button className="flow-next-action" disabled={!career.selectedOfferId} onClick={onContinue}><span><small>СЛЕДУЮЩИЙ ШАГ</small><strong>{career.selectedOfferId ? 'Посмотреть состав' : 'Выбери экспедицию'}</strong></span><b>→</b></button>
+        <section className="workspace-panel school-expedition-board">
+          <div className="panel-heading"><div><p className="eyebrow">SCHOOL EXPEDITION PROGRAM</p><h2>Экспедиции инструкторов</h2></div><span>{offers.length} ПЛАНА</span></div>
+          <div className="school-expedition-grid">
+            {offers.map((offer, index) => {
+              const offerRoute = world.ecosystem.content.routes.byId[offer.routeId] ?? career.routes.find(item => item.id === offer.routeId);
+              const offerMountain = offerRoute ? world.ecosystem.content.mountains.byId[offerRoute.mountainId] : null;
+              const leader = offer.leaderNpcId ? world.ecosystem.content.npcs.byId[offer.leaderNpcId] : null;
+              const phase = schoolExpeditionPhase(offer, career.seasonDay);
+              const active = career.selectedOfferId === offer.id;
+              const rankOk = rankAllows(career.membership.rank, offer.requiredRank);
+              const canApply = rankOk && schoolOfferCanAccept(offer, career.seasonDay);
+              return (
+                <article key={offer.id} className={`school-expedition-card is-${phase.toLowerCase()} ${active ? 'is-active' : ''}`}>
+                  <header><span>{String(index + 1).padStart(2, '0')}</span><b>{SCHOOL_EXPEDITION_PHASE_LABELS[phase]}</b></header>
+                  <small>{leader?.mentorLevel ?? 'ИНСТРУКТОР'} · {leader?.name ?? 'Руководитель школы'}</small>
+                  <h3>{offerMountain?.name ?? offerRoute?.mountainName}</h3>
+                  <strong>{offerRoute?.name}</strong>
+                  <p>{offer.briefing}</p>
+                  <dl>
+                    <div><dt>Выход</dt><dd>день {offer.departureDay ?? '—'}</dd></div>
+                    <div><dt>Возврат</dt><dd>день {offer.expectedReturnDay ?? '—'}</dd></div>
+                    <div><dt>Состав</dt><dd>{offer.memberNpcIds.length + 1} чел. · {offer.openSlots ?? 0} мест</dd></div>
+                    <div><dt>Допуск</dt><dd>{EXPEDITION_RANK_LABELS[offer.requiredRank]}</dd></div>
+                  </dl>
+                  <button disabled={!canApply && !active} onClick={() => onAcceptOffer(offer.id)}>{active ? 'МЕСТО ПОДТВЕРЖДЕНО' : !rankOk ? 'НЕДОСТАТОЧНЫЙ РАНГ' : canApply ? 'ПОДАТЬ ЗАЯВКУ' : SCHOOL_EXPEDITION_PHASE_LABELS[phase].toUpperCase()}</button>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+        {career.selectedOfferId && <section className="route-summary-panel"><div><p className="eyebrow">ASSIGNED EXPEDITION</p><h2>{route.mountainName} · {route.name}</h2><p>Место подтверждено. До выхода группа проходит подготовку, распределяет груз и ждёт своё погодное окно.</p></div><div className="route-summary-panel__metrics"><span><small>ВЫХОД</small><strong>день {career.acceptedOffer?.departureDay ?? career.seasonDay}</strong></span><span><small>ВЕРШИНА</small><strong>{route.summitElevation} м</strong></span><span><small>СОСТАВ</small><strong>{career.expeditionPlan.teamMemberIds.length + 1}</strong></span><span><small>РОЛЬ</small><strong>{career.expeditionPlan.playerRole}</strong></span></div></section>}
+        <button className="flow-next-action" disabled={!career.selectedOfferId} onClick={onContinue}><span><small>СЛЕДУЮЩИЙ ШАГ</small><strong>{career.selectedOfferId ? 'Посмотреть состав и подготовку' : 'Выбери план инструктора'}</strong></span><b>→</b></button>
       </section>
     );
   }

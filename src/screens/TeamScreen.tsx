@@ -1,11 +1,11 @@
 import { SKILL_LABELS, expeditionReadiness, getSelectedRoute, selectedTeam } from '../core/career';
-import type { CareerState } from '../core/types';
+import type { CareerState, PermanentTeamStyle } from '../core/types';
 
-type Props = { career: CareerState; onToggle: (memberId: string) => void; onContinue: () => void; onPeople: () => void };
+type Props = { career: CareerState; onToggle: (memberId: string) => void; onSavePermanent: () => void; onTeamStyle: (style: PermanentTeamStyle) => void; onUsePermanent: () => void; onContinue: () => void; onPeople: () => void };
 
 const roleLabel = { LEADER: 'Руководитель', ROPE_LEAD: 'Ведущий', MEDIC: 'Медик', NAVIGATOR: 'Навигатор', SUPPORT: 'Участник' } as const;
 
-export function TeamScreen({ career, onToggle, onContinue, onPeople }: Props) {
+export function TeamScreen({ career, onToggle, onSavePermanent, onTeamStyle, onUsePermanent, onContinue, onPeople }: Props) {
   const selected = selectedTeam(career);
   const readiness = expeditionReadiness(career);
   const route = getSelectedRoute(career);
@@ -13,6 +13,7 @@ export function TeamScreen({ career, onToggle, onContinue, onPeople }: Props) {
   const visibleRoster = canChoose ? career.teamRoster : career.teamRoster.filter(member => career.expeditionPlan.teamMemberIds.includes(member.id));
   const solo = career.membership.mode === 'INDEPENDENT' && selected.length === 0;
   const enough = solo || selected.length + 1 >= route.recommendedTeamSize;
+  const permanentMembers = career.teamRoster.filter(member => career.permanentTeam.memberIds.includes(member.id));
 
   return (
     <section className="workspace-page team-page">
@@ -32,6 +33,27 @@ export function TeamScreen({ career, onToggle, onContinue, onPeople }: Props) {
         <div><span>Маршрут</span><strong>{route.name}</strong><small>{route.recommendedTeamSize}+ человек</small></div>
         <button onClick={onPeople}><strong>Открыть досье</strong><small>Люди и отношения →</small></button>
       </div>
+
+      <section className="permanent-team-panel">
+        <div className="permanent-team-panel__lead">
+          <small>ПОСТОЯННАЯ СВЯЗКА</small>
+          <h2>{career.permanentTeam.name}</h2>
+          <p>{permanentMembers.length ? permanentMembers.map(member => member.name).join(' · ') : 'Пока состав не закреплён. Собери рабочую группу и сохрани её одним действием.'}</p>
+        </div>
+        <div className="permanent-team-panel__stats">
+          <span><b>{career.permanentTeam.cohesion}</b><small>слаженность</small></span>
+          <span><b>{career.permanentTeam.climbs}</b><small>выходы</small></span>
+          <span><b>{career.permanentTeam.summits}</b><small>вершины</small></span>
+          <span><b>{career.permanentTeam.losses}</b><small>потери</small></span>
+        </div>
+        {canChoose && <div className="permanent-team-panel__controls">
+          <div className="permanent-team-style">
+            {([['CAUTIOUS', 'Осторожная'], ['BALANCED', 'Рабочая'], ['AGGRESSIVE', 'Рисковая']] as Array<[PermanentTeamStyle, string]>).map(([style, label]) => <button key={style} className={career.permanentTeam.style === style ? 'is-active' : ''} onClick={() => onTeamStyle(style)}>{label}</button>)}
+          </div>
+          <button onClick={onSavePermanent} disabled={selected.length === 0}>Сохранить текущий состав</button>
+          <button onClick={onUsePermanent} disabled={permanentMembers.length === 0}>Взять постоянную связку</button>
+        </div>}
+      </section>
 
       <div className="team-grid team-grid--clear">
         <article className="team-card team-card--hero is-selected">

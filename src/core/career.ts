@@ -1,8 +1,9 @@
 import { createRng } from './rng';
 import { buildMountainDynamics, routeIsClosed } from './mountainDynamics';
+import { buildSchoolExpeditionBoard, daysUntilSchoolDeparture, schoolExpeditionPhase, schoolOfferCanAccept } from './schoolExpeditions';
 import { defaultDescentSegments, generateRoutesForWorld, getQualificationTarget } from './routeFactory';
 export { getQualificationTarget } from './routeFactory';
-import { getEntryOrganizations, getOrganization, offersForMembership, organizationToClub, rosterForOrganization } from './ecosystem';
+import { getEntryOrganizations, getOrganization, organizationToClub, rankAtLeast, rosterForOrganization } from './ecosystem';
 import { buildExpeditionReport, createClimbTeamStates, enrichRoster, finalizeRosterAfterClimb, memory, teamAverage } from './people';
 import { advanceLivingWorld, createLivingWorld, hydrateLivingWorld, registerHeroExpedition } from './worldSimulation';
 import { createCareerProgression, currentSeasonExpeditionCount, expeditionLimitForTier, hydrateCareerProgression, normalizeCareerProgression, rollCareerSeason, syncCareerProgression } from './progression';
@@ -18,6 +19,7 @@ import {
   type IntegratedExpeditionState,
   type IntegratedParticipantState,
   type IntegratedSkills,
+  type IntegratedPace,
 } from './expedition';
 export { currentExpeditionStage, previewExpeditionActions } from './simulationEngine';
 import type {
@@ -38,6 +40,7 @@ import type {
   ExpeditionPlan,
   ExpeditionFieldActionId,
   ExpeditionRank,
+  PermanentTeamStyle,
   ExpeditionReadiness,
   StrategicRestId,
   StrategicSectorPlan,
@@ -489,6 +492,8 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     applications: career.applications ?? [],
     knownNpcIds: career.knownNpcIds ?? teamRoster.map((member: TeamMember) => member.id),
     recoveryDays: Math.max(0, Math.round(career.recoveryDays ?? 0)),
+    permanentTeam: career.permanentTeam ?? { name: `${career.hero?.name ?? 'Альпинист'} · связка`, style: 'BALANCED', memberIds: [], createdYear: career.year ?? world.config.startYear, createdDay: career.seasonDay ?? 1, cohesion: 24, climbs: 0, summits: 0, rescues: 0, losses: 0 },
+    acceptedOffer: career.acceptedOffer ?? null,
     expeditionPlan: {
       ...career.expeditionPlan,
       offerId: career.expeditionPlan?.offerId ?? null,
@@ -556,6 +561,8 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     applications: [],
     knownNpcIds: teamRoster.map(member => member.id),
     recoveryDays: 0,
+    permanentTeam: { name: `${draft.name.trim() || 'Новый альпинист'} · связка`, style: 'BALANCED', memberIds: [], createdYear: world.config.startYear, createdDay: 1, cohesion: 24, climbs: 0, summits: 0, rescues: 0, losses: 0 },
+    acceptedOffer: null,
   };
 
   const opening = membership.mode === 'INDEPENDENT'
@@ -785,12 +792,15 @@ export function updateExpeditionPlan(career: CareerState, patch: Partial<Expedit
   return { ...career, expeditionPlan: { ...career.expeditionPlan, ...patch } };
 }
 
+export function schoolExpeditionBoard(world: WorldState, career: CareerState, allSchools = false): ExpeditionOffer[] {
+  return buildSchoolExpeditionBoard(world, career)
+    .filter(offer => allSchools || career.membership.mode === 'INDEPENDENT' || offer.organizationId === career.membership.organizationId);
+}
+
 export function availableExpeditionOffers(world: WorldState, career: CareerState): ExpeditionOffer[] {
-  return offersForMembership(world, career.membership, career.seasonDay)
-    .filter(offer => {
-      const route = career.routes.find(item => item.id === offer.routeId);
-      return !route || !routeIsClosed(career, route);
-    });
+  return schoolExpeditionBoard(world, career)
+    .filter(offer => rankAtLeast(career.membership.rank, offer.requiredRank))
+    .filter(offer => schoolOfferCanAccept(offer, career.seasonDay) || offer.id === career.selectedOfferId);
 }
 
 export function applicationForOffer(career: CareerState, offerId: string) {
@@ -801,7 +811,7 @@ export function applyToExpeditionOffer(world: WorldState, career: CareerState, o
   const offer = availableExpeditionOffers(world, career).find(item => item.id === offerId);
   if (!offer) return career;
   const previous = applicationForOffer(career, offerId);
-  if (previous?.status === 'ACCEPTED') return acceptExpeditionOffer(world, career, offerId);
+  if (previous?.status === 'ACCEPTED') return acceptScheduledExpeditionOffer(world, career, offerId);
   const route = world.ecosystem.content.routes.byId[offer.routeId];
   if (!route) return career;
   const roleSkill: Record<TeamMember['role'], SkillId> = { LEADER: 'LEADERSHIP', ROPE_LEAD: 'ROCK', MEDIC: 'MEDICINE', NAVIGATOR: 'NAVIGATION', SUPPORT: 'ENDURANCE' };
@@ -825,48 +835,45 @@ export function applyToExpeditionOffer(world: WorldState, career: CareerState, o
     applications: [...career.applications, application],
     log: [...career.log, careerLog(career, 'EXPEDITION', accepted ? 'Заявка принята' : 'Заявка отклонена', `${route.mountainName} · ${route.name}. ${application.reason}`)],
   };
-  return accepted ? acceptExpeditionOffer(world, withApplication, offerId) : withApplication;
+  return accepted ? acceptScheduledExpeditionOffer(world, withApplication, offerId) : withApplication;
 }
 
-export function acceptExpeditionOffer(world: WorldState, career: CareerState, offerId: string): CareerState {
-  const offer = availableExpeditionOffers(world, career).find(item => item.id === offerId);
-  if (!offer) return career;
+function acceptOfferState(world: WorldState, career: CareerState, offerId: string, scheduled: boolean): CareerState {
+  const boardOffer = schoolExpeditionBoard(world, career, true).find(item => item.id === offerId) ?? availableExpeditionOffers(world, career).find(item => item.id === offerId);
+  if (!boardOffer) return career;
+  const offer: ExpeditionOffer = scheduled ? boardOffer : { ...boardOffer, phase: 'DEPARTING', departureDay: career.seasonDay, recruitmentClosesDay: career.seasonDay, expectedReturnDay: Math.min(180, career.seasonDay + 8) };
   const route = world.ecosystem.content.routes.byId[offer.routeId];
   if (!route) return career;
   const participantIds = [offer.leaderNpcId, ...offer.memberNpcIds].filter((id): id is string => Boolean(id));
   const known = [...new Set([...career.knownNpcIds, ...participantIds])];
   const existingApplication = applicationForOffer(career, offer.id);
   const acceptedApplication: ExpeditionApplication = existingApplication?.status === 'ACCEPTED' ? existingApplication : {
-    id: `application-${offer.id}-${career.year}-${career.seasonDay}-${career.applications.length + 1}`,
-    offerId: offer.id,
-    status: 'ACCEPTED',
-    score: 100,
-    reason: 'Место подтверждено.',
-    appliedYear: career.year,
-    appliedDay: career.seasonDay,
+    id: `application-${offer.id}-${career.year}-${career.seasonDay}-${career.applications.length + 1}`, offerId: offer.id, status: 'ACCEPTED', score: 100, reason: 'Место подтверждено.', appliedYear: career.year, appliedDay: career.seasonDay,
   };
   return {
     ...career,
     applications: existingApplication?.status === 'ACCEPTED' ? career.applications : [...career.applications, acceptedApplication],
     selectedOfferId: offer.id,
+    acceptedOffer: offer,
     knownNpcIds: known,
-    expeditionPlan: {
-      ...career.expeditionPlan,
-      routeId: route.id,
-      offerId: offer.id,
-      leaderNpcId: offer.leaderNpcId,
-      playerRole: offer.playerRole,
-      authorityMode: offer.authority,
-      teamMemberIds: participantIds,
-    },
-    log: [...career.log, careerLog(career, 'EXPEDITION', offer.solo ? 'Выбран самостоятельный выход' : 'Принято место в экспедиции', `${route.mountainName} · ${route.name}. Роль: ${offer.playerRole}.`)],
+    expeditionPlan: { ...career.expeditionPlan, routeId: route.id, offerId: offer.id, leaderNpcId: offer.leaderNpcId, playerRole: offer.playerRole, authorityMode: offer.authority, teamMemberIds: participantIds },
+    log: [...career.log, careerLog(career, 'EXPEDITION', scheduled ? 'Место в плане школы подтверждено' : 'Принято место в экспедиции', `${route.mountainName} · ${route.name}. ${scheduled && offer.departureDay ? `Выход запланирован на день ${offer.departureDay}.` : `Роль: ${offer.playerRole}.`}`)],
   };
+}
+
+function acceptScheduledExpeditionOffer(world: WorldState, career: CareerState, offerId: string): CareerState {
+  return acceptOfferState(world, career, offerId, true);
+}
+
+export function acceptExpeditionOffer(world: WorldState, career: CareerState, offerId: string): CareerState {
+  return acceptOfferState(world, career, offerId, false);
 }
 
 export function leaveExpeditionOffer(career: CareerState): CareerState {
   return {
     ...career,
     selectedOfferId: null,
+    acceptedOffer: null,
     expeditionPlan: {
       ...career.expeditionPlan,
       offerId: null,
@@ -886,7 +893,9 @@ export function selectRoute(career: CareerState, routeId: string): CareerState {
   if (!career.membership.permissions.canChooseRoute) return career;
   const route = career.routes.find(item => item.id === routeId);
   if (!route || routeIsClosed(career, route)) return career;
-  return updateExpeditionPlan(leaveExpeditionOffer(career), { routeId, playerRole: 'LEADER', authorityMode: 'COMMAND' });
+  const cleared = leaveExpeditionOffer(career);
+  const permanentIds = cleared.permanentTeam.memberIds.filter(id => { const member = cleared.teamRoster.find(item => item.id === id); return member?.status === 'ACTIVE' && member.availability >= 45; }).slice(0, 4);
+  return updateExpeditionPlan(cleared, { routeId, playerRole: 'LEADER', authorityMode: 'COMMAND', teamMemberIds: permanentIds });
 }
 
 export function routesForMountain(career: CareerState, mountainId: string) {
@@ -917,6 +926,30 @@ export function toggleTeamMember(career: CareerState, memberId: string): CareerS
     : [...career.expeditionPlan.teamMemberIds, memberId];
   if (nextIds.length > 4) return career;
   return updateExpeditionPlan(career, { teamMemberIds: nextIds });
+}
+
+export function togglePermanentTeamMember(career: CareerState, memberId: string): CareerState {
+  const member = career.teamRoster.find(item => item.id === memberId);
+  if (!member || member.status !== 'ACTIVE') return career;
+  const active = career.permanentTeam.memberIds.includes(memberId);
+  const memberIds = active ? career.permanentTeam.memberIds.filter(id => id !== memberId) : [...career.permanentTeam.memberIds, memberId].slice(0, 5);
+  return { ...career, permanentTeam: { ...career.permanentTeam, memberIds, cohesion: clamp(career.permanentTeam.cohesion + (active ? -3 : 2), 0, 100) } };
+}
+
+export function saveCurrentAsPermanentTeam(career: CareerState): CareerState {
+  if (!career.membership.permissions.canChooseTeam) return career;
+  const memberIds = career.expeditionPlan.teamMemberIds.filter(id => { const member = career.teamRoster.find(item => item.id === id); return member?.status === 'ACTIVE'; }).slice(0, 5);
+  return { ...career, permanentTeam: { ...career.permanentTeam, memberIds, cohesion: memberIds.length >= 2 ? Math.max(career.permanentTeam.cohesion, 30) : career.permanentTeam.cohesion } };
+}
+
+export function setPermanentTeamStyle(career: CareerState, style: PermanentTeamStyle): CareerState {
+  return { ...career, permanentTeam: { ...career.permanentTeam, style } };
+}
+
+export function usePermanentTeam(career: CareerState): CareerState {
+  if (!career.membership.permissions.canChooseTeam) return career;
+  const memberIds = career.permanentTeam.memberIds.filter(id => { const member = career.teamRoster.find(item => item.id === id); return member?.status === 'ACTIVE' && member.availability >= 45; }).slice(0, 4);
+  return updateExpeditionPlan(career, { teamMemberIds: memberIds });
 }
 
 export function setGearQuantity(career: CareerState, gearId: string, quantity: number): CareerState {
@@ -977,9 +1010,11 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   const heroBase = careerReadiness(career);
   const primarySkills = route.segments.map(item => career.hero.skills[item.skill]);
   const routeFit = clamp(Math.round(primarySkills.reduce((sum, value) => sum + value, 0) / primarySkills.length * 11 + 24 - route.technicality * .28), 0, 100);
+  const permanentCount = team.filter(member => career.permanentTeam.memberIds.includes(member.id)).length;
+  const cohesionBonus = permanentCount >= 2 ? career.permanentTeam.cohesion * .12 : 0;
   const teamScore = soloPlan
     ? clamp(Math.round(heroBase * .62 + career.hero.skills.LEADERSHIP * 4), 0, 100)
-    : clamp(Math.round(team.reduce((sum, member) => sum + member.skill * 7 + member.endurance * 4 + member.trust * .22, 0) / Math.max(1, team.length)), 0, 100);
+    : clamp(Math.round(team.reduce((sum, member) => sum + member.skill * 7 + member.endurance * 4 + member.trust * .22, 0) / Math.max(1, team.length) + cohesionBonus), 0, 100);
   const missingGear = route.requiredGearIds.filter(id => (career.expeditionPlan.gear[id] ?? 0) <= 0);
   const equipment = clamp(100 - missingGear.length * 23 - Math.max(0, expeditionWeight(career) - 16) * 3, 0, 100);
   const dynamics = buildMountainDynamics(career, route.mountainId, route.id);
@@ -987,6 +1022,12 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   const acclimatization = clamp(career.expeditionPlan.acclimatizationDays * 13 + career.hero.skills.ENDURANCE * 4, 0, 100);
   const total = Math.round(heroBase * .25 + routeFit * .18 + teamScore * .17 + equipment * .18 + weatherScore * .12 + acclimatization * .1);
   const blockers: string[] = [];
+  if (career.acceptedOffer && career.membership.mode !== 'INDEPENDENT') {
+    const phase = schoolExpeditionPhase(career.acceptedOffer, career.seasonDay);
+    const untilDeparture = daysUntilSchoolDeparture(career.acceptedOffer, career.seasonDay);
+    if (untilDeparture > 0) blockers.push(`Школьная экспедиция ещё готовится. До выхода ${untilDeparture} дн.`);
+    else if (phase === 'ON_ROUTE' || phase === 'RECOVERING') blockers.push('Ты пропустил выход этой группы. Выбери новый план школы.');
+  }
   if (!career.selectedOfferId && !career.membership.permissions.canOrganize && !career.membership.permissions.canStartSolo) blockers.push('Сначала получи место в чужой экспедиции.');
   if (dynamics.status === 'CLOSED') blockers.push(`Маршрут временно закрыт: ${dynamics.closureReason ?? dynamics.seasonSummary}`);
   if (missingGear.length) blockers.push(`Не хватает обязательного снаряжения: ${missingGear.map(id => GEAR_CATALOG.find(item => item.id === id)?.name ?? id).join(', ')}`);
@@ -1119,7 +1160,7 @@ function createCareerIntegratedExpedition(
 ) {
   const gear = career.expeditionPlan.gear;
   const entrySide = route.id.endsWith('east-glacier') ? 'EAST' : route.id.endsWith('north-line') ? 'NORTH' : 'SOUTH';
-  return createIntegratedExpeditionState({
+  const integrated = createIntegratedExpeditionState({
     seed: climbId,
     difficulty: career.difficulty,
     authority: career.expeditionPlan.authorityMode,
@@ -1154,6 +1195,16 @@ function createCareerIntegratedExpedition(
     startElevation: route.startElevation,
     summitElevation: route.summitElevation,
   });
+  const permanentCount = team.filter(member => career.permanentTeam.memberIds.includes(member.id)).length;
+  if (permanentCount < 2) return integrated;
+  const pace: IntegratedPace = career.permanentTeam.style === 'CAUTIOUS' ? 'CAUTIOUS' : career.permanentTeam.style === 'AGGRESSIVE' ? 'FAST' : 'STEADY';
+  const cohesion = career.permanentTeam.cohesion;
+  return {
+    ...integrated,
+    pace,
+    participants: integrated.participants.map(participant => participant.memberId && career.permanentTeam.memberIds.includes(participant.memberId) ? { ...participant, trust: clamp(participant.trust + cohesion * .08), morale: clamp(participant.morale + cohesion * .05), energy: clamp(participant.energy + cohesion * .035) } : participant),
+    message: `${career.permanentTeam.name}: привычный состав выходит в темпе «${pace === 'CAUTIOUS' ? 'осторожный' : pace === 'FAST' ? 'быстрый' : 'рабочий'}».`,
+  };
 }
 
 function weatherLabel(temperatureC: number, windKmh: number, visibility: number) {
@@ -1163,7 +1214,8 @@ function weatherLabel(temperatureC: number, windKmh: number, visibility: number)
 
 export function startPlannedClimb(career: CareerState): CareerState {
   const readiness = expeditionReadiness(career);
-  if (readiness.blockers.length || readiness.total < 54 || career.activeClimb) return career;
+  const hardBlockers = readiness.blockers.filter(item => !item.startsWith('Школьная экспедиция') && !item.startsWith('Ты пропустил выход'));
+  if (hardBlockers.length || readiness.total < 54 || career.activeClimb) return career;
   const route = getSelectedRoute(career);
   const window = getSelectedWeather(career);
   const team = selectedTeam(career);
@@ -1627,12 +1679,24 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
   const reliabilityDelta = successful ? 5 : completed.retreating ? 2 : -5;
   const leadershipDelta = Math.round(completed.decisions.filter(item => item.accepted).length * 1.5) - completed.decisions.filter(item => !item.accepted).length * 2;
   const membership = progressMembership(career, completed, successful);
+  const permanentParticipants = career.permanentTeam.memberIds.filter(id => completed.teamMemberIds.includes(id));
+  const permanentLosses = completed.casualties.filter(id => career.permanentTeam.memberIds.includes(id)).length;
+  const permanentTeam = permanentParticipants.length >= 2 ? {
+    ...career.permanentTeam,
+    climbs: career.permanentTeam.climbs + 1,
+    summits: career.permanentTeam.summits + (successful ? 1 : 0),
+    rescues: career.permanentTeam.rescues + completed.rescuedMemberIds.filter(id => career.permanentTeam.memberIds.includes(id)).length,
+    losses: career.permanentTeam.losses + permanentLosses,
+    cohesion: clamp(career.permanentTeam.cohesion + (successful ? 6 : completed.retreating ? 2 : -3) - permanentLosses * 18, 0, 100),
+    memberIds: career.permanentTeam.memberIds.filter(id => !completed.casualties.includes(id)),
+  } : career.permanentTeam;
   const next: CareerState = {
     ...career,
     completedClimbs: career.completedClimbs + (successful ? 1 : 0),
     highestElevation: Math.max(career.highestElevation, climb.topo?.highestElevation ?? (climb.summitReached ? climb.summitElevation : climb.currentElevation)),
     activeClimb: completed,
     membership,
+    permanentTeam,
     recoveryDays,
     teamRoster: roster,
     reports: [...career.reports, report],
@@ -2346,6 +2410,8 @@ export function closeClimb(career: CareerState): CareerState {
     week: timeline.week,
     hero: { ...finalized.hero, age: finalized.hero.age + timeline.ageDelta },
     activeClimb: null,
+    selectedOfferId: null,
+    acceptedOffer: null,
   };
   const advanced = advanceLivingWorld(closed, 3);
   return timeline.year > finalized.year ? rollCareerSeason(finalized, advanced) : syncCareerProgression(advanced);

@@ -527,3 +527,39 @@
 .m-dynamic-condition.is-closed > b { color: #df8d7d; }
 .m-route-list button.is-dynamic-caution { border-color: rgba(205, 149, 79, .42); }
 .m-route-list button.is-dynamic-closed { opacity: .58; }
+
+/* 0.15.0 mobile team and school plans */
+.m-offer-list button:disabled { opacity: .56; }
+.m-offer-list button > div > em { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.35; font-style: normal; }
+.m-offer-list button.is-recruiting small { color: #75c49d; }
+.m-offer-list button.is-weather_hold small { color: #d5b66f; }
+.m-offer-list button.is-departing small { color: #df835d; }
+
+.m-permanent-team {
+  margin: 8px 0 12px;
+  padding: 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 13px;
+  background: rgba(12, 22, 19, .8);
+}
+.m-permanent-team header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.m-permanent-team header small { display: block; color: var(--muted); font-size: 7px; letter-spacing: .1em; }
+.m-permanent-team header strong { display: block; margin-top: 4px; font-family: var(--serif); font-size: 20px; font-weight: 500; }
+.m-permanent-team header > b { font-family: var(--serif); font-size: 25px; }
+.m-permanent-team > p { margin: 8px 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.m-permanent-team__facts { display: flex; gap: 6px; flex-wrap: wrap; }
+.m-permanent-team__facts span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 8px; }
+.m-segmented--team { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 10px; }
+.m-segmented--team button { min-height: 31px; border: 1px solid var(--line); border-radius: 7px; background: transparent; color: var(--muted); font-size: 8px; }
+.m-segmented--team button.is-active { color: var(--text); border-color: rgba(99, 188, 151, .68); background: rgba(58, 111, 89, .24); }
+.m-permanent-team__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 6px; }
+.m-permanent-team__actions button { min-height: 33px; border: 1px solid var(--line); border-radius: 7px; background: rgba(17, 30, 26, .82); color: var(--text); font-size: 8px; }
+
+.m-school-plan-list { display: grid; gap: 6px; }
+.m-school-plan-list article { padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(10, 18, 16, .62); }
+.m-school-plan-list article small { display: block; color: var(--muted); font-size: 7px; letter-spacing: .06em; text-transform: uppercase; }
+.m-school-plan-list article.is-recruiting small { color: #75c49d; }
+.m-school-plan-list article.is-weather_hold small { color: #d5b66f; }
+.m-school-plan-list article.is-departing small { color: #df835d; }
+.m-school-plan-list article strong { display: block; margin-top: 5px; font-size: 11px; }
+.m-school-plan-list article span { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }

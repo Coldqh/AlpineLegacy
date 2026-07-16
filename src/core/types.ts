@@ -35,6 +35,8 @@ export type RouteChoiceTone = 'SAFE' | 'BALANCED' | 'BOLD';
 export type ParticipantActionTone = 'OBEY' | 'QUESTION' | 'REFUSE' | 'INITIATIVE' | 'CARE';
 export type ParticipantSceneKind = 'ORDER' | 'ROLE' | 'FIELD' | 'MORAL';
 export type ExpeditionApplicationStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
+export type SchoolExpeditionPhase = 'ANNOUNCED' | 'RECRUITING' | 'PREPARING' | 'WEATHER_HOLD' | 'DEPARTING' | 'ON_ROUTE' | 'RECOVERING';
+export type PermanentTeamStyle = 'CAUTIOUS' | 'BALANCED' | 'AGGRESSIVE';
 
 export type RegionId = string;
 export type MountainId = string;
@@ -350,6 +352,13 @@ export interface ExpeditionOffer {
   status: 'OPEN' | 'ACCEPTED' | 'EXPIRED' | 'CLOSED';
   opensOnDay: number;
   expiresOnDay: number;
+  phase?: SchoolExpeditionPhase;
+  recruitmentClosesDay?: number;
+  departureDay?: number;
+  expectedReturnDay?: number;
+  cycle?: number;
+  briefing?: string;
+  openSlots?: number;
 }
 
 export interface WorldContentRegistry {
@@ -1237,6 +1246,20 @@ export interface CareerMembership {
   permissions: CareerPermissions;
 }
 
+
+export interface PermanentTeamState {
+  name: string;
+  style: PermanentTeamStyle;
+  memberIds: NpcId[];
+  createdYear: number;
+  createdDay: number;
+  cohesion: number;
+  climbs: number;
+  summits: number;
+  rescues: number;
+  losses: number;
+}
+
 export interface CareerState {
   schemaVersion: 18;
   id: string;
@@ -1268,6 +1291,8 @@ export interface CareerState {
   applications: ExpeditionApplication[];
   knownNpcIds: NpcId[];
   recoveryDays: number;
+  permanentTeam: PermanentTeamState;
+  acceptedOffer: ExpeditionOffer | null;
 }
 
 export interface CareerDraft {

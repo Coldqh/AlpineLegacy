@@ -18,7 +18,7 @@ import { CareerFlowGuide } from '../components/CareerFlowGuide';
 import {
   applyToExpeditionOffer,
   applyEquipmentPreset,
-  availableExpeditionOffers,
+  schoolExpeditionBoard,
   dismissOnboarding, setCareerTutorialStep,
   closeClimb,
   expeditionReadiness,
@@ -28,6 +28,9 @@ import {
   setGearQuantity,
   startPlannedClimb,
   toggleTeamMember,
+  setPermanentTeamStyle,
+  saveCurrentAsPermanentTeam,
+  usePermanentTeam,
   updateExpeditionPlan,
 } from '../core/career';
 import type { CareerState, CareerTabId, ExpeditionPlan, TrainingId, WorldState } from '../core/types';
@@ -113,8 +116,8 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     if (tab === 'RECORDS') return <MobileRecords career={career} />;
     if (tab === 'JOURNAL') return <MobileJournal career={career} />;
     if (tab === 'PEOPLE') return <MobilePeople career={career} />;
-    if (tab === 'ROUTE') return <MobileRoute world={world} career={career} offers={availableExpeditionOffers(world, career)} onAcceptOffer={offerId => onPersist(applyToExpeditionOffer(world, career, offerId))} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} />;
-    if (tab === 'TEAM') return <MobileTeam career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
+    if (tab === 'ROUTE') return <MobileRoute world={world} career={career} offers={schoolExpeditionBoard(world, career)} onAcceptOffer={offerId => onPersist(applyToExpeditionOffer(world, career, offerId))} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} />;
+    if (tab === 'TEAM') return <MobileTeam career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onSavePermanent={() => onPersist(saveCurrentAsPermanentTeam(career))} onTeamStyle={style => onPersist(setPermanentTeamStyle(career, style))} onUsePermanent={() => onPersist(usePermanentTeam(career))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
     if (tab === 'EQUIPMENT') return <MobileEquipment career={career} onSetQuantity={(gearId, quantity) => onPersist(setGearQuantity(career, gearId, quantity))} onSetPlan={(patch: Partial<ExpeditionPlan>) => onPersist(updateExpeditionPlan(career, patch))} onPreset={preset => onPersist(applyEquipmentPreset(career, preset))} onContinue={() => onTab('EXPEDITION')} />;
     if (tab === 'EXPEDITION') return <MobileExpedition career={career} difficulty={world.config.difficulty} onOpenTab={navigate} onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))} onSetAcclimatization={days => onPersist(updateExpeditionPlan(career, { acclimatizationDays: days }))} onLaunch={() => { const readiness = expeditionReadiness(career); const next = startPlannedClimb(career); onPersist(next); if (next.activeClimb && readiness.blockers.length === 0) onTab('CLIMB'); }} />;
     return <MobileJournal career={career} />;
@@ -133,7 +136,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
         <RoutePlanningScreen
           world={world}
           career={career}
-          offers={availableExpeditionOffers(world, career)}
+          offers={schoolExpeditionBoard(world, career)}
           onAcceptOffer={offerId => onPersist(applyToExpeditionOffer(world, career, offerId))}
           onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))}
           onSelectRoute={routeId => onPersist(selectRoute(career, routeId))}
@@ -142,7 +145,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
       );
     }
     if (tab === 'TEAM') {
-      return <TeamScreen career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
+      return <TeamScreen career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onSavePermanent={() => onPersist(saveCurrentAsPermanentTeam(career))} onTeamStyle={style => onPersist(setPermanentTeamStyle(career, style))} onUsePermanent={() => onPersist(usePermanentTeam(career))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
     }
     if (tab === 'PEOPLE') return <PeopleScreen career={career} />;
     if (tab === 'EQUIPMENT') {
