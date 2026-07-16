@@ -31,6 +31,8 @@ export function PeopleScreen({ career }: Props) {
   const firstAvailable = career.teamRoster[0]?.id ?? '';
   const [selectedId, setSelectedId] = useState(firstAvailable);
   const selected = useMemo(() => career.teamRoster.find(member => member.id === selectedId) ?? career.teamRoster[0], [career.teamRoster, selectedId]);
+  const worldAthlete = selected ? career.livingWorld.athletes.find(athlete => athlete.id === selected.id) : undefined;
+  const lastExpedition = selected ? [...career.livingWorld.expeditions].reverse().find(item => item.leaderAthleteId === selected.id || item.memberAthleteIds.includes(selected.id)) : undefined;
 
   if (!selected) return null;
 
@@ -66,8 +68,9 @@ export function PeopleScreen({ career }: Props) {
             <div><small>ХАРАКТЕР</small><strong>{selected.temperament}</strong><p>{selected.note}</p></div>
             {selected.isMentor && <div><small>ПРОФИЛЬ НАСТАВНИКА</small><strong>{selected.mentorLevel === 'HEAD' ? 'Главный инструктор' : selected.mentorLevel === 'SENIOR' ? 'Старший наставник' : 'Инструктор'}</strong><p>{selected.routePreference === 'EASY' ? 'Ведёт учебные и надёжные маршруты.' : selected.routePreference === 'HARD' ? 'Берёт сложные технические цели.' : 'Чередует учебные и серьёзные маршруты.'}</p></div>}
             <div><small>ЛИЧНАЯ ЦЕЛЬ</small><strong>{selected.personalGoal}</strong><p>Цель влияет на отношение к риску, приказам и чужому успеху.</p></div>
-            <div><small>СОСТОЯНИЕ</small><strong>{selected.condition}/100</strong><p>{selected.injuries.length ? selected.injuries.join(' · ') : 'Выявленных травм нет.'}</p></div>
-            <div><small>ОБЩАЯ ИСТОРИЯ</small><strong>{selected.sharedClimbs} выходов</strong><p>{selected.summits} вершин · {selected.rescues} спасательных эпизодов · {selected.refusals} отказов.</p></div>
+            <div><small>СОСТОЯНИЕ</small><strong>{Math.round(worldAthlete?.condition ?? selected.condition)}/100</strong><p>{worldAthlete?.recoveryDays ? `Восстановление ещё ${worldAthlete.recoveryDays} дн. · усталость ${Math.round(worldAthlete.fatigue)}` : selected.injuries.length ? selected.injuries.join(' · ') : 'Готов к следующему выходу.'}</p></div>
+            <div><small>ОБЩАЯ ИСТОРИЯ</small><strong>{worldAthlete?.expeditionCount ?? selected.sharedClimbs} выходов</strong><p>{worldAthlete?.summits ?? selected.summits} вершин · {selected.rescues} спасательных эпизодов · {selected.refusals} отказов.</p></div>
+            <div><small>ПОСЛЕДНИЙ МАРШРУТ</small><strong>{lastExpedition?.routeName ?? 'Нет данных'}</strong><p>{lastExpedition ? `${lastExpedition.mountainName} · группа ${lastExpedition.teamSize} чел. · ${lastExpedition.durationDays} дн.` : worldAthlete?.lastEvent ?? 'Ещё не выходил в самостоятельную экспедицию.'}</p></div>
           </div>
 
           <div className="person-section-title"><p className="eyebrow">ALPINIST SKILLS</p><h3>Индивидуальные навыки</h3></div>

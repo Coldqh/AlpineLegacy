@@ -54,7 +54,7 @@ export function MobileOverview({ world, career, onTrain, onOpenExpedition }: { w
 
   const renderTraining = (id: TrainingId) => {
     const action = TRAINING_ACTIONS[id];
-    const disabled = action.cost > 0 && career.hero.money < action.cost;
+    const disabled = (action.cost > 0 && career.hero.money < action.cost) || (career.recoveryDays > 0 && id !== 'RECOVERY');
     const impacts = [
       action.skill && action.xp ? `${SKILL_LABELS[action.skill]} +${action.xp}` : '',
       action.form ? `форма ${signed(action.form)}` : '',
@@ -65,9 +65,9 @@ export function MobileOverview({ world, career, onTrain, onOpenExpedition }: { w
   };
 
   return <section className="m-screen" aria-label={`Штаб ${world.region.name}`}>
-    <button className="m-focus-card m-focus-card--compact" onClick={onOpenExpedition}><div><small>СЕЙЧАС</small><strong>{career.activeClimb ? 'Вернуться на маршрут' : expedition.blockers.length ? 'Закончить подготовку' : 'Начать экспедицию'}</strong><span>{career.activeClimb ? 'Экспедиция продолжается' : expedition.blockers[0] ?? route.mountainName}</span></div><b>→</b></button>
+    <button className="m-focus-card m-focus-card--compact" onClick={career.recoveryDays > 0 ? () => onTrain('RECOVERY') : onOpenExpedition}><div><small>СЕЙЧАС</small><strong>{career.recoveryDays > 0 ? 'Восстановление' : career.activeClimb ? 'Вернуться на маршрут' : expedition.blockers.length ? 'Закончить подготовку' : 'Начать экспедицию'}</strong><span>{career.recoveryDays > 0 ? `Ещё ${career.recoveryDays} дн. до тяжёлой работы` : career.activeClimb ? 'Экспедиция продолжается' : expedition.blockers[0] ?? route.mountainName}</span></div><b>→</b></button>
     <section className="m-season-card"><header><div><small>{SEASON_PHASE_LABELS[phase]}</small><strong>Сезон {progression.seasonNumber}</strong></div><span>{expeditionCount}/{expeditionLimit} выходов</span></header><div className="m-season-facts"><span>{CAREER_TIER_LABELS[progression.tier]}<b>уровень</b></span><span>№ {worldRank}<b>в мире</b></span><span>{progression.sponsor ? progression.sponsor.name : 'Без поддержки'}<b>партнёр</b></span></div>{milestone && <footer><small>СЛЕДУЮЩАЯ ЦЕЛЬ</small><strong>{milestone.title}</strong></footer>}</section>
-    <div className="m-state-strip"><span>Здоровье <b>{Math.round(career.hero.health)}</b></span><span>Форма <b>{Math.round(career.hero.form)}</b></span><span>Усталость <b>{Math.round(career.hero.fatigue)}</b></span></div>
+    <div className="m-state-strip"><span>Здоровье <b>{Math.round(career.hero.health)}</b></span><span>{career.recoveryDays > 0 ? 'Отдых' : 'Форма'} <b>{career.recoveryDays > 0 ? `${career.recoveryDays}д` : Math.round(career.hero.form)}</b></span><span>Усталость <b>{Math.round(career.hero.fatigue)}</b></span></div>
     <div className="m-section-head"><h2>Тренировки</h2></div>
     <div className="m-action-list">{primaryTraining.map(renderTraining)}</div>
     <details className="m-details m-details--flat"><summary>Все действия</summary><div className="m-action-list">{extraTraining.map(renderTraining)}</div></details>
@@ -181,13 +181,17 @@ export function MobileExpedition({ career, difficulty, onLaunch, onOpenTab, onSe
 
 export function MobileWorld({ world, career }: { world: WorldState; career: CareerState }) {
   const living = career.livingWorld;
-  const active = living.athletes.filter(item => item.status === 'ACTIVE').length;
+  const active = living.athletes.filter(item => item.status === 'ACTIVE' && item.recoveryDays === 0).length;
+  const recovering = living.athletes.filter(item => item.status === 'INJURED' || item.recoveryDays > 0).length;
   const losses = living.athletes.filter(item => item.status === 'DEAD' || item.status === 'MISSING').length;
-  const unclimbed = living.mountainHistory.filter(item => item.firstAscentYear === null).length;
+  const latest = [...living.expeditions].reverse().slice(0, 6);
   return <section className="m-screen">
-    <div className="m-state-strip"><span>Активные <b>{active}</b></span><span>Непокорённые <b>{unclimbed}</b></span><span>Потери <b>{losses}</b></span></div>
-    <div className="m-section-head"><h2>{world.region.name}</h2></div>
-    <div className="m-world-mountains">{living.mountainHistory.map((history, index) => { const mountain = world.region.mountains.find(item => item.id === history.mountainId); return <article key={history.mountainId}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{history.mountainName}</strong><small>{mountain?.elevation ?? 0} м · {history.firstAscentYear ? `первая ${history.firstAscentYear}` : 'не покорена'}</small></div></article>; })}</div>
+    <div className="m-state-strip"><span>В строю <b>{active}</b></span><span>Восстановление <b>{recovering}</b></span><span>Потери <b>{losses}</b></span></div>
+    <div className="m-section-head"><h2>Школы региона</h2></div>
+    <div className="m-club-list">{living.clubs.slice().sort((a, b) => b.prestige - a.prestige).map(club => <article key={club.id} className={club.id === career.club.id ? 'is-player' : ''}><div><strong>{club.name}</strong><small>{SKILL_LABELS[club.focusSkill]} · {club.riskProfile === 'CAUTIOUS' ? 'осторожная' : club.riskProfile === 'AGGRESSIVE' ? 'агрессивная' : 'сбалансированная'} школа</small></div><b>{club.prestige}</b></article>)}</div>
+    <div className="m-section-head"><h2>Последние выходы</h2><span>{living.expeditions.length}</span></div>
+    <div className="m-world-expedition-list">{latest.map(item => { const leader = living.athletes.find(person => person.id === item.leaderAthleteId); return <article key={item.id}><div><small>{item.teamSize} чел. · {item.durationDays} дн. · отдых {item.recoveryDays} дн.</small><strong>{item.mountainName}</strong><span>{item.routeName} · {leader?.name ?? 'Группа'}</span></div><b className={`is-${item.outcome.toLowerCase()}`}>{item.outcome === 'SUMMIT' ? 'Вершина' : item.outcome === 'RETREAT' ? 'Отход' : item.outcome === 'TRAGEDY' ? 'Трагедия' : 'Авария'}</b></article>; })}</div>
+    <details className="m-details"><summary>Состояние гор · {world.region.mountains.length}</summary><div className="m-world-mountains">{living.mountainHistory.map((history, index) => { const mountain = world.region.mountains.find(item => item.id === history.mountainId); return <article key={history.mountainId}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{history.mountainName}</strong><small>{mountain?.elevation ?? 0} м · {history.firstAscentYear ? `первая ${history.firstAscentYear}` : 'не покорена'}</small></div></article>; })}</div></details>
   </section>;
 }
 
@@ -201,7 +205,7 @@ export function MobileNews({ career }: { career: CareerState }) {
 
 export function MobileRivals({ career }: { career: CareerState }) {
   const candidates = [...career.livingWorld.athletes].filter(item => item.status === 'ACTIVE').sort((a, b) => b.fame - a.fame).slice(0, 15);
-  return <section className="m-screen"><div className="m-person-list">{candidates.map(person => <article key={person.id}><span>{initials(person.name)}</span><div><strong>{person.name}</strong><small>{person.country} · {person.currentGoal}</small></div><b>{person.fame}</b></article>)}</div></section>;
+  return <section className="m-screen"><div className="m-person-list">{candidates.map(person => <article key={person.id}><span>{initials(person.name)}</span><div><strong>{person.name}</strong><small>{person.recoveryDays > 0 ? `восстановление ${person.recoveryDays} дн.` : `${person.country} · ${person.currentGoal}`}</small></div><b>{person.fame}</b></article>)}</div></section>;
 }
 
 export function MobileRecords({ career }: { career: CareerState }) {
@@ -212,7 +216,8 @@ export function MobilePeople({ career }: { career: CareerState }) {
   const [selectedId, setSelectedId] = useState(career.teamRoster[0]?.id ?? '');
   const selected = career.teamRoster.find(item => item.id === selectedId) ?? career.teamRoster[0];
   if (!selected) return null;
-  return <section className="m-screen"><div className="m-chip-row m-chip-row--people">{career.teamRoster.map(person => <button key={person.id} className={person.id === selected.id ? 'is-active' : ''} onClick={() => setSelectedId(person.id)}>{person.isMentor ? '★ ' : ''}{person.name.split(' ')[0]}</button>)}</div><section className="m-person-profile"><header><span>{initials(selected.name)}</span><div><strong>{selected.name}</strong><small>{selected.isMentor ? 'Наставник · ' : ''}{roleLabel[selected.role]} · {selected.age} лет</small></div></header>{selected.isMentor && <p className="m-person-mentor">{selected.routePreference === 'EASY' ? 'Ведёт учебные маршруты.' : selected.routePreference === 'HARD' ? 'Берёт сложные технические цели.' : 'Чередует маршруты разной сложности.'}</p>}<div className="m-mini-grid"><span>Выносливость <b>{selected.skills.ENDURANCE}</b></span><span>Скалы <b>{selected.skills.ROCK}</b></span><span>Лёд <b>{selected.skills.ICE}</b></span><span>Навигация <b>{selected.skills.NAVIGATION}</b></span><span>Медицина <b>{selected.skills.MEDICINE}</b></span><span>Лидерство <b>{selected.skills.LEADERSHIP}</b></span></div><details className="m-details"><summary>Отношения и память</summary><p>Доверие {selected.relationship.trust} · уважение {selected.relationship.respect} · выходы {selected.sharedClimbs}</p>{[...selected.memories].reverse().map(memory => <p key={memory.id}><b>{memory.year}</b> · {memory.title}</p>)}</details></section></section>;
+  const athlete = career.livingWorld.athletes.find(item => item.id === selected.id);
+  return <section className="m-screen"><div className="m-chip-row m-chip-row--people">{career.teamRoster.map(person => <button key={person.id} className={person.id === selected.id ? 'is-active' : ''} onClick={() => setSelectedId(person.id)}>{person.isMentor ? '★ ' : ''}{person.name.split(' ')[0]}</button>)}</div><section className="m-person-profile"><header><span>{initials(selected.name)}</span><div><strong>{selected.name}</strong><small>{selected.isMentor ? 'Наставник · ' : ''}{roleLabel[selected.role]} · {selected.age} лет</small></div></header>{selected.isMentor && <p className="m-person-mentor">{selected.routePreference === 'EASY' ? 'Ведёт учебные маршруты.' : selected.routePreference === 'HARD' ? 'Берёт сложные технические цели.' : 'Чередует маршруты разной сложности.'}{athlete?.lastEvent ? ` ${athlete.lastEvent}` : ''}</p>}{athlete && <div className="m-person-state"><span>Состояние <b>{Math.round(athlete.condition)}</b></span><span>Усталость <b>{Math.round(athlete.fatigue)}</b></span><span>Отдых <b>{athlete.recoveryDays} дн.</b></span></div>}<div className="m-mini-grid"><span>Выносливость <b>{selected.skills.ENDURANCE}</b></span><span>Скалы <b>{selected.skills.ROCK}</b></span><span>Лёд <b>{selected.skills.ICE}</b></span><span>Навигация <b>{selected.skills.NAVIGATION}</b></span><span>Медицина <b>{selected.skills.MEDICINE}</b></span><span>Лидерство <b>{selected.skills.LEADERSHIP}</b></span></div><details className="m-details"><summary>Отношения и память</summary><p>Доверие {selected.relationship.trust} · уважение {selected.relationship.respect} · выходы {selected.sharedClimbs}</p>{[...selected.memories].reverse().map(memory => <p key={memory.id}><b>{memory.year}</b> · {memory.title}</p>)}</details></section></section>;
 }
 
 export function MobileJournal({ career }: { career: CareerState }) {

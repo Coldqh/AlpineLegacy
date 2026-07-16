@@ -978,8 +978,16 @@ export interface ExpeditionReport {
   cachesRecovered?: number;
   playtest?: PlaytestReportData;
   participantEvaluation?: ParticipantEvaluation;
+  technicality?: number;
+  temperatureC?: number;
+  authorityMode?: ExpeditionAuthority;
+  rescuedCount?: number;
+  recoveryDays?: number;
+  maintenanceCost?: number;
+  skillPractice?: Partial<Record<SkillId, number>>;
 }
 
+export type ClubRiskProfile = 'CAUTIOUS' | 'BALANCED' | 'AGGRESSIVE';
 
 export interface WorldClub {
   id: string;
@@ -992,6 +1000,10 @@ export interface WorldClub {
   expeditions: number;
   summits: number;
   losses: number;
+  focusSkill: SkillId;
+  riskProfile: ClubRiskProfile;
+  trainingQuality: number;
+  recoveryStandard: number;
 }
 
 export interface WorldAthlete {
@@ -1022,6 +1034,13 @@ export interface WorldAthlete {
   relationshipNote: string;
   currentGoal: string;
   lastEvent: string;
+  fatigue: number;
+  condition: number;
+  recoveryDays: number;
+  skillXp: SkillXp;
+  lastRouteId: RouteId | null;
+  lastMountainId: MountainId | null;
+  expeditionCount: number;
 }
 
 export interface MountainWorldHistory {
@@ -1088,10 +1107,12 @@ export interface WorldExpedition {
   casualties: string[];
   recordId: string | null;
   summary: string;
+  teamSize: number;
+  recoveryDays: number;
 }
 
 export interface LivingWorldState {
-  version: 2;
+  version: 3;
   lastSimulatedYear: number;
   lastSimulatedDay: number;
   tick: number;
@@ -1131,7 +1152,7 @@ export interface PlaytestReportData {
 
 export type CareerTier = 'NOVICE' | 'CLUB' | 'REGIONAL' | 'ELITE' | 'LEGEND';
 export type SeasonPhase = 'PREPARATION' | 'CLIMBING' | 'LATE';
-export type CareerMilestoneId = 'FIRST_SUMMIT' | 'FIVE_THOUSAND' | 'FIRST_ASCENT' | 'THREE_SUMMITS' | 'SEVEN_THOUSAND' | 'LEGACY';
+export type CareerMilestoneId = 'FIRST_SUMMIT' | 'FOUR_THOUSAND' | 'FIVE_THOUSAND' | 'TECHNICAL_ROUTE' | 'INDEPENDENT_CLIMB' | 'RESCUE' | 'FIRST_ASCENT' | 'THREE_SUMMITS' | 'SEVEN_THOUSAND' | 'LEGACY';
 
 export interface CareerMilestone {
   id: CareerMilestoneId;
@@ -1195,7 +1216,7 @@ export interface CareerMembership {
 }
 
 export interface CareerState {
-  schemaVersion: 17;
+  schemaVersion: 18;
   id: string;
   worldId: string;
   rootSeed: string;
@@ -1224,6 +1245,7 @@ export interface CareerState {
   selectedOfferId: ExpeditionOfferId | null;
   applications: ExpeditionApplication[];
   knownNpcIds: NpcId[];
+  recoveryDays: number;
 }
 
 export interface CareerDraft {

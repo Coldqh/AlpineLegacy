@@ -11,7 +11,11 @@ import type {
 
 const MILESTONES: Array<Omit<CareerMilestone, 'completed' | 'completedYear'>> = [
   { id: 'FIRST_SUMMIT', title: 'Первая вершина', description: 'Вернуться с первого засчитанного восхождения.', rewardMoney: 100, rewardReputation: 8 },
+  { id: 'FOUR_THOUSAND', title: 'Первый большой набор', description: 'Подтвердить высоту не ниже 4000 м.', rewardMoney: 120, rewardReputation: 9 },
   { id: 'FIVE_THOUSAND', title: 'Выше 5000', description: 'Подтвердить высоту не ниже 5000 м.', rewardMoney: 150, rewardReputation: 12 },
+  { id: 'TECHNICAL_ROUTE', title: 'Техническая линия', description: 'Вернуться с маршрута технической сложностью не ниже 60.', rewardMoney: 180, rewardReputation: 14 },
+  { id: 'INDEPENDENT_CLIMB', title: 'Своя экспедиция', description: 'Завершить восхождение с командными полномочиями.', rewardMoney: 190, rewardReputation: 15 },
+  { id: 'RESCUE', title: 'Спасение', description: 'Вернуть пострадавшего участника живым.', rewardMoney: 220, rewardReputation: 18 },
   { id: 'FIRST_ASCENT', title: 'Первопроходец', description: 'Совершить первое подтверждённое восхождение.', rewardMoney: 250, rewardReputation: 20 },
   { id: 'THREE_SUMMITS', title: 'Серия', description: 'Завершить три восхождения.', rewardMoney: 200, rewardReputation: 16 },
   { id: 'SEVEN_THOUSAND', title: 'Большая высота', description: 'Вернуться с вершины выше 7000 м.', rewardMoney: 300, rewardReputation: 25 },
@@ -122,7 +126,11 @@ function firstAscents(career: CareerState) {
 
 function milestoneReached(career: CareerState, id: CareerMilestoneId) {
   if (id === 'FIRST_SUMMIT') return career.completedClimbs >= 1;
+  if (id === 'FOUR_THOUSAND') return career.highestElevation >= 4000;
   if (id === 'FIVE_THOUSAND') return career.highestElevation >= 5000;
+  if (id === 'TECHNICAL_ROUTE') return career.reports.some(report => report.outcome === 'SUMMIT' && (report.technicality ?? 0) >= 60);
+  if (id === 'INDEPENDENT_CLIMB') return career.reports.some(report => report.outcome === 'SUMMIT' && report.authorityMode === 'COMMAND');
+  if (id === 'RESCUE') return career.reports.some(report => (report.rescuedCount ?? 0) > 0);
   if (id === 'FIRST_ASCENT') return firstAscents(career) >= 1;
   if (id === 'THREE_SUMMITS') return career.completedClimbs >= 3;
   if (id === 'SEVEN_THOUSAND') return career.highestElevation >= 7000;
@@ -244,5 +252,5 @@ export function rollCareerSeason(source: CareerState, next: CareerState): Career
 }
 
 export function hydrateCareerProgression(career: CareerState): CareerState {
-  return syncCareerProgression({ ...career, schemaVersion: 17, progression: normalizeCareerProgression(career) });
+  return syncCareerProgression({ ...career, schemaVersion: 18, progression: normalizeCareerProgression(career) });
 }

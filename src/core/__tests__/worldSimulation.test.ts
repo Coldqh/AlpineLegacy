@@ -26,6 +26,31 @@ describe('living world simulation', () => {
   });
 
 
+  it('gives every school its own doctrine, training focus and risk profile', () => {
+    const world = generateWorld({ ...config, seed: 'SCHOOL-IDENTITY-011' });
+    const career = createCareer(world, draft);
+    const profiles = career.livingWorld.clubs.map(club => `${club.focusSkill}:${club.riskProfile}:${club.trainingQuality}:${club.recoveryStandard}`);
+    expect(new Set(profiles).size).toBeGreaterThanOrEqual(4);
+    for (const club of career.livingWorld.clubs) {
+      const mentors = career.livingWorld.athletes.filter(athlete => athlete.clubId === club.id && athlete.isMentor);
+      expect(mentors.length).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('rotates NPC groups through real routes and gives them recovery and practice', () => {
+    const world = generateWorld({ ...config, seed: 'NPC-SEASON-011' });
+    let career = createCareer(world, draft);
+    const startingXp = new Map(career.livingWorld.athletes.map(athlete => [athlete.id, Object.values(athlete.skillXp).reduce((sum, value) => sum + value, 0)]));
+    for (let index = 0; index < 8; index += 1) career = applyTraining(career, 'MAP_ROOM');
+    const npcExpeditions = career.livingWorld.expeditions.filter(item => item.leaderAthleteId !== 'hero');
+    expect(npcExpeditions.length).toBeGreaterThan(12);
+    expect(new Set(npcExpeditions.map(item => item.routeId).filter(Boolean)).size).toBeGreaterThan(3);
+    expect(npcExpeditions.every(item => item.teamSize >= 3 && item.recoveryDays >= 3)).toBe(true);
+    expect(career.livingWorld.athletes.some(athlete => athlete.expeditionCount > 0 && athlete.lastRouteId)).toBe(true);
+    expect(career.livingWorld.athletes.some(athlete => Object.values(athlete.skillXp).reduce((sum, value) => sum + value, 0) > (startingXp.get(athlete.id) ?? 0))).toBe(true);
+  });
+
+
   it('sends mentors onto routes that fit their own difficulty preference', () => {
     const world = generateWorld({ ...config, seed: 'MENTOR-ROUTES' });
     const career = createCareer(world, draft);
@@ -61,7 +86,7 @@ describe('living world simulation', () => {
     const career = createCareer(world, draft);
     const legacy = { ...career, schemaVersion: 6, routes: career.routes.map(({ mountainCharacterId, ...route }) => route) } as any;
     const migrated = migrateCareerV6(legacy, world);
-    expect(migrated.schemaVersion).toBe(17);
+    expect(migrated.schemaVersion).toBe(18);
     expect(migrated.routes.every(route => route.mountainCharacterId)).toBe(true);
   });
 
@@ -71,7 +96,7 @@ describe('living world simulation', () => {
     const career = selectMountain(createCareer(world, draft), target.id);
     const legacy = { ...career, schemaVersion: 5 } as any;
     const migrated = migrateCareerV5(legacy, world);
-    expect(migrated.schemaVersion).toBe(17);
+    expect(migrated.schemaVersion).toBe(18);
     expect(getSelectedRoute(migrated).mountainId).toBe(target.id);
   });
 
@@ -81,7 +106,7 @@ describe('living world simulation', () => {
     const legacy = { ...career, schemaVersion: 4 } as any;
     delete legacy.livingWorld;
     const migrated = migrateCareerV4(legacy, world);
-    expect(migrated.schemaVersion).toBe(17);
+    expect(migrated.schemaVersion).toBe(18);
     expect(migrated.teamRoster.map(item => item.id)).toEqual(career.teamRoster.map(item => item.id));
     expect(migrated.livingWorld.athletes.length).toBeGreaterThan(30);
   });
@@ -90,7 +115,7 @@ describe('living world simulation', () => {
     const career = createCareer(world, draft);
     const legacy = { ...career, schemaVersion: 7, activeClimb: null } as any;
     const migrated = migrateCareerV7(legacy, world);
-    expect(migrated.schemaVersion).toBe(17);
+    expect(migrated.schemaVersion).toBe(18);
     expect(migrated.routes.some(route => route.isSignature && route.descentSegments?.length)).toBe(true);
   });
 
@@ -102,7 +127,7 @@ describe('living world simulation', () => {
     delete legacy.difficulty;
     delete legacy.onboarding;
     const migrated = migrateCareerV8(legacy, world);
-    expect(migrated.schemaVersion).toBe(17);
+    expect(migrated.schemaVersion).toBe(18);
     expect(migrated.rootSeed).toBe(config.seed);
     expect(migrated.difficulty).toBe(config.difficulty);
     expect(migrated.onboarding.completed).toBe(false);

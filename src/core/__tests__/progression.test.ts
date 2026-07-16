@@ -33,10 +33,10 @@ function report(year: number, index: number): ExpeditionReport {
 describe('career progression 0.6', () => {
   it('creates a season, tier and milestone track', () => {
     const career = careerFixture();
-    expect(career.schemaVersion).toBe(17);
+    expect(career.schemaVersion).toBe(18);
     expect(career.progression.seasonNumber).toBe(1);
     expect(career.progression.tier).toBe('NOVICE');
-    expect(career.progression.milestones).toHaveLength(6);
+    expect(career.progression.milestones).toHaveLength(10);
   });
 
   it('awards milestones once', () => {
@@ -71,6 +71,17 @@ describe('career progression 0.6', () => {
     expect(trained.hero.skills.ENDURANCE).toBe(career.hero.skills.ENDURANCE);
     expect(trained.hero.skillXp.ENDURANCE).toBeGreaterThan(career.hero.skillXp.ENDURANCE);
     expect(trained.hero.skillXp.ENDURANCE).toBeLessThan(skillXpThreshold(career.hero.skills.ENDURANCE));
+  });
+
+
+  it('requires post-expedition recovery before heavy training', () => {
+    const career = { ...careerFixture(), recoveryDays: 6 };
+    const blocked = applyTraining(career, 'CONDITIONING');
+    expect(blocked.seasonDay).toBe(career.seasonDay);
+    expect(blocked.hero.skillXp.ENDURANCE).toBe(career.hero.skillXp.ENDURANCE);
+    const rested = applyTraining(career, 'RECOVERY');
+    expect(rested.recoveryDays).toBeLessThan(career.recoveryDays);
+    expect(rested.hero.health).toBeGreaterThanOrEqual(career.hero.health);
   });
 
   it('limits expeditions by career tier', () => {

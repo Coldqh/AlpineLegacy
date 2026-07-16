@@ -3983,3 +3983,37 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
 /* Career tutorial switches to a dedicated card on phone layouts. */
 .career-flow-guide__mobile { display: none; }
 .career-flow-guide__desktop { display: contents; }
+
+/* 0.11.0 — living schools, recovery and long-term career */
+.club-profile-facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.club-profile-facts span { padding: 4px 7px; border: 1px solid currentColor; border-radius: 999px; font-size: 7px; letter-spacing: .08em; text-transform: uppercase; opacity: .72; }
+.world-expedition-strip > article em { display: block; margin-top: 6px; color: var(--muted); font-size: 8px; font-style: normal; letter-spacing: .05em; text-transform: uppercase; }
+.club-mentor-list article em { display: block; margin-top: 6px; color: var(--muted); font-size: 9px; font-style: normal; line-height: 1.35; }
+.mentor-route-strip { display: grid; gap: 8px; margin-top: 12px; }
+.mentor-route-strip article { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; padding: 10px 0; border-top: 1px solid var(--line); }
+.mentor-route-strip strong { font-size: 11px; }
+.mentor-route-strip small { color: var(--muted); font-size: 8px; text-transform: uppercase; letter-spacing: .06em; }
+.career-goals-panel { margin-top: 28px; }
+.career-goal-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.career-goal-list article { min-height: 112px; padding: 16px; border-right: 1px solid var(--line); border-top: 1px solid var(--line); }
+.career-goal-list article:nth-child(even) { border-right: 0; }
+.career-goal-list small { color: var(--muted); font-size: 7px; letter-spacing: .12em; }
+.career-goal-list strong { display: block; margin: 8px 0 5px; font-family: var(--serif); font-size: 19px; font-weight: 500; }
+.career-goal-list p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.career-goal-list .is-complete { opacity: .58; }
+.person-core-grid > div:last-child:nth-child(odd) { border-right: 0; }
+
+@media (max-width: 720px) {
+  .career-goal-list { grid-template-columns: 1fr; }
+  .career-goal-list article { border-right: 0; }
+  .club-profile-facts { gap: 4px; }
+}
+.club-brief .club-profile-facts > span { display: flex; min-width: 96px; flex-direction: column; align-items: flex-start; gap: 3px; border-color: var(--line-strong); border-radius: 8px; }
+.club-brief .club-profile-facts small { font-size: 6px; letter-spacing: .1em; opacity: .7; }
+.club-brief .club-profile-facts strong { font-size: 10px; font-weight: 600; }
+.mentor-route-strip > span { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.mentor-route-strip > span b { font-size: 10px; }
+.mentor-route-strip > span small { color: var(--muted); font-size: 8px; text-align: right; }
+.career-goal-list article { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+.career-goal-list article > span { font-family: var(--serif); color: var(--muted); font-size: 18px; }
+.career-goal-list article > b { font-size: 8px; letter-spacing: .08em; white-space: nowrap; }

@@ -479,7 +479,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
   const activeClimb = normalizedActiveClimb && activeRoute ? { ...normalizedActiveClimb, simulation: normalizedActiveClimb.simulation ? hydrateExpeditionSimulation(normalizedActiveClimb, activeRoute) : null, strategic: hydrateStrategicExpedition(normalizedActiveClimb, activeRoute) } : normalizedActiveClimb;
   return hydrateCareerProgression({
     ...career,
-    schemaVersion: 17,
+    schemaVersion: 18,
     club,
     routes,
     teamRoster,
@@ -487,6 +487,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     selectedOfferId: career.selectedOfferId ?? career.expeditionPlan?.offerId ?? null,
     applications: career.applications ?? [],
     knownNpcIds: career.knownNpcIds ?? teamRoster.map((member: TeamMember) => member.id),
+    recoveryDays: Math.max(0, Math.round(career.recoveryDays ?? 0)),
     expeditionPlan: {
       ...career.expeditionPlan,
       offerId: career.expeditionPlan?.offerId ?? null,
@@ -508,7 +509,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = rosterForOrganization(world, membership.organizationId);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 17,
+    schemaVersion: 18,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,
@@ -553,6 +554,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     selectedOfferId: null,
     applications: [],
     knownNpcIds: teamRoster.map(member => member.id),
+    recoveryDays: 0,
   };
 
   const opening = membership.mode === 'INDEPENDENT'
@@ -735,6 +737,12 @@ export function careerReadiness(career: CareerState) {
 
 export function applyTraining(career: CareerState, trainingId: TrainingId): CareerState {
   const action = TRAINING_ACTIONS[trainingId];
+  if (career.recoveryDays > 0 && trainingId !== 'RECOVERY') {
+    return {
+      ...career,
+      log: [...career.log, careerLog(career, 'INJURY', 'Тренировка отложена', `Организм ещё восстанавливается после экспедиции: ${career.recoveryDays} дн.`)],
+    };
+  }
   const timeline = advanceDays(career, action.days);
   let skills = { ...career.hero.skills };
   let skillXp = { ...career.hero.skillXp };
@@ -759,11 +767,13 @@ export function applyTraining(career: CareerState, trainingId: TrainingId): Care
       money: clamp(career.hero.money - cost, 0, 99_999),
       form: clamp(career.hero.form + action.form - Math.max(0, career.hero.fatigue - 70) * 0.05, 0, 100),
       fatigue: clamp(career.hero.fatigue + action.fatigue, 0, 100),
-      health: clamp(career.hero.health + (trainingId === 'RECOVERY' ? 6 : 0), 0, 100),
+      health: clamp(career.hero.health + (trainingId === 'RECOVERY' ? 10 : 0), 0, 100),
       morale: clamp(career.hero.morale + (trainingId === 'RECOVERY' ? 4 : trainingId === 'CLUB_DUTY' ? 3 : 1), 0, 100),
       skills,
       skillXp,
+      injuries: trainingId === 'RECOVERY' && career.recoveryDays <= action.days ? [] : career.hero.injuries,
     },
+    recoveryDays: Math.max(0, career.recoveryDays - action.days),
   };
   next.log = [...career.log, careerLog(next, 'TRAINING', action.title, `${action.days} дней работы${mentor ? ` под руководством ${mentor.name}` : ''}. ${cost < 0 ? `Заработано ${Math.abs(cost)} кр.` : `Расходы ${cost} кр.`}`)];
   const advanced = advanceLivingWorld(next, action.days);
@@ -976,6 +986,7 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   if (soloPlan && route.objectiveRisk > 62) blockers.push('Этот маршрут слишком опасен для одиночного выхода.');
   if (career.expeditionPlan.foodDays < 2) blockers.push('Недостаточный запас еды.');
   if (career.expeditionPlan.fuelUnits < 2) blockers.push('Недостаточный запас топлива.');
+  if (career.recoveryDays > 0) blockers.push(`Герой восстанавливается ещё ${career.recoveryDays} дн.`);
   if (career.hero.fatigue > 72) blockers.push('Герой слишком утомлён для выхода.');
   if (career.expeditionPlan.acclimatizationDays < 2) blockers.push('Акклиматизация сорвана.');
   if (expeditionCost(career) > career.hero.money) blockers.push('Не хватает средств на подготовку.');
@@ -1517,23 +1528,47 @@ function evolveTeamStates(career: CareerState, climb: QualificationClimb, durati
   return { states, teamCondition: teamAverage(states), reveal };
 }
 
+function expeditionSkillPractice(career: CareerState, climb: QualificationClimb, route: ExpeditionRoute): Partial<Record<SkillId, number>> {
+  const elapsedHours = Math.max(1, climb.elapsedMinutes / 60);
+  const segments = [...route.segments, ...(route.descentSegments ?? [])];
+  const completedRatio = climb.topo
+    ? Math.max(.2, Math.min(1, Object.keys(climb.topo.completedStagePaths).length / Math.max(1, segments.length)))
+    : climb.summitReached ? 1 : .55;
+  const segmentCount = (skill: SkillId) => segments.filter(segment => segment.skill === skill).length;
+  const revealed = climb.topo ? Object.values(climb.topo.infrastructure).reduce((sum, item) => sum + item.revealed.length, 0) : 0;
+  const medicalEvents = climb.topo?.incidents.filter(item => ['FALL', 'FROSTBITE', 'ALTITUDE', 'EXHAUSTION', 'RESCUE'].includes(item.type)).length ?? climb.injuries.length;
+  const practice: Partial<Record<SkillId, number>> = {
+    ENDURANCE: Math.round(Math.min(32, 4 + elapsedHours * .72 + Math.max(0, climb.topo?.nightsSlept ?? 0) * 2)),
+    ROCK: Math.round(Math.min(26, segmentCount('ROCK') * 4.5 * completedRatio)),
+    ICE: Math.round(Math.min(26, segmentCount('ICE') * 4.5 * completedRatio)),
+    NAVIGATION: Math.round(Math.min(24, 3 + revealed * .3 + segmentCount('NAVIGATION') * 4 * completedRatio)),
+    MEDICINE: Math.round(Math.min(22, medicalEvents * 4 + climb.rescuedMemberIds.length * 7 + (career.expeditionPlan.playerRole === 'MEDIC' ? 3 : 0))),
+    LEADERSHIP: Math.round(Math.min(24, (climb.authorityMode === 'COMMAND' ? 5 : 2) + climb.decisions.length * 2 + (climb.retreating ? 3 : 0) + (climb.casualties.length ? 0 : 2))),
+  };
+  return Object.fromEntries(Object.entries(practice).filter(([, value]) => (value ?? 0) > 0)) as Partial<Record<SkillId, number>>;
+}
+
+function expeditionRecoveryDays(climb: QualificationClimb, route: ExpeditionRoute) {
+  const hero = climb.topo?.participants.find(participant => participant.memberId === null);
+  const fatigue = hero?.fatigue ?? Math.min(100, 25 + climb.elapsedMinutes / 300);
+  const conditionLoss = 100 - (hero?.condition ?? Math.max(40, 100 - climb.injuries.length * 8));
+  const sleepDebt = Math.max(0, (climb.topo?.minutesSinceSleep ?? climb.hoursAwake * 60) - 840) / 180;
+  return clamp(Math.round(2 + climb.elapsedMinutes / 900 + route.objectiveRisk / 24 + fatigue / 18 + conditionLoss / 15 + sleepDebt + climb.injuries.length * 4), 3, 45);
+}
+
+function expeditionMaintenanceCost(climb: QualificationClimb, route: ExpeditionRoute) {
+  const gear = climb.topo?.gear;
+  const wear = gear ? (100 - gear.ropeCondition) + (100 - gear.hardwareCondition) + (100 - gear.shelterCondition) * .35 + gear.lostWeightKg * 8 : route.technicality * .4;
+  return Math.max(8, Math.round(10 + wear * .42 + route.objectiveRisk * .18));
+}
+
 function finishClimb(career: CareerState, climb: QualificationClimb): CareerState {
   const successful = climb.summitReached && !climb.retreating;
   let skills = { ...career.hero.skills };
   let skillXp = { ...career.hero.skillXp };
   const route = career.routes.find(item => item.id === climb.routeId) ?? getSelectedRoute(career);
-  const difficultyXp = clamp(Math.round(7 + route.technicality / 18 + route.objectiveRisk / 30), 8, 18);
-  const rockUse = route.segments.filter(segment => segment.terrain === 'ROCK' || segment.terrain === 'RIDGE').length;
-  const iceUse = route.segments.filter(segment => segment.terrain === 'ICE' || segment.terrain === 'GLACIER' || segment.terrain === 'SNOW').length;
-  const xpTable: [SkillId, number][] = successful
-    ? [
-      ['ENDURANCE', difficultyXp],
-      [rockUse >= iceUse ? 'ROCK' : 'ICE', Math.max(6, difficultyXp - 2)],
-      ['NAVIGATION', Math.max(5, difficultyXp - 4)],
-      ['LEADERSHIP', career.expeditionPlan.authorityMode === 'COMMAND' ? Math.max(5, difficultyXp - 5) : 3],
-    ]
-    : [['ENDURANCE', 5], ['NAVIGATION', 4], ['LEADERSHIP', climb.retreating ? 3 : 1]];
-  for (const [skill, xp] of xpTable) {
+  const skillPractice = expeditionSkillPractice(career, climb, route);
+  for (const [skill, xp] of Object.entries(skillPractice) as Array<[SkillId, number]>) {
     const progressed = addXp(skills, skillXp, skill, xp);
     skills = progressed.skills;
     skillXp = progressed.skillXp;
@@ -1542,7 +1577,9 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
   const sponsorBonus = successful ? (normalizeCareerProgression(career).sponsor?.summitBonus ?? 0) : 0;
   const grossReward = successful ? Math.max(0, 150 + Math.round(getSelectedRoute(career).objectiveRisk * 1.2) - casualtyPenalty * 3 + sponsorBonus) : 0;
   const rescueCost = climb.topo?.rescueCost ?? 0;
-  const reward = grossReward - rescueCost;
+  const maintenanceCost = expeditionMaintenanceCost(climb, route);
+  const recoveryDays = expeditionRecoveryDays(climb, route);
+  const reward = grossReward - rescueCost - maintenanceCost;
   const reputation = successful ? Math.max(-12, 8 + Math.round(getSelectedRoute(career).technicality / 12) - casualtyPenalty) : climb.retreating ? 1 : -4;
   const participantEvaluation = climb.participant
     ? climb.participant.evaluation ?? evaluateParticipant(climb.participant, successful, climb.casualties.length)
@@ -1557,7 +1594,17 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     log: [...climb.log, `${clock(climb.elapsedMinutes)} — группа вернулась к исходной точке. ${successful ? 'Восхождение засчитано.' : 'Выход закрыт без вершины.'}${rescueCost > 0 ? ` Спасательная операция обошлась в ${rescueCost} кр.` : ''}`],
   };
   const roster = finalizeRosterAfterClimb(career, completed, successful);
-  const report = { ...buildExpeditionReport(career, completed, reputation, reward), participantEvaluation: participantEvaluation ?? undefined };
+  const report = {
+    ...buildExpeditionReport(career, completed, reputation, reward),
+    participantEvaluation: participantEvaluation ?? undefined,
+    technicality: route.technicality,
+    temperatureC: completed.temperatureC,
+    authorityMode: completed.authorityMode,
+    rescuedCount: completed.rescuedMemberIds.length,
+    recoveryDays,
+    maintenanceCost,
+    skillPractice,
+  };
   const heroExpeditionState = completed.topo?.participants.find(participant => participant.memberId === null);
   const heroInjuries = heroExpeditionState?.injury && !career.hero.injuries.includes(heroExpeditionState.injury)
     ? [heroExpeditionState.injury]
@@ -1572,6 +1619,7 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     highestElevation: Math.max(career.highestElevation, climb.topo?.highestElevation ?? (climb.summitReached ? climb.summitElevation : climb.currentElevation)),
     activeClimb: completed,
     membership,
+    recoveryDays,
     teamRoster: roster,
     reports: [...career.reports, report],
     onboarding: { ...career.onboarding, completed: true },
@@ -1584,7 +1632,7 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     hero: {
       ...career.hero,
       reputation: Math.max(0, career.hero.reputation + reputation),
-      money: career.hero.money + reward,
+      money: Math.max(0, career.hero.money + reward),
       form: clamp(career.hero.form - 5, 0, 100),
       fatigue: heroExpeditionState ? clamp(heroExpeditionState.fatigue + 12, 0, 100) : clamp(career.hero.fatigue + 25 + Math.round(climb.elapsedMinutes / 400), 0, 100),
       health: heroExpeditionState ? clamp(heroExpeditionState.condition, 0, 100) : clamp(career.hero.health - climb.injuries.length * 4, 0, 100),
@@ -1599,6 +1647,7 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     ...promotionLog,
     careerLog(next, 'CLIMB', successful ? `Восхождение на ${climb.mountainName}` : `Выход на ${climb.mountainName}`, successful ? `Маршрут «${climb.routeName}» пройден. Группа полностью вернулась.` : 'Группа спустилась без засчитанной вершины.'),
     careerLog(next, 'PRESS', 'Реакция после экспедиции', `${report.clubReaction} ${report.pressReaction}`),
+    careerLog(next, 'INJURY', 'Восстановление после выхода', `${recoveryDays} дн. без тяжёлой подготовки. Обслуживание снаряжения: ${maintenanceCost} кр.`),
   ];
   return next;
 }
