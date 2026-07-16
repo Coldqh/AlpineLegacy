@@ -1,6 +1,7 @@
 import { MountainArt } from '../components/MountainArt';
 import { EXPEDITION_RANK_LABELS, expeditionReadiness, getSelectedRoute, routesForMountain } from '../core/career';
 import type { CareerState, ExpeditionOffer, WorldState } from '../core/types';
+import { buildMountainMemory } from '../core/mountainMemory';
 
 type Props = {
   world: WorldState;
@@ -30,6 +31,7 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
   const readiness = expeditionReadiness(career);
   const mountains = [...world.region.mountains].sort((a, b) => mountainScore(a) - mountainScore(b));
   const latestApplication = career.applications[career.applications.length - 1] ?? null;
+  const mountainMemory = buildMountainMemory(career, mountain.id);
 
   if (!career.membership.permissions.canChooseRoute) {
     return (
@@ -97,6 +99,57 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
           {route.isSignature && <div className="signature-mountain-note"><strong>Эталонная цель школы.</strong><span>Она выбрана для первого допуска, но остальные вершины используют тот же полноценный генератор маршрутов и решений.</span></div>}
         </div>
       </div>
+
+      <details className="workspace-panel mountain-memory-panel">
+        <summary className="mountain-memory-summary">
+          <div><small>MOUNTAIN MEMORY</small><strong>Память горы</strong></div>
+          <span>{mountainMemory.attempts} выходов · {mountainMemory.summits} вершин · {mountainMemory.successRate}% успех</span>
+        </summary>
+        <div className="mountain-memory-grid">
+          <article className="mountain-memory-card">
+            <small>СТАТУС</small>
+            <strong>{mountainMemory.mountainName}</strong>
+            <div className="mountain-memory-facts">
+              <span><b>{mountainMemory.summits}</b><i>вершин</i></span>
+              <span><b>{mountainMemory.successRate}%</b><i>успех</i></span>
+              <span><b>{mountainMemory.deaths}</b><i>потери</i></span>
+              <span><b>{mountainMemory.firstAscentLabel}</b><i>первая вершина</i></span>
+            </div>
+            <p className="mountain-memory-lead">Сейчас гора {mountainMemory.attentionLabel}. История восхождений влияет на ожидания школ, темп маршрута и то, сколько готовых ориентиров уже существует.</p>
+          </article>
+
+          <article className="mountain-memory-card">
+            <small>СЛЕДЫ И РЕПУТАЦИЯ</small>
+            <strong>Что можно встретить на линии</strong>
+            <ul className="mountain-memory-list">
+              {mountainMemory.signs.map(item => <li key={item}>{item}</li>)}
+            </ul>
+            {(mountainMemory.activeClubs.length > 0 || mountainMemory.tracedRoutes.length > 0) && (
+              <div className="mountain-memory-tags">
+                {mountainMemory.activeClubs.slice(0, 3).map(item => <span key={item}>ШКОЛА · {item}</span>)}
+                {mountainMemory.tracedRoutes.slice(0, 3).map(item => <span key={item}>ЛИНИЯ · {item}</span>)}
+              </div>
+            )}
+          </article>
+
+          <article className="mountain-memory-card mountain-memory-card--stories">
+            <small>ПОСЛЕДНИЕ ИСТОРИИ</small>
+            <strong>Кто и что уже оставил здесь</strong>
+            {mountainMemory.stories.length > 0 ? (
+              <div className="mountain-memory-story-list">
+                {mountainMemory.stories.map(story => (
+                  <article key={story.id}>
+                    <header><span>{story.tag}</span><strong>{story.title}</strong></header>
+                    <p>{story.detail}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="mountain-memory-empty">Пока история пустая. Если выйдешь сюда первым, гора начнёт запоминать уже твою связку.</p>
+            )}
+          </article>
+        </div>
+      </details>
 
       <section className="workspace-panel">
         <div className="panel-heading"><div><p className="eyebrow">ROUTE OPTIONS</p><h2>Как подниматься</h2></div><span>ВЫБЕРИ ОДНУ ЛИНИЮ</span></div>

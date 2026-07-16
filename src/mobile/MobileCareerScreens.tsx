@@ -14,6 +14,7 @@ import {
   selectedTeam,
 } from '../core/career';
 import { CAREER_TIER_LABELS, SEASON_PHASE_LABELS, careerSeasonPhase, careerWorldRank, currentSeasonExpeditionCount, expeditionLimitForTier, nextCareerMilestone, normalizeCareerProgression } from '../core/progression';
+import { buildMountainMemory } from '../core/mountainMemory';
 import type {
   CareerState,
   CareerTabId,
@@ -81,6 +82,7 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
   const canPlan = career.membership.permissions.canChooseRoute;
   const mountains = [...world.region.mountains].sort((a, b) => mountainScore(a) - mountainScore(b));
   const routes = routesForMountain(career, mountain.id);
+  const mountainMemory = useMemo(() => buildMountainMemory(career, mountain.id), [career, mountain.id]);
   const applicationFor = (offerId: string) => [...career.applications].reverse().find(application => application.offerId === offerId) ?? null;
 
   const chooseMountain = (id: string) => {
@@ -115,6 +117,19 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
     <StepLine step="1/4" title={career.selectedOfferId ? 'Чужая экспедиция' : career.membership.mode === 'INDEPENDENT' ? 'Одиночный выход' : 'Цель'} />
     {career.membership.mode === 'INDEPENDENT' && foreignOffers.length > 0 && <details className="m-details m-details--flat m-foreign-offers"><summary>Чужие походы · {foreignOffers.length}</summary><div className="m-offer-list">{foreignOffers.map(renderOffer)}</div></details>}
     <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>{career.selectedOfferId ? 'НАЗНАЧЕННАЯ ЦЕЛЬ' : mountain.characterTitle}</small><strong>{mountain.name}</strong><span>{career.selectedOfferId ? `${route.name} · роль: ${roleLabel[career.expeditionPlan.playerRole]}` : mountain.dangerProfile}</span></div><b>{mountain.elevation} м</b></footer></section>
+    <details className="m-details m-details--flat m-memory-details">
+      <summary>Память горы</summary>
+      <div className="m-memory-card">
+        <div className="m-memory-facts">
+          <span><b>{mountainMemory.attempts}</b><i>выходов</i></span>
+          <span><b>{mountainMemory.summits}</b><i>вершин</i></span>
+          <span><b>{mountainMemory.successRate}%</b><i>успех</i></span>
+          <span><b>{mountainMemory.firstAscentLabel}</b><i>первая</i></span>
+        </div>
+        <p>{mountainMemory.attentionLabel}. {mountainMemory.signs[0]}</p>
+        {mountainMemory.stories.length > 0 && <div className="m-memory-stories">{mountainMemory.stories.slice(0, 2).map(story => <article key={story.id}><small>{story.tag}</small><strong>{story.title}</strong><span>{story.detail}</span></article>)}</div>}
+      </div>
+    </details>
     {!career.selectedOfferId && <><button className="m-picker-button" onClick={() => setPickerOpen(true)}><span>Сменить вершину</span><b>{mountains.length} доступно ›</b></button><div className="m-section-head"><h2>Маршрут</h2></div><div className="m-route-list">{routes.map(item => <button key={item.id} className={item.id === route.id ? 'is-active' : ''} onClick={() => onSelectRoute(item.id)}><div><small>{item.style}</small><strong>{item.name}</strong><span>{item.estimatedDecisionCount ?? 20} решений · ≈ {item.expectedPlayMinutes ?? 20} мин · риск {level(item.objectiveRisk)}</span></div><b>{item.id === route.id ? '✓' : '○'}</b></button>)}</div></>}
     <button className="m-sticky-action" onClick={onContinue}><span>{career.selectedOfferId ? 'Состав экспедиции' : 'Подготовить выход'}</span><b>→</b></button>
     {pickerOpen && <div className="m-modal-layer" onClick={() => setPickerOpen(false)}><section className="m-picker-sheet" onClick={event => event.stopPropagation()}><header><div><small>РЕЕСТР ГОР</small><strong>Выбери вершину</strong></div><button onClick={() => setPickerOpen(false)}>×</button></header><div className="m-list">{mountains.map((item, index) => <button key={item.id} className={item.id === mountain.id ? 'is-active' : ''} onClick={() => chooseMountain(item.id)}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{item.name}</strong><small>{item.characterTitle} · техника {level(item.technicality)}</small></div><b>{item.elevation} м</b></button>)}</div></section></div>}

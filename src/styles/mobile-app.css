@@ -491,3 +491,15 @@
     color: #f4f0e8 !important;
   }
 }
+
+  .m-memory-card { display: grid; gap: 10px; padding: 4px 3px 0; }
+  .m-memory-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .m-memory-facts span { min-height: 54px; padding: 8px 7px; border: 1px solid var(--m-line); background: var(--m-surface); display: grid; align-content: center; gap: 2px; }
+  .m-memory-facts b { font: 18px var(--serif); }
+  .m-memory-facts i { color: var(--m-muted); font-size: 9px; font-style: normal; }
+  .m-memory-card p { margin: 0; color: var(--m-muted); font-size: 11px; line-height: 1.5; }
+  .m-memory-stories { display: grid; gap: 8px; }
+  .m-memory-stories article { padding: 10px; border: 1px solid var(--m-line); background: var(--m-surface); display: grid; gap: 4px; }
+  .m-memory-stories small { color: var(--m-muted); font-size: 8px; letter-spacing: .08em; }
+  .m-memory-stories strong { font-size: 13px; }
+  .m-memory-stories span { color: var(--m-muted); font-size: 10px; line-height: 1.45; }

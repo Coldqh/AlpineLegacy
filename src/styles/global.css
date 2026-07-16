@@ -4047,3 +4047,177 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
   line-height: 1.35;
   font-weight: 650;
 }
+
+
+/* 0.13.0 mountain memory */
+.mountain-memory-panel { margin-top: 24px; }
+.mountain-memory-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.mountain-memory-card { padding: 18px; border: 1px solid rgba(199, 218, 207, .14); border-radius: 16px; background: rgba(10, 18, 16, .52); }
+.mountain-memory-card > small { display: block; color: var(--muted); font-size: 9px; letter-spacing: .12em; }
+.mountain-memory-card > strong { display: block; margin-top: 7px; font-family: var(--serif); font-size: 24px; font-weight: 500; }
+.mountain-memory-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.mountain-memory-facts span { display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.02); }
+.mountain-memory-facts b { font-family: var(--serif); font-size: 21px; font-weight: 500; }
+.mountain-memory-facts i { color: var(--muted); font-style: normal; font-size: 9px; letter-spacing: .08em; }
+.mountain-memory-lead, .mountain-memory-empty { margin: 14px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.mountain-memory-list { margin: 16px 0 0; padding-left: 18px; display: grid; gap: 10px; color: var(--muted); }
+.mountain-memory-list li { line-height: 1.5; }
+.mountain-memory-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.mountain-memory-tags span { padding: 7px 10px; border: 1px solid rgba(199, 218, 207, .16); border-radius: 999px; color: var(--muted); font-size: 10px; letter-spacing: .08em; }
+.mountain-memory-card--stories { grid-column: 1 / -1; }
+.mountain-memory-story-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.mountain-memory-story-list article { padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.02); }
+.mountain-memory-story-list header { display: grid; gap: 5px; }
+.mountain-memory-story-list header span { color: var(--accent); font-size: 9px; letter-spacing: .11em; }
+.mountain-memory-story-list header strong { font-size: 15px; font-weight: 600; }
+.mountain-memory-story-list p { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+@media (max-width: 960px) {
+  .mountain-memory-grid,
+  .mountain-memory-story-list,
+  .mountain-memory-facts { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 720px) {
+  .mountain-memory-grid,
+  .mountain-memory-story-list,
+  .mountain-memory-facts { grid-template-columns: 1fr; }
+}
+
+/* 0.13.0 mountain memory */
+.mountain-memory-panel { margin-top: 22px; }
+.mountain-memory-grid {
+  display: grid;
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+  gap: 12px;
+}
+.mountain-memory-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(8, 15, 13, .38);
+}
+.mountain-memory-card > small {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: .14em;
+}
+.mountain-memory-card > strong {
+  display: block;
+  margin-top: 7px;
+  font-family: var(--serif);
+  font-size: 23px;
+  font-weight: 500;
+}
+.mountain-memory-card--stories { grid-column: 1 / -1; }
+.mountain-memory-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.mountain-memory-facts span {
+  display: grid;
+  gap: 3px;
+  padding: 11px;
+  border-right: 1px solid var(--line);
+}
+.mountain-memory-facts span:last-child { border-right: 0; }
+.mountain-memory-facts b { font-size: 18px; font-weight: 650; }
+.mountain-memory-facts i { color: var(--muted); font-size: 9px; font-style: normal; }
+.mountain-memory-lead,
+.mountain-memory-empty {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.mountain-memory-list {
+  display: grid;
+  gap: 9px;
+  margin: 15px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.mountain-memory-list li {
+  position: relative;
+  padding-left: 17px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.48;
+}
+.mountain-memory-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: .55em;
+  width: 6px;
+  height: 6px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+.mountain-memory-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+.mountain-memory-tags span {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: .06em;
+}
+.mountain-memory-story-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.mountain-memory-story-list > article {
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .018);
+}
+.mountain-memory-story-list header { display: grid; gap: 5px; }
+.mountain-memory-story-list header span { color: var(--accent); font-size: 8px; letter-spacing: .1em; }
+.mountain-memory-story-list header strong { font-size: 12px; }
+.mountain-memory-story-list p { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+
+@media (max-width: 900px) {
+  .mountain-memory-grid,
+  .mountain-memory-story-list { grid-template-columns: 1fr; }
+  .mountain-memory-card--stories { grid-column: auto; }
+}
+
+@media (max-width: 620px) {
+  .mountain-memory-card { padding: 13px; }
+  .mountain-memory-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mountain-memory-facts span:nth-child(2) { border-right: 0; }
+  .mountain-memory-facts span:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+}
+.mountain-memory-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  cursor: pointer;
+  list-style: none;
+}
+.mountain-memory-summary::-webkit-details-marker { display: none; }
+.mountain-memory-summary > div { display: grid; gap: 5px; }
+.mountain-memory-summary small { color: var(--muted); font-size: 9px; letter-spacing: .14em; }
+.mountain-memory-summary strong { font-family: var(--serif); font-size: 25px; font-weight: 500; }
+.mountain-memory-summary > span { color: var(--muted); font-size: 10px; text-align: right; }
+.mountain-memory-panel[open] .mountain-memory-summary { padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.mountain-memory-panel[open] .mountain-memory-grid { margin-top: 14px; }
+@media (max-width: 620px) {
+  .mountain-memory-summary { align-items: flex-start; }
+  .mountain-memory-summary > span { max-width: 150px; }
+}

@@ -131,6 +131,22 @@ describe('integrated expedition career loop', () => {
     expect(restored.activeClimb?.topo?.infrastructure[context.stageId]?.revealed.length).toBeGreaterThan(1);
   });
 
+  it('loads known route cells from mountain memory without granting free rope', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-MEMORY');
+    const { topo, context, path } = initializedTopo(career);
+    const revealed = path.slice(0, 4).map(point => `${point.x}:${point.y}`);
+    const remembered = reduceIntegratedExpedition(topo, {
+      type: 'APPLY_MOUNTAIN_MEMORY',
+      stageId: context.stageId,
+      revealed,
+      camps: [],
+    }, context);
+
+    expect(remembered.infrastructure[context.stageId]?.revealed).toEqual(expect.arrayContaining(revealed));
+    expect(remembered.ropeMeters).toBe(topo.ropeMeters);
+    expect(remembered.infrastructure[context.stageId]?.ropes).toEqual([]);
+  });
+
   it('treats a voluntary retreat as a normal outcome instead of forcing rescue', () => {
     const { career } = startCareer('CLIMBER', 'INTEGRATED-RETREAT');
     const { topo, context } = initializedTopo(career);

@@ -539,6 +539,13 @@ function reduceIntegratedExpeditionCore(
       currentElevation: command.currentElevation,
     };
   }
+  if (command.type === 'APPLY_MOUNTAIN_MEMORY') {
+    const current = state.infrastructure[command.stageId] ?? EMPTY_INTEGRATED_INFRASTRUCTURE;
+    const revealed = [...new Set([...current.revealed, ...command.revealed])];
+    const camps = [...new Set([...current.camps, ...command.camps])];
+    if (revealed.length === current.revealed.length && camps.length === current.camps.length) return state;
+    return updateInfrastructure(state, command.stageId, value => ({ ...value, revealed, camps }));
+  }
   if (command.type === 'SET_STAGE_PATH') {
     if (state.authority !== 'COMMAND' && state.started) return state;
     return { ...state, paths: { ...state.paths, [command.stageId]: command.path }, positionIndex: Math.min(state.positionIndex, Math.max(0, command.path.length - 1)) };

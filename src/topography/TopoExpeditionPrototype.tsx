@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { CareerState, QualificationClimb } from '../core/types';
 import { ensureIntegratedExpedition, persistIntegratedExpedition } from '../core/career';
+import { buildMountainMemory, type MountainMemorySnapshot } from '../core/mountainMemory';
 import {
   EMPTY_INTEGRATED_INFRASTRUCTURE,
   integratedSpecialist,
@@ -73,6 +74,17 @@ const TERRAIN_CLASS: Record<MountainTerrain, string> = {
 
 function pointKey(point: GridPoint) { return `${point.x}:${point.y}`; }
 function formatMinutes(minutes: number) { return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`; }
+
+function inheritedInfrastructure(memory: MountainMemorySnapshot, map: LocalStageMap, route: GridPoint[]) {
+  if (memory.attempts <= 0 || route.length === 0) return { revealed: [] as string[], camps: [] as string[] };
+  const knownSteps = Math.min(route.length, 2 + Math.min(5, memory.attempts) + Math.floor(memory.attention / 24));
+  const knownRoute = route.slice(0, knownSteps);
+  const revealRadius = memory.attention >= 70 ? 2 : 1;
+  const revealed = map.cells
+    .filter(cell => knownRoute.some(point => Math.max(Math.abs(cell.x - point.x), Math.abs(cell.y - point.y)) <= revealRadius))
+    .map(pointKey);
+  return { revealed, camps: [] as string[] };
+}
 
 function projectMountainPoint(
   xCell: number,
@@ -197,12 +209,6 @@ function MountainViewer({
       skirt(`skirt:w:${y}`, cellAt(grid, { x: 0, y: y2 })!, cellAt(grid, { x: 0, y })!, '#303a36');
       skirt(`skirt:e:${y}`, cellAt(grid, { x: grid.width - 1, y })!, cellAt(grid, { x: grid.width - 1, y: y2 })!, '#1f2825');
     }
-    addPolygon('base:bottom', [
-      projectMountainPoint(0, 0, baseElevation, grid, yaw, pitch, zoom),
-      projectMountainPoint(grid.width - 1, 0, baseElevation, grid, yaw, pitch, zoom),
-      projectMountainPoint(grid.width - 1, grid.height - 1, baseElevation, grid, yaw, pitch, zoom),
-      projectMountainPoint(0, grid.height - 1, baseElevation, grid, yaw, pitch, zoom),
-    ], '#18201e', 'rgba(8,12,11,.5)');
     return polygons.sort((a, b) => a.depth - b.depth);
   }, [grid, yaw, pitch, zoom, stride]);
 
@@ -244,10 +250,9 @@ function MountainViewer({
       >
         <svg viewBox="0 0 1000 700" role="img" aria-label="Интерактивная трёхмерная модель полной горы">
           <defs>
-            <filter id="mg-shadow"><feDropShadow dx="0" dy="10" stdDeviation="10" floodOpacity=".28" /></filter>
             <linearGradient id="mg-route-glow" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#fff" stopOpacity=".8"/><stop offset="1" stopColor="#fff" stopOpacity="0"/></linearGradient>
           </defs>
-          <g filter="url(#mg-shadow)">{mesh.map(poly => <polygon key={poly.key} points={poly.points} fill={poly.fill} stroke={poly.stroke ?? "rgba(16,22,21,.2)"} strokeWidth=".58" />)}</g>
+          <g>{mesh.map(poly => <polygon key={poly.key} points={poly.points} fill={poly.fill} stroke={poly.stroke ?? "rgba(16,22,21,.2)"} strokeWidth=".58" />)}</g>
           {route.length > 1 && <polyline points={routePath} fill="none" stroke="rgba(8,12,11,.62)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />}
           {route.length > 1 && <polyline points={routePath} fill="none" stroke={routeStroke(selectedRoute)} strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />}
           {stagePoints.map(({ stage, projected }) => (
@@ -404,7 +409,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.12.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.13.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -425,6 +430,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const [activeTab, setActiveTab] = useState<ExpeditionTab>(() => topo.started ? 'CLIMB' : 'EXPEDITION');
 
   const participantMode = topo.authority !== 'COMMAND';
+  const mountainMemory = useMemo(() => buildMountainMemory(integratedCareer, climb.mountainId), [integratedCareer.livingWorld, climb.mountainId]);
   const authoredRoute = integratedCareer.routes.find(route => route.id === climb.routeId);
   const gridProfile = useMemo(() => ({
     formId: authoredRoute?.mountainFormId,
@@ -462,6 +468,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     : participantMode || selectedRoute
       ? guidedLocalRoute
       : [localMap.start];
+  const rememberedInfrastructure = useMemo(() => inheritedInfrastructure(mountainMemory, localMap, defaultPath), [mountainMemory.attempts, mountainMemory.summits, mountainMemory.attention, localMap, defaultPath]);
   const storedPath = topo.paths[stage.id];
   const needsDescentPath = Boolean(
     descending
@@ -484,13 +491,17 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const context: IntegratedExpeditionContext = { stageId: stage.id, stageTitle: stage.title, stageCount: stages.length, localMap, weather };
 
   useEffect(() => {
+    let nextTopo = topo;
     if (!topo.paths[stage.id]?.length || needsDescentPath) {
-      const nextTopo = reduceIntegratedExpedition(topo, { type: 'ENSURE_STAGE_PATH', stageId: stage.id, path: defaultPath, currentElevation: localCellAt(localMap, defaultPath[0] ?? localMap.start)?.elevation ?? topo.currentElevation, replace: needsDescentPath }, context);
-      onPersist(persistIntegratedExpedition(integratedCareer, nextTopo));
+      nextTopo = reduceIntegratedExpedition(nextTopo, { type: 'ENSURE_STAGE_PATH', stageId: stage.id, path: defaultPath, currentElevation: localCellAt(localMap, defaultPath[0] ?? localMap.start)?.elevation ?? topo.currentElevation, replace: needsDescentPath }, context);
     }
+    if (!descending && (rememberedInfrastructure.revealed.length > 0 || rememberedInfrastructure.camps.length > 0)) {
+      nextTopo = reduceIntegratedExpedition(nextTopo, { type: 'APPLY_MOUNTAIN_MEMORY', stageId: stage.id, revealed: rememberedInfrastructure.revealed, camps: rememberedInfrastructure.camps }, context);
+    }
+    if (nextTopo !== topo) onPersist(persistIntegratedExpedition(integratedCareer, nextTopo));
     setSelectedPoint(path[Math.min(topo.positionIndex, Math.max(0, path.length - 1))] ?? localMap.start);
     setPaused(true);
-  }, [stage.id, descending]);
+  }, [stage.id, descending, rememberedInfrastructure.revealed.join('|'), rememberedInfrastructure.camps.join('|')]);
 
 
   useEffect(() => {
@@ -563,7 +574,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     <main className="mg-app mg-expedition-shell">
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.12.0</span>
+          <span>ALPINE LEGACY / 0.13.0</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()}</small>
         </div>

@@ -16,6 +16,7 @@ export type IntegratedExpeditionCommand =
   | { type: 'SET_TUTORIAL_STEP'; step: number }
   | { type: 'REGENERATE' }
   | { type: 'ENSURE_STAGE_PATH'; stageId: string; path: GridPoint[]; currentElevation: number; replace?: boolean }
+  | { type: 'APPLY_MOUNTAIN_MEMORY'; stageId: string; revealed: string[]; camps: string[] }
   | { type: 'SET_STAGE_PATH'; stageId: string; path: GridPoint[] }
   | { type: 'START' }
   | { type: 'STEP' }
