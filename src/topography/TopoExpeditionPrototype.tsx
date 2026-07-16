@@ -288,7 +288,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.20.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.21.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -367,6 +367,8 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const selectedId = pointKey(selectedCell);
   const selectedProtected = infra.ropes.includes(selectedId);
   const selectedRisk = integratedStepPreview(topo, localMap, currentPoint, selectedCell, weather, selectedProtected);
+  const selectedRiskWithoutRope = integratedStepPreview(topo, localMap, currentPoint, selectedCell, weather, false);
+  const selectedRiskWithRope = integratedStepPreview(topo, localMap, currentPoint, selectedCell, weather, true);
   const selectedDistance = Math.max(Math.abs(selectedCell.x - currentPoint.x), Math.abs(selectedCell.y - currentPoint.y));
   const canSecureSelected = selectedDistance <= 1 && (selectedCell.ropeRequired || selectedCell.ropeRecommended || selectedCell.hazard !== 'NONE');
   const context: IntegratedExpeditionContext = {
@@ -474,7 +476,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     <main className="mg-app mg-expedition-shell">
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.20.0</span>
+          <span>ALPINE LEGACY / 0.21.0</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()}</small>
         </div>
@@ -510,21 +512,18 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
       <section className="mg-tab-panel">
         {activeTab === 'CLIMB' && (
           <section className="mg-stage-card mg-climb-tab" role="tabpanel">
-            <div className="mg-stage-topline">
+            <div className="mg-stage-topline mg-stage-topline--compact">
               <div className="mg-stage-heading">
-                <span>{phaseLabel} · ЭТАП {stageIndex + 1} / {stages.length}</span>
+                <span>{phaseLabel} · {stageIndex + 1}/{stages.length}</span>
                 <h2>{stage.title}</h2>
-                <p>{stage.subtitle} · сложность {stage.difficulty}/5 · {mountainDynamics.seasonTitle.toLowerCase()}</p>
+                <p>{stage.subtitle}</p>
               </div>
-              <div className="mg-stage-weather mg-status-strip" aria-label="Состояние вылазки">
+              <div className={`mg-field-hud is-risk-${selectedRisk.band.toLowerCase()}`} aria-label="Состояние вылазки">
+                <span><small>ВРЕМЯ</small><b>{formatMinutes(topo.elapsedMinutes)}</b></span>
+                <span><small>ВЫСОТА</small><b>{Math.round(currentCell.elevation)} м</b></span>
                 <span><small>ТЕМП.</small><b>{weather.temperatureC}°</b></span>
                 <span><small>ВЕТЕР</small><b>{weather.windKmh}</b></span>
-                <span><small>ВИДИМ.</small><b>{weather.visibility}%</b></span>
-                <span><small>ВЫСОТА</small><b>{Math.round(currentCell.elevation)} м</b></span>
-                <span><small>ГРУППА</small><b>{teamAverageCondition}%</b></span>
                 <span><small>СИЛЫ</small><b>{teamAverageEnergy}%</b></span>
-                <span><small>В ПУТИ</small><b>{formatMinutes(topo.elapsedMinutes)}</b></span>
-                <span className={`is-risk-${selectedRisk.band.toLowerCase()}`}><small>ТОЧКА</small><b>{Math.round(selectedCell.elevation)} м · {RISK_COPY[selectedRisk.band]}</b></span>
               </div>
             </div>
 
@@ -554,38 +553,32 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                   started={topo.started}
                   onCell={handleCell}
                 />
-                <aside className="mg-local-aside">
-                  <div className="mg-compact-actions" role="group" aria-label="Полевые действия">
-                    <button onClick={scoutArea} disabled={!paused || completed}>
-                      <strong>Разведка 9×9</strong><small>{Math.max(8, 20 - navigator.skills.NAVIGATION)} мин · {navigator.name}</small>
-                    </button>
-                    <button onClick={secureSelectedPoint} disabled={!paused || completed || !canSecureSelected} className={selectedProtected ? 'is-active' : ''}>
-                      <strong>{selectedProtected ? 'Снять верёвку' : 'Закрепить верёвку'}</strong><small>{canSecureSelected ? `${selectedCell.elevation} м · ${technician.name}` : 'выбери соседний техничный участок'}</small>
-                    </button>
-                  </div>
+                <aside className="mg-local-aside mg-field-dock">
+                  <section className={`mg-selected-cell-card is-risk-${selectedRisk.band.toLowerCase()}`}>
+                    <header><div><small>{TERRAIN_COPY[selectedCell.terrain]} · {slopeBand(selectedCell.slope)}</small><strong>{selectedCell.elevation} м</strong></div><b>{RISK_COPY[selectedRisk.band]}</b></header>
+                    <p>{selectedCell.hazard !== 'NONE' ? `Опасность: ${selectedCell.hazard.toLowerCase()}. ` : ''}{selectedCell.ropeRequired ? 'Страховка обязательна.' : selectedCell.ropeRecommended ? 'Верёвка заметно снизит риск.' : 'Участок можно пройти без закреплённой линии.'}</p>
+                    <div className="mg-cell-compare">
+                      <span><small>БЕЗ ВЕРЁВКИ</small><strong>{selectedRiskWithoutRope.minutes} мин · риск {selectedRiskWithoutRope.score}</strong><em>силы −{selectedRiskWithoutRope.energy}</em></span>
+                      <span><small>С ВЕРЁВКОЙ</small><strong>{selectedRiskWithRope.minutes} мин · риск {selectedRiskWithRope.score}</strong><em>{selectedProtected ? 'линия закреплена' : `останется ${Math.max(0, topo.ropeMeters - 20)} м`}</em></span>
+                    </div>
+                  </section>
 
+                  <div className={`mg-message mg-message--compact ${topo.lastEvent.severity === 'DANGER' ? 'is-danger' : ''}`}><span>{paused ? 'ПАУЗА' : `ДВИЖЕНИЕ ×${speed}`}</span><p>{topo.message}</p></div>
 
-                  <div className={`mg-message ${topo.lastEvent.severity === 'DANGER' ? 'is-danger' : ''}`}>
-                    <span>{paused ? 'ПАУЗА' : `ДВИЖЕНИЕ ×${speed}`}</span>
-                    <p>{topo.message}</p>
-                  </div>
-
-                  <div className="mg-time-controls">
-                    <button onClick={toggleMove} disabled={topo.forcedRetreat && path.length < 2}>{paused ? '▶ Двигаться' : 'Ⅱ Пауза'}</button>
-                    {([1, 2, 4] as const).map(value => <button key={value} className={speed === value ? 'is-active' : ''} onClick={() => setSpeed(value)}>×{value}</button>)}
-                  </div>
-
-                  <details className="mg-secondary-actions" open={topo.forcedRetreat || undefined}>
-                    <summary>Отдых и аварийные действия</summary>
-                    <div className="mg-rest-controls">
+                  <div className="mg-primary-action-dock" role="group" aria-label="Основные действия">
+                    <button className="is-move" onClick={toggleMove} disabled={topo.forcedRetreat && path.length < 2}><strong>{paused ? '▶ Движение' : 'Ⅱ Пауза'}</strong><small>{topo.pace === 'CAUTIOUS' ? 'осторожный темп' : topo.pace === 'FAST' ? 'быстрый темп' : 'рабочий темп'}</small></button>
+                    <button onClick={scoutArea} disabled={!paused || completed}><strong>Разведка</strong><small>9×9 · {Math.max(8, 20 - navigator.skills.NAVIGATION)} мин</small></button>
+                    <button onClick={secureSelectedPoint} disabled={!paused || completed || !canSecureSelected} className={selectedProtected ? 'is-active' : ''}><strong>{selectedProtected ? 'Снять верёвку' : 'Верёвка'}</strong><small>{canSecureSelected ? `${selectedRiskWithoutRope.score} → ${selectedRiskWithRope.score}` : 'выбери соседнюю точку'}</small></button>
+                    <details className="mg-rest-menu" open={topo.forcedRetreat || undefined}><summary><strong>Отдых</strong><small>привал, сон, отход</small></summary><div>
                       <button onClick={() => commit({ type: 'REST', mode: 'BREAK' as IntegratedRestMode })} disabled={!paused}>Короткий привал <small>20 мин</small></button>
-                      <button onClick={() => commit({ type: 'REST', mode: 'BIVOUAC' as IntegratedRestMode })} disabled={!paused}>Бивак <small>5 ч · слабое восстановление</small></button>
-                      <button onClick={() => commit({ type: 'REST', mode: 'SLEEP' as IntegratedRestMode })} disabled={!paused}>Сон <small>8 ч · лагерь автоматически</small></button>
-                      <p>С последнего сна: {formatMinutes(topo.minutesSinceSleep)}. Выше 3000 м безопасный набор высоты сна — около 500 м за ночь.</p>
+                      <button onClick={() => commit({ type: 'REST', mode: 'BIVOUAC' as IntegratedRestMode })} disabled={!paused}>Бивак <small>5 ч</small></button>
+                      <button onClick={() => commit({ type: 'REST', mode: 'SLEEP' as IntegratedRestMode })} disabled={!paused}>Полный сон <small>8 ч</small></button>
                       {topo.phase === 'ASCENT' && <button className="is-warning" onClick={() => commit({ type: 'BEGIN_RETREAT' })} disabled={!paused}>Начать отход</button>}
                       {topo.forcedRetreat && <button className="is-warning" onClick={() => commit({ type: 'REQUEST_RESCUE' })} disabled={!paused}>Вызвать спасателей</button>}
-                    </div>
-                  </details>
+                    </div></details>
+                  </div>
+
+                  <div className="mg-speed-inline">{([1, 2, 4] as const).map(value => <button key={value} className={speed === value ? 'is-active' : ''} onClick={() => setSpeed(value)}>×{value}</button>)}</div>
                 </aside>
               </div>
             )}

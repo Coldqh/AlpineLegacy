@@ -8,7 +8,7 @@ const LazyTopoExpedition = lazy(async () => {
 
 export function TopoExpeditionLoader(props: TopoExpeditionProps) {
   return (
-    <Suspense fallback={<main className="mg-app"><header className="mg-header"><div><span>ALPINE LEGACY / 0.20.0</span><h1>Загрузка экспедиции</h1></div></header></main>}>
+    <Suspense fallback={<main className="mg-app"><header className="mg-header"><div><span>ALPINE LEGACY / 0.21.0</span><h1>Загрузка экспедиции</h1></div></header></main>}>
       <LazyTopoExpedition {...props} />
     </Suspense>
   );

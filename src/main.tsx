@@ -11,6 +11,7 @@ import './styles/mobile-compact.css';
 import './styles/expedition-066.css';
 import './styles/strategic-expedition.css';
 import './styles/mountain-grid-expedition.css';
+import './styles/ux-rebuild.css';
 
 registerOfflineApp();
 

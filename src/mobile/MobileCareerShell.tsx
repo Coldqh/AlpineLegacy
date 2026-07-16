@@ -5,28 +5,27 @@ import { resetAppScroll } from './useMobile';
 
 const primary = [
   { id: 'OVERVIEW' as const, label: 'Штаб', icon: '⌂' },
-  { id: 'ROUTE' as const, label: 'Цель', icon: '△' },
-  { id: 'TEAM' as const, label: 'Сбор', icon: '≡' },
-  { id: 'CLIMB' as const, label: 'Путь', icon: '↑' },
+  { id: 'EXPEDITION' as const, label: 'Экспедиция', icon: '△' },
+  { id: 'WORLD' as const, label: 'Мир', icon: '◉' },
+  { id: 'JOURNAL' as const, label: 'Архив', icon: '▤' },
 ];
 
-const prepTabs: CareerTabId[] = ['TEAM', 'EQUIPMENT', 'EXPEDITION'];
-const moreTabs: CareerTabId[] = ['WORLD', 'NEWS', 'RIVALS', 'RECORDS', 'JOURNAL', 'PEOPLE'];
+const prepTabs: CareerTabId[] = ['ROUTE', 'TEAM', 'EQUIPMENT', 'EXPEDITION'];
+const worldTabs: CareerTabId[] = ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'];
+const moreTabs: CareerTabId[] = ['PEOPLE'];
 
 function isPrep(tab: CareerTabId) { return prepTabs.includes(tab); }
+function isWorld(tab: CareerTabId) { return worldTabs.includes(tab); }
 function isMore(tab: CareerTabId) { return moreTabs.includes(tab); }
 
 function pageTitle(activeTab: CareerTabId, career: CareerState) {
   if (activeTab === 'OVERVIEW') return career.hero.name;
-  if (activeTab === 'ROUTE') return 'Цель';
-  if (isPrep(activeTab)) return 'Подготовка';
-  if (activeTab === 'CLIMB') return career.activeClimb ? 'Экспедиция' : 'Восхождение';
+  if (isPrep(activeTab)) return 'Экспедиция';
+  if (isWorld(activeTab)) return 'Живой мир';
   if (activeTab === 'JOURNAL') return 'Архив';
   if (activeTab === 'PEOPLE') return 'Досье';
-  if (activeTab === 'NEWS') return 'Новости';
-  if (activeTab === 'RIVALS') return 'Соперники';
-  if (activeTab === 'RECORDS') return 'Рекорды';
-  return 'Живой мир';
+  if (activeTab === 'CLIMB') return career.activeClimb ? 'Экспедиция' : 'Восхождение';
+  return 'Карьера';
 }
 
 export function MobileCareerShell({ world, career, activeTab, onTab, onExit, onAtlas, locked = false, children }: {
@@ -63,14 +62,14 @@ export function MobileCareerShell({ world, career, activeTab, onTab, onExit, onA
 
       {!locked && <nav className="m-bottom-nav" aria-label="Основные разделы">
         {primary.map(item => {
-          const active = item.id === 'TEAM' ? isPrep(activeTab) : activeTab === item.id;
-          const disabled = item.id === 'CLIMB' && !career.activeClimb;
+          const active = item.id === 'EXPEDITION' ? isPrep(activeTab) : item.id === 'WORLD' ? isWorld(activeTab) : activeTab === item.id;
+          const disabled = false;
           return <button key={item.id} disabled={disabled} className={active ? 'is-active' : ''} onClick={() => navigate(item.id)}><b>{item.icon}</b><span>{item.label}</span></button>;
         })}
         <button className={isMore(activeTab) || moreOpen ? 'is-active' : ''} onClick={() => setMoreOpen(value => !value)} aria-expanded={moreOpen}><b>•••</b><span>Ещё</span></button>
       </nav>}
 
-      {!locked && moreOpen && <div className="m-more-layer" onClick={() => setMoreOpen(false)}><section className="m-more-sheet" onClick={event => event.stopPropagation()}><header><strong>Разделы</strong><button onClick={() => setMoreOpen(false)} aria-label="Закрыть">×</button></header><div className="m-more-menu"><button onClick={() => navigate('WORLD')}><span>Живой мир</span><b>›</b></button><button onClick={() => navigate('NEWS')}><span>Новости</span><b>›</b></button><button onClick={() => navigate('RIVALS')}><span>Соперники</span><b>›</b></button><button onClick={() => navigate('RECORDS')}><span>Рекорды</span><b>›</b></button><button onClick={() => navigate('JOURNAL')}><span>Архив</span><b>›</b></button><button onClick={() => navigate('PEOPLE')}><span>Досье</span><b>›</b></button><button onClick={() => { setMoreOpen(false); resetAppScroll(); onAtlas(); }}><span>Атлас</span><b>›</b></button></div></section></div>}
+      {!locked && moreOpen && <div className="m-more-layer" onClick={() => setMoreOpen(false)}><section className="m-more-sheet" onClick={event => event.stopPropagation()}><header><strong>Разделы</strong><button onClick={() => setMoreOpen(false)} aria-label="Закрыть">×</button></header><div className="m-more-menu"><button onClick={() => navigate('PEOPLE')}><span>Досье команды</span><b>›</b></button><button onClick={() => { setMoreOpen(false); resetAppScroll(); onAtlas(); }}><span>Горный атлас</span><b>›</b></button></div></section></div>}
     </main>
   );
 }

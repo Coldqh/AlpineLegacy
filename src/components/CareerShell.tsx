@@ -25,18 +25,14 @@ type PrimaryTab = {
 };
 
 const tabs: PrimaryTab[] = [
-  { id: 'OVERVIEW', label: 'Штаб', mobileLabel: 'Штаб', short: 'Ш', description: 'Состояние и действия' },
-  { id: 'ROUTE', label: 'Цель', mobileLabel: 'Цель', short: 'Ц', description: 'Гора и маршрут' },
-  { id: 'EXPEDITION', label: 'Подготовка', mobileLabel: 'Сбор', short: 'П', description: 'Люди, груз, выход', children: ['TEAM', 'PEOPLE', 'EQUIPMENT', 'EXPEDITION'] },
-  { id: 'CLIMB', label: 'Восхождение', mobileLabel: 'Путь', short: 'В', description: 'Маршрут в реальном времени' },
-  { id: 'JOURNAL', label: 'Архив', mobileLabel: 'Архив', short: 'А', description: 'История карьеры' },
+  { id: 'OVERVIEW', label: 'Штаб', mobileLabel: 'Штаб', short: '⌂', description: 'Состояние и действия' },
+  { id: 'EXPEDITION', label: 'Экспедиция', mobileLabel: 'Экспедиция', short: '△', description: 'Цель, люди, груз и выход', children: ['ROUTE', 'TEAM', 'PEOPLE', 'EQUIPMENT', 'EXPEDITION'] },
+  { id: 'WORLD', label: 'Мир', mobileLabel: 'Мир', short: '◉', description: 'Школы, новости, люди и рекорды', children: ['NEWS', 'RIVALS', 'RECORDS'] },
+  { id: 'JOURNAL', label: 'Архив', mobileLabel: 'Архив', short: '▤', description: 'История карьеры' },
 ];
 
 const moreTabs: Array<{ id: CareerTabId; label: string; description: string }> = [
-  { id: 'WORLD', label: 'Живой мир', description: 'Школы, регионы и экспедиции' },
-  { id: 'NEWS', label: 'Новости', description: 'События и аварии' },
-  { id: 'RIVALS', label: 'Соперники', description: 'Люди мировой карьеры' },
-  { id: 'RECORDS', label: 'Рекорды', description: 'Исторические результаты' },
+  { id: 'PEOPLE', label: 'Досье', description: 'Отношения, память и навыки участников' },
 ];
 
 function isPrimaryActive(tab: PrimaryTab, activeTab: CareerTabId) {
@@ -57,29 +53,29 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
       <aside className="career-sidebar">
         <nav className="career-sidebar__nav" aria-label="Главные разделы карьеры">
           {tabs.map((tab, index) => {
-            const disabled = locked ? tab.id !== 'CLIMB' : tab.id === 'CLIMB' && !career.activeClimb;
+            const disabled = locked;
             const active = isPrimaryActive(tab, activeTab);
             return (
               <button
                 key={tab.id}
                 className={active ? 'is-active' : ''}
                 disabled={disabled}
-                onClick={() => { setMoreOpen(false); onTab(tab.id === 'EXPEDITION' ? 'TEAM' : tab.id); }}
+                onClick={() => { setMoreOpen(false); onTab(tab.id); }}
                 title={`${tab.label}: ${tab.description}`}
               >
                 <span className="career-sidebar__short">{tab.short}</span>
                 <span className="career-sidebar__index">{String(index + 1).padStart(2, '0')}</span>
                 <span className="career-sidebar__copy"><strong>{tab.label}</strong><small>{tab.description}</small></span>
                 <span className="career-sidebar__mobile-label">{tab.mobileLabel}</span>
-                {tab.id === 'CLIMB' && career.activeClimb && <i />}
+                {tab.id === 'EXPEDITION' && career.activeClimb && <i />}
               </button>
             );
           })}
           <div className="career-sidebar__more">
             <button className={`career-sidebar__more-button ${moreActive || moreOpen ? 'is-active' : ''}`} disabled={locked} onClick={() => setMoreOpen(value => !value)} aria-expanded={moreOpen}>
               <span className="career-sidebar__short">•••</span>
-              <span className="career-sidebar__index">06</span>
-              <span className="career-sidebar__copy"><strong>Ещё</strong><small>Мир, новости, соперники</small></span>
+              <span className="career-sidebar__index">05</span>
+              <span className="career-sidebar__copy"><strong>Ещё</strong><small>Досье и атлас</small></span>
               <span className="career-sidebar__mobile-label">Ещё</span>
             </button>
             {moreOpen && <div className="career-more-popover">{moreTabs.map(item => <button key={item.id} className={activeTab === item.id ? 'is-active' : ''} onClick={() => { setMoreOpen(false); onTab(item.id); }}><span><strong>{item.label}</strong><small>{item.description}</small></span><b>›</b></button>)}</div>}
