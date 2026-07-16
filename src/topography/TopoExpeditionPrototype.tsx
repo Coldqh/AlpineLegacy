@@ -31,6 +31,7 @@ import {
   type GridPoint,
   type LocalRouteProfile,
   type LocalStageMap,
+  type MountainHazard,
   type MountainRouteOption,
   type MountainTerrain,
   type StageDefinition,
@@ -73,6 +74,29 @@ const TERRAIN_CLASS: Record<MountainTerrain, string> = {
   VALLEY: 'terrain-valley', SCREE: 'terrain-scree', GLACIER: 'terrain-glacier', SNOW: 'terrain-snow', ROCK: 'terrain-rock', RIDGE: 'terrain-ridge', SUMMIT: 'terrain-summit',
 };
 
+const HAZARD_COPY: Record<MountainHazard, string> = {
+  NONE: 'явной угрозы нет',
+  CREVASSE: 'трещина',
+  AVALANCHE: 'лавинный склон',
+  ROCKFALL: 'камнепад',
+  CORNICE: 'снежный карниз',
+};
+
+type CellIconKind = 'START' | 'GOAL' | 'CREVASSE' | 'AVALANCHE' | 'ROCKFALL' | 'CORNICE' | 'ROPE_REQUIRED' | 'ROPE_RECOMMENDED' | 'CAMP_SITE' | 'CAMP' | 'FIXED_ROPE' | 'LEGACY_ROPE';
+
+function CellIcon({ kind, label }: { kind: CellIconKind; label: string }) {
+  const common = { viewBox: '0 0 24 24', 'aria-label': label, role: 'img' } as const;
+  if (kind === 'START') return <svg {...common}><path d="M6 20V4M7 5h10l-3 4 3 4H7" /></svg>;
+  if (kind === 'GOAL') return <svg {...common}><path d="M3 19 12 4l9 15H3Zm9-10v6" /></svg>;
+  if (kind === 'CREVASSE') return <svg {...common}><path d="M4 5l6 5-3 3 6 6M20 5l-6 5 3 3-6 6" /></svg>;
+  if (kind === 'AVALANCHE') return <svg {...common}><path d="M3 18 11 5l4 7 2-3 4 9H3Z" /><path d="M7 16c3-3 6-3 10 0" /></svg>;
+  if (kind === 'ROCKFALL') return <svg {...common}><path d="m5 16 4-5 5 2 4 6H6Z" /><circle cx="16" cy="7" r="2" /><circle cx="20" cy="11" r="1.5" /></svg>;
+  if (kind === 'CORNICE') return <svg {...common}><path d="M3 16c5-7 11-9 18-7-4 0-6 3-6 7H3Z" /><path d="M15 16c1 2 2 3 4 4" /></svg>;
+  if (kind === 'CAMP_SITE' || kind === 'CAMP') return <svg {...common}><path d="M3 19 12 5l9 14H3Zm9-14v14" /></svg>;
+  if (kind === 'FIXED_ROPE' || kind === 'LEGACY_ROPE') return <svg {...common}><path d="M4 8c4-6 7 6 11 0s7 6 5 9M4 16c3-5 6 4 9 0" /></svg>;
+  return <svg {...common}><path d="M7 8a5 5 0 0 1 10 0v8a5 5 0 0 1-10 0V8Zm3 1v6m4-6v6" /></svg>;
+}
+
 function pointKey(point: GridPoint) { return `${point.x}:${point.y}`; }
 function formatMinutes(minutes: number) { return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`; }
 
@@ -111,6 +135,8 @@ function MountainViewer({
   stages,
   side,
   currentStage,
+  infrastructure,
+  currentLegacyRopes,
 }: {
   grid: ReturnType<typeof generateMountainGrid>;
   route: GridPoint[];
@@ -119,16 +145,57 @@ function MountainViewer({
   stages: StageDefinition[];
   side: EntrySide;
   currentStage: number;
+  infrastructure: IntegratedExpeditionState['infrastructure'];
+  currentLegacyRopes: number;
 }) {
+  const clampPoint = (point: GridPoint) => ({
+    x: Math.max(0, Math.min(grid.width - 1, point.x)),
+    y: Math.max(0, Math.min(grid.height - 1, point.y)),
+  });
   const markers: MountainModelMarker[] = [
     { id: 'entry', point: grid.entries[side], label: `СТАРТ · ${SIDE_COPY[side]}`, kind: 'ENTRY' },
     ...stages.map(stage => ({
       id: stage.id,
       point: stage.globalPoint,
       label: stage.index === currentStage ? `${stage.index + 1} · ${stage.title}` : undefined,
-      kind: 'STAGE' as const,
+      kind: stage.index === currentStage ? 'CURRENT' as const : 'STAGE' as const,
       active: stage.index === currentStage,
     })),
+    ...stages.flatMap(stage => {
+      const stageInfrastructure = infrastructure[stage.id] ?? EMPTY_INTEGRATED_INFRASTRUCTURE;
+      const stageMarkers: MountainModelMarker[] = [];
+      if (stageInfrastructure.camps.length > 0) {
+        stageMarkers.push({
+          id: `${stage.id}:camp`,
+          point: clampPoint({ x: stage.globalPoint.x - 1, y: stage.globalPoint.y }),
+          label: `ЛАГЕРЬ${stageInfrastructure.camps.length > 1 ? ` ×${stageInfrastructure.camps.length}` : ''}`,
+          kind: 'CAMP',
+          count: stageInfrastructure.camps.length,
+        });
+      }
+      if (stageInfrastructure.ropes.length > 0) {
+        stageMarkers.push({
+          id: `${stage.id}:rope`,
+          point: clampPoint({ x: stage.globalPoint.x + 1, y: stage.globalPoint.y }),
+          label: `ВЕРЁВКА${stageInfrastructure.ropes.length > 1 ? ` ×${stageInfrastructure.ropes.length}` : ''}`,
+          kind: 'ROPE',
+          count: stageInfrastructure.ropes.length,
+        });
+      }
+      return stageMarkers;
+    }),
+    ...route
+      .map((point, index) => ({ point, index, cell: grid.cells[point.y * grid.width + point.x] }))
+      .filter(item => item.cell && item.cell.hazard !== 'NONE' && item.index % Math.max(1, Math.floor(route.length / 4)) === 0)
+      .slice(0, 4)
+      .map(item => ({ id: `hazard:${item.index}`, point: item.point, kind: 'HAZARD' as const })),
+    ...(currentLegacyRopes > 0 ? [{
+      id: 'legacy-rope-current',
+      point: clampPoint({ x: stages[currentStage]?.globalPoint.x ?? grid.summit.x, y: (stages[currentStage]?.globalPoint.y ?? grid.summit.y) + 1 }),
+      label: `СТАРАЯ ЛИНИЯ ×${currentLegacyRopes}`,
+      kind: 'TRACE' as const,
+      count: currentLegacyRopes,
+    }] : []),
     { id: 'summit', point: grid.summit, label: `ПИК · ${grid.summitElevation} м`, kind: 'SUMMIT' },
   ];
 
@@ -136,7 +203,7 @@ function MountainViewer({
     <section className="mg-viewer-card">
       <div className="mg-panel-head">
         <div><span>3D МАССИВ</span><strong>{routeName}</strong></div>
-        <small>единая модель · вращение · наклон · масштаб</small>
+        <small>рельеф · маршрут · лагеря · страховка</small>
       </div>
       <MountainModel
         grid={grid}
@@ -151,8 +218,8 @@ function MountainViewer({
         readout={[
           { label: 'ПЕРЕПАД', value: `${grid.relief} м` },
           { label: 'МАССИВ', value: `${grid.physicalDiameterKm} км` },
-          { label: 'СЕТКА', value: `${grid.width} × ${grid.height}` },
-          { label: 'ЭТАПЫ', value: String(stages.length) },
+          { label: 'ЛАГЕРЯ', value: String(Object.values(infrastructure).reduce((sum, item) => sum + item.camps.length, 0)) },
+          { label: 'ЛИНИИ', value: String(Object.values(infrastructure).reduce((sum, item) => sum + item.ropes.length, 0)) },
         ]}
       />
     </section>
@@ -219,14 +286,17 @@ function LocalMap({ map, path, positionIndex, camps, ropes, legacyRopes, reveale
           >
             <span className="mg-slope-arrow" />
             <span className="mg-cell-height">{cell.elevation}</span>
-            {knownHazard && <i>!</i>}
-            {!isRevealed && <span className="mg-unknown-mark">?</span>}
-            {cell.ropeRequired && <span className="mg-rope-required-mark">R</span>}
-            {!cell.ropeRequired && cell.ropeRecommended && <span className="mg-rope-recommended-mark">r</span>}
-            {cell.campPossible && <b className="mg-camp-dot" />}
-            {camps.includes(id) && <em>▲</em>}
-            {ropes.includes(id) && <u>⌁</u>}
-            {!ropes.includes(id) && legacyRopes.includes(id) && <span className="mg-legacy-rope-mark">⌁</span>}
+            <span className="mg-cell-symbols" aria-hidden={!isRevealed}>
+              {isSamePoint(map.start, cell) && <i className="mg-cell-icon is-start"><CellIcon kind="START" label="Старт" /></i>}
+              {isSamePoint(map.goal, cell) && <i className="mg-cell-icon is-goal"><CellIcon kind="GOAL" label="Цель этапа" /></i>}
+              {knownHazard && <i className={`mg-cell-icon is-hazard is-${cell.hazard.toLowerCase()}`}><CellIcon kind={cell.hazard as CellIconKind} label={HAZARD_COPY[cell.hazard]} /></i>}
+              {isRevealed && cell.ropeRequired && <i className="mg-cell-icon is-rope-required"><CellIcon kind="ROPE_REQUIRED" label="Верёвка обязательна" /></i>}
+              {isRevealed && !cell.ropeRequired && cell.ropeRecommended && <i className="mg-cell-icon is-rope-recommended"><CellIcon kind="ROPE_RECOMMENDED" label="Верёвка рекомендуется" /></i>}
+              {isRevealed && cell.campPossible && !camps.includes(id) && <i className="mg-cell-icon is-camp-site"><CellIcon kind="CAMP_SITE" label="Подходит для лагеря" /></i>}
+              {camps.includes(id) && <i className="mg-cell-icon is-camp"><CellIcon kind="CAMP" label="Установленный лагерь" /></i>}
+              {ropes.includes(id) && <i className="mg-cell-icon is-fixed-rope"><CellIcon kind="FIXED_ROPE" label="Закреплённая верёвка" /></i>}
+              {!ropes.includes(id) && legacyRopes.includes(id) && <i className="mg-cell-icon is-legacy-rope"><CellIcon kind="LEGACY_ROPE" label="Старая верёвка" /></i>}
+            </span>
           </button>
         );
       })}
@@ -237,8 +307,7 @@ function LocalMap({ map, path, positionIndex, camps, ropes, legacyRopes, reveale
         </svg>
       )}
       <div className="mg-map-north">N</div>
-      <div className="mg-tool-hint">{started ? 'Нажми на клетку, чтобы проверить её. Разведка раскрывает квадрат 9×9 вокруг группы.' : 'Начни экспедицию после проверки людей и снаряжения.'}</div>
-      <div className="mg-map-legend"><span><b className="legend-rope-required">R</b> верёвка обязательна</span><span><b className="legend-rope-recommended">r</b> полезна</span><span><b className="legend-camp" /> лагерь</span><span><b className="legend-legacy-rope">⌁</b> старая верёвка</span><span><b className="legend-unknown">?</b> не разведано</span></div>
+      <div className="mg-tool-hint">{started ? 'Выбери участок. Неизвестный рельеф раскрывается разведкой 9×9.' : 'Начни экспедицию после проверки людей и снаряжения.'}</div>
     </div>
   );
 }
@@ -288,7 +357,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.22.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.23.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -366,6 +435,9 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const selectedCell = localCellAt(localMap, selectedPoint) ?? currentCell;
   const selectedId = pointKey(selectedCell);
   const selectedProtected = infra.ropes.includes(selectedId);
+  const selectedLegacyRope = !selectedProtected && rememberedInfrastructure.legacyRopes.includes(selectedId);
+  const selectedRockGearActive = ['ROCK', 'RIDGE', 'SCREE'].includes(selectedCell.terrain) || selectedCell.hazard === 'ROCKFALL';
+  const selectedIceGearActive = ['GLACIER', 'SNOW', 'SUMMIT'].includes(selectedCell.terrain) || ['CREVASSE', 'AVALANCHE', 'CORNICE'].includes(selectedCell.hazard);
   const selectedRisk = integratedStepPreview(topo, localMap, currentPoint, selectedCell, weather, selectedProtected);
   const selectedRiskWithoutRope = integratedStepPreview(topo, localMap, currentPoint, selectedCell, weather, false);
   const selectedRiskWithRope = integratedStepPreview(topo, localMap, currentPoint, selectedCell, weather, true);
@@ -476,7 +548,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     <main className="mg-app mg-expedition-shell">
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.22.0</span>
+          <span>ALPINE LEGACY / 0.23.0</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()}</small>
         </div>
@@ -555,11 +627,18 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                 />
                 <aside className="mg-local-aside mg-field-dock">
                   <section className={`mg-selected-cell-card is-risk-${selectedRisk.band.toLowerCase()}`}>
-                    <header><div><small>{TERRAIN_COPY[selectedCell.terrain]} · {slopeBand(selectedCell.slope)}</small><strong>{selectedCell.elevation} м</strong></div><b>{RISK_COPY[selectedRisk.band]}</b></header>
-                    <p>{selectedCell.hazard !== 'NONE' ? `Опасность: ${selectedCell.hazard.toLowerCase()}. ` : ''}{selectedCell.ropeRequired ? 'Страховка обязательна.' : selectedCell.ropeRecommended ? 'Верёвка заметно снизит риск.' : 'Участок можно пройти без закреплённой линии.'}</p>
+                    <header><div><small>{TERRAIN_COPY[selectedCell.terrain]} · {slopeBand(selectedCell.slope)} · {Math.round(selectedCell.slope)}°</small><strong>{selectedCell.elevation} м</strong></div><b>{RISK_COPY[selectedRisk.band]}</b></header>
+                    <p><strong>{HAZARD_COPY[selectedCell.hazard]}.</strong> {selectedCell.ropeRequired ? 'Без закреплённой линии группа рискует сорваться и потерять прогресс.' : selectedCell.ropeRecommended ? 'Верёвка снижает вероятность происшествия и защищает обратный путь.' : 'Главный расход здесь дают высота, склон, погода и вес рюкзаков.'}</p>
+                    <div className="mg-active-gear" aria-label="Работающее снаряжение">
+                      {selectedRockGearActive && <span className={topo.gear.rockHardwareCondition < 35 ? 'is-critical' : ''}><i>СКАЛЫ</i><b>{Math.round(topo.gear.rockHardwareCondition)}%</b></span>}
+                      {selectedIceGearActive && <span className={topo.gear.iceHardwareCondition < 35 ? 'is-critical' : ''}><i>ЛЁД</i><b>{Math.round(topo.gear.iceHardwareCondition)}%</b></span>}
+                      {selectedProtected && <span className="is-working"><i>ВЕРЁВКА</i><b>закреплена</b></span>}
+                      {selectedLegacyRope && <span className="is-legacy"><i>СТАРАЯ ЛИНИЯ</i><b>проверить</b></span>}
+                      {!selectedRockGearActive && !selectedIceGearActive && !selectedProtected && !selectedLegacyRope && <span><i>СНАРЯЖЕНИЕ</i><b>не требуется</b></span>}
+                    </div>
                     <div className="mg-cell-compare">
-                      <span><small>БЕЗ ВЕРЁВКИ</small><strong>{selectedRiskWithoutRope.minutes} мин · риск {selectedRiskWithoutRope.score}</strong><em>силы −{selectedRiskWithoutRope.energy}</em></span>
-                      <span><small>С ВЕРЁВКОЙ</small><strong>{selectedRiskWithRope.minutes} мин · риск {selectedRiskWithRope.score}</strong><em>{selectedProtected ? 'линия закреплена' : `останется ${Math.max(0, topo.ropeMeters - 20)} м`}</em></span>
+                      <span><small>БЕЗ ВЕРЁВКИ</small><strong>{selectedRiskWithoutRope.minutes} мин · риск {selectedRiskWithoutRope.score}</strong><em>силы всей группы −{selectedRiskWithoutRope.energy}</em></span>
+                      <span><small>С ВЕРЁВКОЙ</small><strong>{selectedRiskWithRope.minutes} мин · риск {selectedRiskWithRope.score}</strong><em>{selectedProtected ? 'обратный путь защищён' : `установка +${Math.max(18, 44 - Math.max(technician.skills.ROCK, technician.skills.ICE) * 2)} мин · останется ${Math.max(0, topo.ropeMeters - 20)} м`}</em></span>
                     </div>
                   </section>
 
@@ -587,7 +666,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
 
         {activeTab === 'MOUNTAIN' && (
           <div role="tabpanel" className="mg-mountain-tab">
-            <MountainViewer grid={grid} route={globalRoute} routeName={routeName} selectedRoute={selectedRoute} stages={stages} side={topo.entrySide} currentStage={stageIndex} />
+            <MountainViewer grid={grid} route={globalRoute} routeName={routeName} selectedRoute={selectedRoute} stages={stages} side={topo.entrySide} currentStage={stageIndex} infrastructure={topo.infrastructure} currentLegacyRopes={rememberedInfrastructure.legacyRopes.length} />
           </div>
         )}
 

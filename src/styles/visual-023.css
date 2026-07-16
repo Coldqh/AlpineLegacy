@@ -1,0 +1,205 @@
+/* 0.23.0 — cinematic mountain materials and readable field map */
+.mountain-model {
+  isolation: isolate;
+  overflow: hidden;
+  border-color: rgba(176, 211, 198, .14);
+  background: #09120f;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.018), 0 24px 70px rgba(0,0,0,.24);
+}
+.mountain-model svg { background: #07110f; }
+.mountain-model__backdrop { fill: #07110f; }
+.mountain-model__sky-glow,
+.mountain-model__altitude-fog,
+.mountain-model__cloud-layer,
+.mountain-model__ground-shadow { pointer-events: none; }
+.mountain-model__ground-shadow { fill: rgba(0, 0, 0, .36); filter: blur(15px); }
+.mountain-model__cloud-layer { fill: rgba(213, 231, 224, .1); filter: blur(7px); }
+.mountain-model__cloud-layer--far { opacity: .38; animation: mountain-cloud-drift-far 24s ease-in-out infinite alternate; }
+.mountain-model__cloud-layer--near { opacity: .46; animation: mountain-cloud-drift-near 18s ease-in-out infinite alternate; }
+.mountain-model__altitude-fog { mix-blend-mode: screen; }
+.mountain-model__surface { transform-origin: 50% 64%; }
+.mountain-model__face { vector-effect: non-scaling-stroke; transition: opacity .18s ease; }
+.mountain-model__face.is-base { opacity: .98; }
+.mountain-model__face.is-glacier,
+.mountain-model__face.is-snow,
+.mountain-model__face.is-summit { filter: saturate(.92); }
+.mountain-model__surface-features line {
+  vector-effect: non-scaling-stroke;
+  fill: none;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.mountain-model__surface-features .is-ice { stroke: rgba(226, 250, 252, .58); stroke-width: 1.15; }
+.mountain-model__surface-features .is-rock { stroke: rgba(9, 13, 12, .38); stroke-width: 1.05; }
+.mountain-model__surface-features .is-ridge { stroke: rgba(246, 252, 249, .34); stroke-width: .9; }
+.mountain-model__route { filter: drop-shadow(0 0 4px currentColor); }
+.mountain-model--card .mountain-model__cloud-layer--near,
+.mountain-model--card .mountain-model__surface-features,
+.mountain-model--card .mountain-model__hint { display: none; }
+.mountain-model--card .mountain-model__altitude-fog { opacity: .68; }
+.mountain-model__marker path,
+.mountain-model__marker circle {
+  vector-effect: non-scaling-stroke;
+}
+.mountain-model__marker.is-current circle { fill: #f0784f; stroke: #fff; stroke-width: 2.5; filter: drop-shadow(0 0 7px rgba(240,120,79,.72)); }
+.mountain-model__marker.is-camp path { fill: rgba(18,35,29,.95); stroke: #78d2a8; stroke-width: 2.2; }
+.mountain-model__marker.is-rope path { fill: none; stroke: #f1bd68; stroke-width: 2.5; stroke-linecap: round; }
+.mountain-model__marker.is-trace path { fill: none; stroke: #c7a66e; stroke-width: 1.7; stroke-dasharray: 3 2; }
+.mountain-model__marker.is-hazard path { fill: rgba(111,29,20,.92); stroke: #ff9a7f; stroke-width: 1.8; }
+.mountain-model__marker-count {
+  fill: #fff !important;
+  stroke: none !important;
+  font-size: 7px !important;
+  font-weight: 900 !important;
+  text-anchor: middle;
+  paint-order: normal !important;
+}
+.mountain-model__controls { background: rgba(7,13,11,.94); }
+.mountain-model__controls button { background: rgba(24,37,32,.88); }
+.mountain-model__controls button:hover { border-color: rgba(130,200,216,.72); background: rgba(42,61,54,.95); }
+
+/* Local map: terrain first, symbols second. */
+.mg-local-map {
+  gap: 1px;
+  padding: 8px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(112, 160, 143, .12), transparent 58%),
+    linear-gradient(160deg, #0d1714, #07100e 72%);
+  box-shadow: inset 0 0 45px rgba(0,0,0,.32);
+}
+.mg-local-map::before { inset: 8px; opacity: .42; }
+.mg-local-cell {
+  border-color: rgba(235, 247, 241, .065);
+  box-shadow: inset -7px -8px 14px rgba(0,0,0, calc(.06 + var(--height-level) * .12)), inset 5px 5px 10px rgba(255,255,255,.035);
+}
+.mg-local-cell.terrain-valley { background: linear-gradient(145deg, #667c6c, #3d5146); }
+.mg-local-cell.terrain-scree { background: linear-gradient(145deg, #a9987b, #5f574a); }
+.mg-local-cell.terrain-glacier { background: linear-gradient(145deg, #d9f0f3, #729daa); }
+.mg-local-cell.terrain-snow { background: linear-gradient(145deg, #f1f6f4, #aebfc0); }
+.mg-local-cell.terrain-rock { background: linear-gradient(145deg, #6f6b62, #2e302d); }
+.mg-local-cell.terrain-ridge { background: linear-gradient(145deg, #e0ebe8, #879b98); }
+.mg-local-cell.terrain-summit { background: linear-gradient(145deg, #fffaf0, #c7d5d2); }
+.mg-local-cell.is-unknown:not(.is-current):not(.is-start) {
+  filter: saturate(.25) brightness(.38);
+  opacity: .9;
+}
+.mg-local-cell.is-unknown:not(.is-current):not(.is-start)::after {
+  opacity: .64;
+  background: radial-gradient(circle at 48% 42%, rgba(172,198,188,.09), transparent 42%), rgba(4,9,7,.36);
+}
+.mg-local-cell.is-revealed { filter: saturate(1.02) brightness(1); }
+.mg-local-cell.is-start::before,
+.mg-local-cell.is-goal::before { content: none; }
+.mg-local-cell.rope-required,
+.mg-local-cell.rope-recommended:not(.rope-required) { border-color: rgba(255,255,255,.08); }
+.mg-local-cell.rope-required { box-shadow: inset 0 0 0 1px rgba(225,96,68,.54), inset -7px -8px 14px rgba(0,0,0,.15); }
+.mg-local-cell.rope-required::after { opacity: .22; background: linear-gradient(135deg, transparent 45%, rgba(171,47,29,.52) 48% 52%, transparent 55%); }
+.mg-local-cell.rope-recommended:not(.rope-required) { box-shadow: inset 0 0 0 1px rgba(226,164,77,.42), inset -7px -8px 14px rgba(0,0,0,.12); }
+.mg-local-cell.camp-candidate { box-shadow: inset 0 0 0 1px rgba(80,183,137,.28), inset -7px -8px 14px rgba(0,0,0,.12); }
+.mg-local-cell.has-hazard { outline: none; }
+.mg-local-cell.is-route { box-shadow: inset 0 0 0 1.5px rgba(239,106,70,.7), inset -7px -8px 14px rgba(0,0,0,.12); }
+.mg-local-cell.is-selected { outline: 2px solid #7bd8c2; outline-offset: -2px; }
+.mg-local-cell.is-current { outline: 3px solid #fff; outline-offset: -2px; filter: brightness(1.12); }
+.mg-local-route-overlay { inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); }
+.mg-cell-height {
+  left: 3px;
+  right: auto;
+  bottom: 2px;
+  opacity: 0;
+  color: rgba(245,250,247,.82);
+  text-shadow: 0 1px 3px rgba(0,0,0,.7);
+}
+.mg-local-cell:hover .mg-cell-height,
+.mg-local-cell.is-current .mg-cell-height,
+.mg-local-cell.is-selected .mg-cell-height { opacity: .9; }
+.mg-unknown-mark,
+.mg-rope-required-mark,
+.mg-rope-recommended-mark,
+.mg-camp-dot,
+.mg-legacy-rope-mark,
+.mg-map-legend { display: none !important; }
+.mg-cell-symbols {
+  position: absolute;
+  inset: 2px;
+  z-index: 8;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 2px;
+  pointer-events: none;
+}
+.mg-cell-icon {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 5px;
+  color: #f4f8f5;
+  background: rgba(8,14,12,.82);
+  box-shadow: 0 2px 7px rgba(0,0,0,.3);
+}
+.mg-cell-icon svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.mg-cell-icon.is-start { margin-right: auto; color: #99e1c0; }
+.mg-cell-icon.is-goal { margin-right: auto; color: #ff9a73; }
+.mg-cell-icon.is-hazard { color: #ffc0ae; border-color: rgba(235,100,71,.48); background: rgba(83,25,18,.82); }
+.mg-cell-icon.is-rope-required { color: #ffb198; border-color: rgba(225,96,68,.45); }
+.mg-cell-icon.is-rope-recommended { color: #f1c37a; border-color: rgba(226,164,77,.42); }
+.mg-cell-icon.is-camp-site { color: #8fd4b2; opacity: .66; }
+.mg-cell-icon.is-camp { color: #baf0d4; border-color: rgba(80,183,137,.62); background: rgba(22,76,54,.84); }
+.mg-cell-icon.is-fixed-rope { color: #ffe0a4; border-color: rgba(238,182,82,.62); background: rgba(82,58,16,.84); }
+.mg-cell-icon.is-legacy-rope { color: #d6c298; border-color: rgba(181,150,91,.48); background: rgba(66,55,34,.78); opacity: .8; }
+.mg-tool-hint { max-width: 58%; color: rgba(234,243,238,.76); background: rgba(6,11,9,.74); backdrop-filter: blur(8px); }
+
+.mg-selected-cell-card > p strong { color: #edf4ef; font-weight: 700; }
+.mg-active-gear {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0;
+}
+.mg-active-gear span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  min-width: 110px;
+  padding: 6px 7px;
+  border: 1px solid rgba(130,200,216,.2);
+  border-radius: 7px;
+  background: rgba(130,200,216,.055);
+}
+.mg-active-gear i { color: #83c8d8; font-size: 7px; font-style: normal; letter-spacing: .08em; }
+.mg-active-gear b { color: #dfeae5; font-size: 8px; }
+.mg-active-gear span.is-working { border-color: rgba(98,183,143,.45); background: rgba(98,183,143,.08); }
+.mg-active-gear span.is-legacy { border-color: rgba(199,166,110,.4); background: rgba(199,166,110,.07); }
+.mg-active-gear span.is-critical { border-color: rgba(214,78,70,.55); background: rgba(214,78,70,.09); }
+
+@keyframes mountain-cloud-drift-far {
+  from { transform: translateX(-18px); }
+  to { transform: translateX(26px); }
+}
+@keyframes mountain-cloud-drift-near {
+  from { transform: translateX(22px); }
+  to { transform: translateX(-28px); }
+}
+
+@media (max-width: 760px) {
+  .mountain-model__cloud-layer--near { opacity: .32; }
+  .mountain-model__surface-features line { stroke-width: .7; }
+  .mg-local-map { padding: 4px; }
+  .mg-local-map::before { inset: 4px; }
+  .mg-local-route-overlay { inset: 4px; width: calc(100% - 8px); height: calc(100% - 8px); }
+  .mg-cell-symbols { inset: 1px; gap: 1px; }
+  .mg-cell-icon { width: 12px; height: 12px; border-radius: 3px; }
+  .mg-cell-icon svg { width: 9px; height: 9px; stroke-width: 2; }
+  .mg-cell-height { font-size: 6px; }
+  .mg-tool-hint { left: 8px; bottom: 8px; max-width: 72%; padding: 5px 6px; font-size: 7px; }
+  .mg-active-gear { gap: 3px; }
+  .mg-active-gear span { min-width: 0; padding: 5px 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mountain-model__cloud-layer--far,
+  .mountain-model__cloud-layer--near { animation: none; }
+}
