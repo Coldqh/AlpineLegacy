@@ -28,6 +28,8 @@ export type WorldAthleteStatus = 'ACTIVE' | 'INJURED' | 'RETIRED' | 'DEAD' | 'MI
 export type WorldEventType = 'EXPEDITION' | 'SUMMIT' | 'RETREAT' | 'RECORD' | 'INJURY' | 'DEATH' | 'RETIREMENT' | 'CLUB' | 'RIVALRY';
 export type WorldExpeditionOutcome = 'SUMMIT' | 'RETREAT' | 'FAILED' | 'TRAGEDY';
 export type MountainCharacterId = 'WEATHER' | 'TECHNICAL' | 'ENDURANCE' | 'ALTITUDE' | 'DESCENT';
+export type MountainFormId = 'SHARP_PYRAMID' | 'LONG_RIDGE' | 'GLACIER_DOME' | 'BROKEN_MASSIF' | 'TWIN_SUMMIT' | 'ASYMMETRIC_WALL';
+export type MountainCampPatternId = 'TERRACES' | 'GLACIER_BASINS' | 'HIGH_COL' | 'SPARSE' | 'BIVOUAC_ONLY';
 export type RouteChoiceTone = 'SAFE' | 'BALANCED' | 'BOLD';
 
 export type ParticipantActionTone = 'OBEY' | 'QUESTION' | 'REFUSE' | 'INITIATIVE' | 'CARE';
@@ -208,6 +210,21 @@ export interface ProfilePoint {
   y: number;
 }
 
+export interface MountainIdentity {
+  formId: MountainFormId;
+  formTitle: string;
+  signatureFeature: string;
+  approachCharacter: string;
+  middleCharacter: string;
+  upperCharacter: string;
+  campPatternId: MountainCampPatternId;
+  campPattern: string;
+  weatherRule: string;
+  descentProblem: string;
+  landmarkNames: string[];
+  generationSignature: string;
+}
+
 export interface MountainData {
   id: MountainId;
   regionId?: RegionId;
@@ -226,6 +243,7 @@ export interface MountainData {
   characterId: MountainCharacterId;
   characterTitle: string;
   characterDescription: string;
+  identity: MountainIdentity;
   status: string;
   summary: string;
   profilePoints: ProfilePoint[];
@@ -504,6 +522,10 @@ export interface ExpeditionRoute {
   estimatedDecisionCount?: number;
   expeditionScale?: ExpeditionScale;
   contentVersion?: number;
+  mountainFormId?: MountainFormId;
+  routeArchetype?: string;
+  signatureFeature?: string;
+  campRhythm?: string;
 }
 
 export interface PersonalityProfile {

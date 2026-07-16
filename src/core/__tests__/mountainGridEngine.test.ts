@@ -123,4 +123,16 @@ describe('mountain routes and local terrain gameplay', () => {
     expect(protectedRisk.rollbackCells).toBe(0);
   });
 
+  it('turns authored mountain forms into visibly different terrain fields', () => {
+    const pyramid = generateMountainGrid('AUTHORED-FORM', 620, 4980, 35, { formId: 'SHARP_PYRAMID', characterId: 'TECHNICAL' });
+    const dome = generateMountainGrid('AUTHORED-FORM', 620, 4980, 35, { formId: 'GLACIER_DOME', characterId: 'ALTITUDE' });
+    const wall = generateMountainGrid('AUTHORED-FORM', 620, 4980, 35, { formId: 'ASYMMETRIC_WALL', characterId: 'DESCENT' });
+
+    expect(pyramid.cells.map(cell => cell.elevation)).not.toEqual(dome.cells.map(cell => cell.elevation));
+    expect(dome.cells.filter(cell => cell.terrain === 'GLACIER' || cell.terrain === 'SNOW').length)
+      .toBeGreaterThan(pyramid.cells.filter(cell => cell.terrain === 'GLACIER' || cell.terrain === 'SNOW').length);
+    expect(wall.cells.map(cell => cell.elevation)).not.toEqual(dome.cells.map(cell => cell.elevation));
+    expect(dome.generationProfile.formId).toBe('GLACIER_DOME');
+  });
+
 });

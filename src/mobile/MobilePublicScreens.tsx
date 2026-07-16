@@ -101,6 +101,12 @@ export function MobileMountainScreen({ mountain, onBack, onCareer }: { mountain:
         <p className="m-kicker">{mountain.characterTitle}</p><h1>{mountain.name}</h1>
         <MountainArt points={mountain.profilePoints} variant="detail" label={mountain.name} elevation={mountain.elevation} />
         <div className="m-inline-meta"><span>Техника {mountain.technicality}</span><span>Высота {mountain.altitudeSeverity}</span><span>Удалённость {mountain.remoteness}</span></div>
+        <section className="m-authored-mountain">
+          <small>ХАРАКТЕР ГОРЫ</small>
+          <strong>{mountain.identity.signatureFeature}</strong>
+          <p>{mountain.identity.approachCharacter}. {mountain.identity.upperCharacter}.</p>
+          <dl><div><dt>Лагеря</dt><dd>{mountain.identity.campPattern}</dd></div><div><dt>Погода</dt><dd>{mountain.identity.weatherRule}</dd></div><div><dt>Спуск</dt><dd>{mountain.identity.descentProblem}</dd></div></dl>
+        </section>
         <button className="m-primary-card" onClick={onCareer}><span><small>КАРЬЕРА</small><strong>Подготовить экспедицию</strong></span><b>→</b></button>
         <details className="m-details"><summary>История вершины</summary>{mountain.history.map(item => <p key={item}>{item}</p>)}</details>
       </section>

@@ -1,16 +1,14 @@
 import { createRng } from './rng';
 import { createWorldEcosystem, hydrateWorldEcosystem } from './ecosystem';
 import { generateRoutesForWorld } from './routeFactory';
+import { authoredMountainHistory, authoredMountainLabels, authoredMountainSummary, generateMountainIdentity, hydrateMountainIdentity } from './mountainAuthorship';
 import type { MountainCharacterId, MountainData, RegionData, WorldSeedConfig, WorldState } from './types';
 
 const regionPrefix = ['Аур', 'Валь', 'Кард', 'Сер', 'Норд', 'Иль', 'Тар', 'Элд', 'Орт', 'Мер'];
 const regionSuffix = ['енские горы', 'ский хребет', 'ское нагорье', 'альпийская дуга', 'ские пики'];
 const mountainPrefix = ['Аль', 'Дор', 'Кай', 'Мор', 'Сен', 'Тир', 'Вар', 'Эйр', 'Кел', 'Рун', 'Ор', 'Ир'];
 const mountainSuffix = ['дан', 'рейн', 'гора', 'вальд', 'сар', 'мор', 'тир', 'лен', 'кар', 'нер'];
-const epithets = ['Белая тишина', 'Стена ветров', 'Последний гребень', 'Северный зуб', 'Чёрный лёд', 'Небесный бастион', 'Граница воздуха'];
 const climates = ['ледниково-континентальный', 'сухой высокогорный', 'штормовой морской', 'арктический альпийский'];
-const massifTypes = ['многогребневый массив', 'ледниковая пирамида', 'скально-ледовая стена', 'широкий высотный купол', 'изолированный пик'];
-const dangers = ['лавины и ветровые доски', 'камнепады и разрушенная порода', 'трещины и нестабильные сераки', 'ураганный ветер и белая мгла', 'смешанные скально-ледовые участки'];
 
 const mountainCharacters: Record<MountainCharacterId, { title: string; description: string }> = {
   WEATHER: {
@@ -46,14 +44,15 @@ function characterFor(seed: string, index: number) {
 
 export function hydrateWorld(world: WorldState): WorldState {
   const mountains = world.region.mountains.map((mountain, index) => {
-    if (mountain.characterId && mountain.characterTitle && mountain.characterDescription) return mountain;
-    const character = characterFor(world.config.seed, index);
-    return {
+    const character = mountain.characterId && mountain.characterTitle && mountain.characterDescription
+      ? { id: mountain.characterId, title: mountain.characterTitle, description: mountain.characterDescription }
+      : characterFor(world.config.seed, index);
+    return hydrateMountainIdentity(world.config.seed, index, {
       ...mountain,
       characterId: character.id,
       characterTitle: character.title,
       characterDescription: character.description,
-    };
+    } as MountainData);
   });
   const compatible = { ...world, schemaVersion: 2 as const, region: { ...world.region, mountains } } as WorldState;
   return hydrateWorldEcosystem(compatible);
@@ -90,10 +89,12 @@ function generateMountain(seed: string, index: number, min: number, max: number,
   const prestige = Math.round((technicality + altitudeSeverity + remoteness) / 3);
   const name = mountainName(rng);
   const character = characterFor(seed, index);
+  const identity = generateMountainIdentity(seed, index, character.id);
+  const labels = authoredMountainLabels(identity, character.id);
   return {
     id: `mtn-${index}-${Math.abs(seed.length * 97 + elevation)}`,
     name,
-    epithet: rng.pick(epithets),
+    epithet: labels.epithet,
     elevation,
     prominence: rng.int(620, Math.max(900, Math.round(elevation * 0.42))),
     technicality,
@@ -101,24 +102,16 @@ function generateMountain(seed: string, index: number, min: number, max: number,
     remoteness,
     prestige,
     climateBand: rng.pick(climates),
-    massifType: rng.pick(massifTypes),
-    dangerProfile: rng.pick(dangers),
+    massifType: labels.massifType,
+    dangerProfile: labels.dangerProfile,
     characterId: character.id,
     characterTitle: character.title,
     characterDescription: character.description,
+    identity,
     status: index === 0 ? 'Главная вершина региона' : rng.pick(['Малоизученная', 'Непокорённая', 'Известная клубная цель', 'Опасная зимняя цель']),
-    summary: `${name} — ${rng.pick(massifTypes)} с выраженной высотной нагрузкой. Основные угрозы: ${rng.pick(dangers)}. Успех потребует точного выбора окна, сильной связки и безопасного спуска.`,
-    profilePoints: generateProfile(`${seed}:${name}`, elevation),
-    history: (() => {
-      const firstYear = startYear - rng.int(52, 88);
-      const secondYear = firstYear + rng.int(16, 31);
-      const thirdYear = Math.min(startYear - 2, secondYear + rng.int(9, 24));
-      return [
-        `${firstYear} — первая документированная разведка массива.`,
-        `${secondYear} — экспедиция достигла высоты ${rng.int(Math.round(elevation * .62), Math.round(elevation * .88))} м и повернула назад.`,
-        `${thirdYear} — маршрут по ${rng.pick(['северному гребню', 'западной стене', 'южному леднику'])} вошёл в историю региона.`,
-      ];
-    })(),
+    summary: authoredMountainSummary(name, identity, labels.dangerProfile),
+    profilePoints: generateProfile(`${seed}:${name}:${identity.formId}`, elevation),
+    history: authoredMountainHistory(`${seed}:${name}`, startYear, elevation, identity),
   };
 }
 

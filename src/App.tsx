@@ -336,7 +336,8 @@ function App() {
             <div className="detail-summary"><p className="eyebrow">MOUNTAIN CHARACTER</p><p className="large-copy">{mountain.summary}</p></div>
             <div className="technical-table">
               {[
-                ['Массив', mountain.massifType], ['Климат', mountain.climateBand], ['Преобладающий риск', mountain.dangerProfile],
+                ['Массив', mountain.massifType], ['Ключевой ориентир', mountain.identity.signatureFeature], ['Климат', mountain.climateBand],
+                ['Логика лагерей', mountain.identity.campPattern], ['Преобладающий риск', mountain.dangerProfile], ['Проблема спуска', mountain.identity.descentProblem],
                 ['Выдающаяся высота', `${mountain.prominence} м`], ['Техническая сложность', `${mountain.technicality}/100`],
                 ['Высотная нагрузка', `${mountain.altitudeSeverity}/100`], ['Удалённость', `${mountain.remoteness}/100`], ['Престиж', `${mountain.prestige}/100`],
               ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}

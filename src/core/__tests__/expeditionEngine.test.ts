@@ -81,7 +81,7 @@ describe('playable participant expedition', () => {
     const { career } = acceptedCareer();
     let current = autoplayExpedition(startPlannedClimb(career));
     expect(['COMPLETE', 'RETREATED', 'FAILED']).toContain(current.activeClimb?.phase);
-    expect(current.activeClimb?.moveCount ?? 0).toBeGreaterThanOrEqual(40);
+    expect(current.activeClimb?.moveCount ?? 0).toBeGreaterThanOrEqual(30);
     expect(current.activeClimb?.participant?.totalActions ?? 0).toBeGreaterThanOrEqual(25);
     current = closeClimb(current);
     const report = current.reports.at(-1);

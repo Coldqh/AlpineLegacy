@@ -4017,3 +4017,33 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
 .career-goal-list article { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 12px; align-items: start; }
 .career-goal-list article > span { font-family: var(--serif); color: var(--muted); font-size: 18px; }
 .career-goal-list article > b { font-size: 8px; letter-spacing: .08em; white-space: nowrap; }
+
+/* 0.12.0 authored mountain generation */
+.mountain-authorship-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.mountain-authorship-facts > span {
+  display: grid;
+  gap: 5px;
+  min-height: 78px;
+  padding: 12px 13px;
+  border: 1px solid rgba(199, 218, 207, .16);
+  border-radius: 12px;
+  background: rgba(9, 16, 14, .42);
+}
+
+.mountain-authorship-facts small {
+  color: var(--muted, #91a39a);
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+
+.mountain-authorship-facts strong {
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 650;
+}

@@ -1107,10 +1107,13 @@ function createCareerIntegratedExpedition(
   ropeMeters = career.expeditionPlan.ropeMeters,
 ) {
   const gear = career.expeditionPlan.gear;
+  const entrySide = route.id.endsWith('east-glacier') ? 'EAST' : route.id.endsWith('north-line') ? 'NORTH' : 'SOUTH';
   return createIntegratedExpeditionState({
     seed: climbId,
     difficulty: career.difficulty,
     authority: career.expeditionPlan.authorityMode,
+    entrySide,
+    routeChoice: 'AUTO',
     ropeMeters,
     campKits: Math.max(0, (gear.tent ?? 0) + (gear.bivy ?? 0)),
     participants: integratedParticipants(career, team, startEnergy),

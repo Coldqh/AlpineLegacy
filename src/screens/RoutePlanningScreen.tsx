@@ -88,7 +88,13 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
           <span>{mountain.elevation} м · {mountain.dangerProfile}</span>
           <div className="mountain-character-callout"><small>{mountain.characterTitle}</small><p>{mountain.characterDescription}</p></div>
           <p>{mountain.summary}</p>
-          {route.isSignature && <div className="signature-mountain-note"><strong>Эта гора проработана глубже остальных.</strong><span>Здесь есть выбор линии внутри маршрута, закладки, стационарные верёвки и отдельный спуск.</span></div>}
+          <div className="mountain-authorship-facts">
+            <span><small>ФОРМА</small><strong>{mountain.identity.formTitle}</strong></span>
+            <span><small>ОРИЕНТИР</small><strong>{mountain.identity.signatureFeature}</strong></span>
+            <span><small>ЛАГЕРЯ</small><strong>{mountain.identity.campPattern}</strong></span>
+            <span><small>СПУСК</small><strong>{mountain.identity.descentProblem}</strong></span>
+          </div>
+          {route.isSignature && <div className="signature-mountain-note"><strong>Эталонная цель школы.</strong><span>Она выбрана для первого допуска, но остальные вершины используют тот же полноценный генератор маршрутов и решений.</span></div>}
         </div>
       </div>
 

@@ -404,7 +404,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.10.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.12.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -425,15 +425,25 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const [activeTab, setActiveTab] = useState<ExpeditionTab>(() => topo.started ? 'CLIMB' : 'EXPEDITION');
 
   const participantMode = topo.authority !== 'COMMAND';
+  const authoredRoute = integratedCareer.routes.find(route => route.id === climb.routeId);
+  const gridProfile = useMemo(() => ({
+    formId: authoredRoute?.mountainFormId,
+    characterId: authoredRoute?.mountainCharacterId,
+  }), [authoredRoute?.mountainFormId, authoredRoute?.mountainCharacterId]);
   const grid = useMemo(
-    () => generateMountainGrid(`${topo.seed}:v${topo.variant}`, topo.startElevation, topo.summitElevation),
-    [topo.seed, topo.variant, topo.startElevation, topo.summitElevation],
+    () => generateMountainGrid(`${topo.seed}:v${topo.variant}`, topo.startElevation, topo.summitElevation, undefined, gridProfile),
+    [topo.seed, topo.variant, topo.startElevation, topo.summitElevation, gridProfile],
   );
   const routeOptions = useMemo(() => buildMountainRouteOptions(grid, topo.entrySide), [grid, topo.entrySide]);
+  const authoredProfile = authoredRoute?.id.endsWith('east-glacier')
+    ? 'GLACIER'
+    : authoredRoute?.id.endsWith('north-line')
+      ? (authoredRoute.routeArchetype?.includes('TRAVERSE') ? 'RIDGE' : 'DIRECT')
+      : 'CLASSIC';
   const selectedRoute = routeOptions.find(option => option.id === topo.routeChoice)
-    ?? (participantMode || topo.routeChoice === 'AUTO' ? routeOptions[0] : undefined);
+    ?? (participantMode || topo.routeChoice === 'AUTO' ? routeOptions.find(option => option.profile === authoredProfile) ?? routeOptions[0] : undefined);
   const globalRoute = selectedRoute?.route ?? routeOptions[0]!.route;
-  const routeName = selectedRoute?.name ?? climb.routeName ?? 'Авторская линия по локальным картам';
+  const routeName = authoredRoute?.name ?? climb.routeName ?? selectedRoute?.name ?? 'Авторская линия по локальным картам';
   const stages = useMemo(
     () => buildMountainStages(grid, topo.entrySide, globalRoute, selectedRoute?.profile ?? 'CUSTOM'),
     [grid, topo.entrySide, globalRoute, selectedRoute?.profile],
@@ -553,7 +563,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     <main className="mg-app mg-expedition-shell">
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.10.0</span>
+          <span>ALPINE LEGACY / 0.12.0</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()}</small>
         </div>

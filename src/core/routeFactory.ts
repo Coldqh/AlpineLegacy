@@ -1,6 +1,17 @@
 import { detectTerrainModule } from '../content/terrainModules';
 import { attachContentMetadata } from './contentPipeline';
-import type { ExpeditionRoute, RouteGraph, RouteGraphNode, RouteSegment, SkillId, WorldState } from './types';
+import { createRng } from './rng';
+import type {
+  ExpeditionRoute,
+  MountainCharacterId,
+  MountainData,
+  RouteDecisionPoint,
+  RouteGraph,
+  RouteGraphNode,
+  RouteSegment,
+  SkillId,
+  WorldState,
+} from './types';
 
 function clamp(value: number, min = 0, max = 100) {
   return Math.max(min, Math.min(max, value));
@@ -72,31 +83,7 @@ function attachGraph(route: ExpeditionRoute): ExpeditionRoute {
   });
 }
 
-function splitGain(total: number, shares: number[]) {
-  const values = shares.map(share => Math.round(total * share));
-  values[values.length - 1] += total - values.reduce((sum, value) => sum + value, 0);
-  return values;
-}
-
-function segment(
-  id: string,
-  name: string,
-  terrain: string,
-  elevationGain: number,
-  baseDurationMinutes: number,
-  difficulty: number,
-  exposure: number,
-  skill: SkillId,
-  note: string,
-  campPossible: boolean,
-  hazard: string,
-): RouteSegment {
-  return { id, name, terrain, elevationGain, baseDurationMinutes, difficulty, exposure, skill, note, campPossible, hazard };
-}
-
 function expeditionStartElevation(world: WorldState, mountain: WorldState['region']['mountains'][number], offset = 0) {
-  // An expedition starts at the lower access point, not one kilometre below the summit.
-  // Region elevation only nudges the trailhead; the hard cap keeps every generated start readable.
   const regionalFloor = Math.min(520, Math.max(0, Math.round(world.region.elevationMin * .16)));
   const accessLift = Math.round((mountain.remoteness * 3.2 + mountain.prominence * .012) / 50) * 50;
   return clamp(regionalFloor + accessLift + offset, 0, 1000);
@@ -107,10 +94,9 @@ export function getQualificationTarget(world: WorldState) {
     (a.elevation * 0.012 + a.technicality + a.remoteness * 0.35) -
     (b.elevation * 0.012 + b.technicality + b.remoteness * 0.35),
   )[0]!;
-  const summitElevation = mountain.elevation;
   return {
     mountain,
-    summitElevation,
+    summitElevation: mountain.elevation,
     startElevation: expeditionStartElevation(world, mountain),
     displayName: mountain.name,
     subsidiary: false,
@@ -125,16 +111,16 @@ export function mountainDifficulty(mountain: WorldState['region']['mountains'][n
   return mountain.elevation * .01 + mountain.technicality * .72 + mountain.altitudeSeverity * .55 + mountain.remoteness * .32;
 }
 
-
 export function defaultDescentSegments(route: ExpeditionRoute): RouteSegment[] {
+  const descentCharacter = route.mountainCharacterId === 'DESCENT' ? 9 : route.mountainCharacterId === 'WEATHER' ? 5 : 0;
   return [...route.segments].reverse().map((item, index) => ({
     ...item,
     id: `${item.id}-descent`,
     name: index === route.segments.length - 1 ? 'Возвращение к старту' : `Спуск: ${item.name}`,
-    baseDurationMinutes: Math.round(item.baseDurationMinutes * .82),
-    difficulty: clamp(item.difficulty + 5),
-    exposure: clamp(item.exposure + (index < 2 ? 9 : 4)),
-    note: item.descentNote ?? `Усталость делает знакомый участок другим. ${item.note}`,
+    baseDurationMinutes: Math.round(item.baseDurationMinutes * (.82 + descentCharacter / 100)),
+    difficulty: clamp(item.difficulty + 5 + Math.round(descentCharacter * .45)),
+    exposure: clamp(item.exposure + (index < 2 ? 9 : 4) + descentCharacter),
+    note: item.descentNote ?? `Усталость меняет знакомый участок. ${item.note}`,
     hazard: index < 2 ? `${item.hazard}; ошибка на спуске` : item.hazard,
     campPossible: item.campPossible,
     linkedAscentSegmentId: item.id,
@@ -144,177 +130,344 @@ export function defaultDescentSegments(route: ExpeditionRoute): RouteSegment[] {
   }));
 }
 
-function signatureDecisionTemplates(route: ExpeditionRoute, routeIndex: number) {
-  const firstSegment = route.segments[Math.min(1, route.segments.length - 1)]!;
-  const keySegment = route.segments[Math.min(3, route.segments.length - 1)]!;
-  const prefix = `${route.id}-decision`;
-  if (routeIndex === 0) {
-    return [
-      {
-        id: `${prefix}-ribs`, segmentId: firstSegment.id, title: 'Разрушенные рёбра',
-        situation: 'Прямая линия короче, но под группой лежит рыхлая порода. Слева есть длинный обход по полке.',
-        options: [
-          { id: 'direct', title: 'Идти прямо', tone: 'BOLD' as const, description: 'Сэкономить время и быстрее выйти к леднику.', durationModifier: .78, energyModifier: 1.08, riskModifier: .09, resultNote: 'Группа выбрала короткую линию по разрушенным рёбрам.' },
-          { id: 'ledge', title: 'Обойти по полке', tone: 'SAFE' as const, description: 'Дольше находиться под склоном, но снизить риск срыва камней.', durationModifier: 1.28, energyModifier: .92, riskModifier: -.07, resultNote: 'Группа ушла на длинную защищённую полку.' },
-        ],
-      },
-      {
-        id: `${prefix}-ice`, segmentId: keySegment.id, title: 'Ледовый взлёт',
-        situation: 'Крутой лёд можно пройти быстро в движении или потратить верёвку на защищённую линию.',
-        options: [
-          { id: 'moving', title: 'Двигаться без закрепления', tone: 'BALANCED' as const, description: 'Не тратить верёвку, сохранить обычный темп.', durationModifier: 1, energyModifier: 1, riskModifier: .025, resultNote: 'Связка прошла взлёт без стационарной линии.' },
-          { id: 'protected', title: 'Подготовить защищённую линию', tone: 'SAFE' as const, description: 'Нужно не меньше 20 м свободной верёвки. Спуск по этому месту станет безопаснее.', durationModifier: 1.22, energyModifier: .94, riskModifier: -.08, requiresRopeMeters: 20, resultNote: 'Группа заранее подготовила линию для обратного пути.' },
-        ],
-      },
-    ];
+type MotifId =
+  | 'APPROACH'
+  | 'MORAINE'
+  | 'GLACIER_BASIN'
+  | 'CREVASSE_FIELD'
+  | 'ICEFALL'
+  | 'SNOW_COULOIR'
+  | 'ROCK_RIBS'
+  | 'ROCK_WALL'
+  | 'MIXED_RAMP'
+  | 'PLATEAU'
+  | 'TRAVERSE'
+  | 'HIGH_COL'
+  | 'FALSE_SUMMIT'
+  | 'WIND_GAP'
+  | 'RIDGE'
+  | 'CORNICE'
+  | 'SUMMIT_DOME';
+
+type RouteSlot = 'CLASSIC' | 'SECONDARY' | 'DIRECT';
+
+type MotifDefinition = {
+  terrain: string;
+  skill: SkillId;
+  difficultyDelta: number;
+  exposureDelta: number;
+  durationWeight: number;
+  campPossible: boolean;
+  hazard: string;
+  name: (mountain: MountainData, routeIndex: number) => string;
+  note: (mountain: MountainData) => string;
+};
+
+function landmark(mountain: MountainData, index: number) {
+  return mountain.identity.landmarkNames[index] ?? mountain.identity.landmarkNames[0] ?? mountain.name;
+}
+
+const MOTIFS: Record<MotifId, MotifDefinition> = {
+  APPROACH: {
+    terrain: 'Подходная тропа и долина', skill: 'ENDURANCE', difficultyDelta: -24, exposureDelta: -30, durationWeight: .75, campPossible: true, hazard: 'Потеря темпа',
+    name: mountain => `Подход через «${landmark(mountain, 0)}»`,
+    note: mountain => `${mountain.identity.approachCharacter}. Здесь группа проверяет груз и рабочий темп.`,
+  },
+  MORAINE: {
+    terrain: 'Морена и разрушенная осыпь', skill: 'ENDURANCE', difficultyDelta: -16, exposureDelta: -18, durationWeight: .8, campPossible: true, hazard: 'Камнепад и растяжение группы',
+    name: mountain => `Морена «${landmark(mountain, 0)}»`,
+    note: () => 'Неустойчивая порода быстро показывает перегруз и слабую координацию.',
+  },
+  GLACIER_BASIN: {
+    terrain: 'Открытый ледник и фирновая чаша', skill: 'NAVIGATION', difficultyDelta: -10, exposureDelta: -10, durationWeight: 1.05, campPossible: true, hazard: 'Скрытые трещины и потеря направления',
+    name: mountain => `Ледник «${landmark(mountain, 1)}»`,
+    note: mountain => `${mountain.identity.campPattern}. Дистанцию трудно оценить без стабильного темпа.`,
+  },
+  CREVASSE_FIELD: {
+    terrain: 'Лабиринт закрытых трещин', skill: 'NAVIGATION', difficultyDelta: 0, exposureDelta: 3, durationWeight: 1.05, campPossible: false, hazard: 'Провал снежного моста',
+    name: mountain => `Разломы «${landmark(mountain, 1)}»`,
+    note: () => 'Связка идёт медленно, постоянно проверяя мосты и возможную дугу обхода.',
+  },
+  ICEFALL: {
+    terrain: 'Ледопад и серачные обломки', skill: 'ICE', difficultyDelta: 8, exposureDelta: 12, durationWeight: .9, campPossible: false, hazard: 'Ледовый обвал',
+    name: mountain => `Серачная зона «${landmark(mountain, 1)}»`,
+    note: mountain => `${mountain.identity.weatherRule}. В опасной зоне нельзя терять время без причины.`,
+  },
+  SNOW_COULOIR: {
+    terrain: 'Крутой снежный кулуар', skill: 'ICE', difficultyDelta: 4, exposureDelta: 9, durationWeight: .85, campPossible: false, hazard: 'Лавинная доска и падающий лёд',
+    name: mountain => `Кулуар «${landmark(mountain, 2)}»`,
+    note: () => 'Состояние снега важнее очевидной короткой линии по центру.',
+  },
+  ROCK_RIBS: {
+    terrain: 'Разрушенные скальные рёбра', skill: 'ROCK', difficultyDelta: -2, exposureDelta: 2, durationWeight: .9, campPossible: false, hazard: 'Срыв камней',
+    name: mountain => `Рёбра «${landmark(mountain, 2)}»`,
+    note: () => 'Короткие стенки требуют аккуратных станций и не прощают растянутой группы.',
+  },
+  ROCK_WALL: {
+    terrain: 'Скальная стена', skill: 'ROCK', difficultyDelta: 13, exposureDelta: 18, durationWeight: 1.1, campPossible: false, hazard: 'Срыв и разрушение станции',
+    name: mountain => `Стена «${landmark(mountain, 2)}»`,
+    note: mountain => `${mountain.identity.middleCharacter}. После середины стены простой отход заканчивается.`,
+  },
+  MIXED_RAMP: {
+    terrain: 'Смешанная рампа: лёд и скалы', skill: 'ROCK', difficultyDelta: 10, exposureDelta: 13, durationWeight: 1, campPossible: false, hazard: 'Ошибка на смене рельефа',
+    name: mountain => `Рампа «${landmark(mountain, 2)}»`,
+    note: () => 'Линия постоянно меняет характер, поэтому скорость зависит от работы всей связки.',
+  },
+  PLATEAU: {
+    terrain: 'Высотное снежное плато', skill: 'ENDURANCE', difficultyDelta: -6, exposureDelta: -6, durationWeight: 1.2, campPossible: true, hazard: 'Истощение и потеря ориентиров',
+    name: mountain => `Плато «${landmark(mountain, 3)}»`,
+    note: mountain => `${mountain.identity.middleCharacter}. Рельеф прост, но высота не даёт быстро восстановиться.`,
+  },
+  TRAVERSE: {
+    terrain: 'Длинный смешанный траверс', skill: 'NAVIGATION', difficultyDelta: 3, exposureDelta: 8, durationWeight: 1.15, campPossible: false, hazard: 'Уход с линии и камнепад',
+    name: mountain => `Траверс к «${landmark(mountain, 3)}»`,
+    note: mountain => `${mountain.identity.descentProblem}. Все ориентиры нужно запоминать ещё на подъёме.`,
+  },
+  HIGH_COL: {
+    terrain: 'Высокая седловина и снежная площадка', skill: 'ENDURANCE', difficultyDelta: -4, exposureDelta: 0, durationWeight: .8, campPossible: true, hazard: 'Ветер и переохлаждение',
+    name: mountain => `Седловина «${landmark(mountain, 3)}»`,
+    note: mountain => `${mountain.identity.campPattern}. Это последняя полноценная точка оценки состояния.`,
+  },
+  FALSE_SUMMIT: {
+    terrain: 'Ложная вершина и открытое плечо', skill: 'ENDURANCE', difficultyDelta: 1, exposureDelta: 10, durationWeight: 1.05, campPossible: false, hazard: 'Потеря времени и резерва',
+    name: mountain => `Ложная вершина «${landmark(mountain, 3)}»`,
+    note: mountain => `${mountain.identity.upperCharacter}. После выхода на плечо маршрут ещё не заканчивается.`,
+  },
+  WIND_GAP: {
+    terrain: 'Ветровой провал гребня', skill: 'NAVIGATION', difficultyDelta: 4, exposureDelta: 18, durationWeight: .75, campPossible: false, hazard: 'Порывы и обледенение',
+    name: mountain => `Ветровой разрыв «${landmark(mountain, 3)}»`,
+    note: mountain => `${mountain.identity.weatherRule}. Здесь легко потерять равновесие и нужный выход.`,
+  },
+  RIDGE: {
+    terrain: 'Смешанный вершинный гребень', skill: 'ROCK', difficultyDelta: 7, exposureDelta: 16, durationWeight: .95, campPossible: false, hazard: 'Карниз и штормовой ветер',
+    name: mountain => `Гребень «${landmark(mountain, 3)}»`,
+    note: mountain => `${mountain.identity.upperCharacter}. Узкая линия не даёт группе растянуться.`,
+  },
+  CORNICE: {
+    terrain: 'Снежная кромка и карнизы', skill: 'NAVIGATION', difficultyDelta: 6, exposureDelta: 20, durationWeight: .8, campPossible: false, hazard: 'Обрушение карниза',
+    name: mountain => `Кромка «${landmark(mountain, 3)}»`,
+    note: () => 'Безопасная линия проходит ниже очевидного края и требует точной навигации.',
+  },
+  SUMMIT_DOME: {
+    terrain: 'Вершинный купол и снег', skill: 'ENDURANCE', difficultyDelta: 2, exposureDelta: 12, durationWeight: .85, campPossible: false, hazard: 'Высота, холод и потеря видимости',
+    name: mountain => `Верхний купол «${landmark(mountain, 3)}»`,
+    note: mountain => `${mountain.identity.upperCharacter}. На вершине нужно оставить силы на ${mountain.identity.descentProblem}.`,
+  },
+};
+
+type RouteRecipe = {
+  slot: RouteSlot;
+  idSuffix: 'south-ridge' | 'east-glacier' | 'north-line';
+  startOffset: number;
+  archetype: string;
+  style: string;
+  name: (mountain: MountainData) => string;
+  summary: (mountain: MountainData) => string;
+  motifs: MotifId[];
+  difficultyBias: number;
+  riskBias: number;
+  durationBias: number;
+  gear: string[];
+};
+
+const CHARACTER_RECIPES: Record<MountainCharacterId, RouteRecipe[]> = {
+  WEATHER: [
+    { slot: 'CLASSIC', idSuffix: 'south-ridge', startOffset: 0, archetype: 'SHELTERED_LINE', style: 'Защищённая смешанная линия', name: mountain => `Защищённый путь через «${landmark(mountain, 0)}»`, summary: mountain => `Линия использует внутренние террасы и выходит на верх только в районе «${landmark(mountain, 3)}». Она длиннее прямого пути, но лучше переживает раннее ухудшение погоды.`, motifs: ['APPROACH', 'MORAINE', 'GLACIER_BASIN', 'ROCK_RIBS', 'HIGH_COL', 'WIND_GAP', 'RIDGE'], difficultyBias: -6, riskBias: -5, durationBias: 1.08, gear: ['rope', 'rock-kit', 'ice-kit', 'stove', 'medkit', 'bivy'] },
+    { slot: 'SECONDARY', idSuffix: 'east-glacier', startOffset: -50, archetype: 'WEATHER_GLACIER', style: 'Ледниковая дуга', name: mountain => `Ледниковая дуга «${landmark(mountain, 1)}»`, summary: mountain => `Широкая линия с хорошими лагерями, но весь верх лежит на открытом плато. ${mountain.identity.weatherRule}.`, motifs: ['APPROACH', 'GLACIER_BASIN', 'CREVASSE_FIELD', 'PLATEAU', 'FALSE_SUMMIT', 'CORNICE', 'SUMMIT_DOME'], difficultyBias: 0, riskBias: 2, durationBias: 1.18, gear: ['rope', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'] },
+    { slot: 'DIRECT', idSuffix: 'north-line', startOffset: 50, archetype: 'WINDWARD_RIDGE', style: 'Ветровая прямая линия', name: mountain => `Ветровой гребень «${landmark(mountain, 3)}»`, summary: mountain => `Короткая линия быстро набирает высоту и почти не даёт укрытий. Ошибка во времени оставляет группу на гребне в момент усиления ветра.`, motifs: ['APPROACH', 'SNOW_COULOIR', 'MIXED_RAMP', 'WIND_GAP', 'RIDGE', 'CORNICE'], difficultyBias: 8, riskBias: 13, durationBias: .88, gear: ['rope', 'rock-kit', 'ice-kit', 'medkit', 'bivy'] },
+  ],
+  TECHNICAL: [
+    { slot: 'CLASSIC', idSuffix: 'south-ridge', startOffset: 0, archetype: 'MIXED_RIBS', style: 'Смешанные рёбра', name: mountain => `Рёбра «${landmark(mountain, 2)}»`, summary: mountain => `Маршрут собирает несколько коротких технических ключей вместо одной большой стены. ${mountain.identity.campPattern}.`, motifs: ['APPROACH', 'MORAINE', 'ROCK_RIBS', 'GLACIER_BASIN', 'MIXED_RAMP', 'HIGH_COL', 'RIDGE'], difficultyBias: -2, riskBias: -2, durationBias: 1.03, gear: ['rope', 'rock-kit', 'ice-kit', 'stove', 'medkit'] },
+    { slot: 'SECONDARY', idSuffix: 'east-glacier', startOffset: -50, archetype: 'ICE_LINE', style: 'Ледовая техническая линия', name: mountain => `Ледовая линия «${landmark(mountain, 1)}»`, summary: mountain => `Трещины, ледопад и крутая верхняя рампа требуют сильной ледовой связки. Хорошая техника сокращает время под объективными опасностями.`, motifs: ['APPROACH', 'GLACIER_BASIN', 'CREVASSE_FIELD', 'ICEFALL', 'MIXED_RAMP', 'CORNICE', 'SUMMIT_DOME'], difficultyBias: 5, riskBias: 6, durationBias: 1.06, gear: ['rope', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'] },
+    { slot: 'DIRECT', idSuffix: 'north-line', startOffset: 50, archetype: 'PRIMARY_WALL', style: 'Прямая стеновая линия', name: mountain => `Стена «${landmark(mountain, 2)}»`, summary: mountain => `Самая короткая и тяжёлая линия массива. После входа в стену лагерь и простой отход исчезают, а верх приходится искать через смешанный рельеф.`, motifs: ['APPROACH', 'SNOW_COULOIR', 'ROCK_WALL', 'MIXED_RAMP', 'WIND_GAP', 'RIDGE'], difficultyBias: 14, riskBias: 14, durationBias: .94, gear: ['rope', 'rock-kit', 'ice-kit', 'medkit', 'bivy'] },
+  ],
+  ENDURANCE: [
+    { slot: 'CLASSIC', idSuffix: 'south-ridge', startOffset: 0, archetype: 'LONG_CLASSIC', style: 'Длинный классический маршрут', name: mountain => `Большой путь через «${landmark(mountain, 0)}»`, summary: mountain => `Маршрут делится на логичные лагеря, но каждый день остаётся длинным. Главная задача — не потратить резерв до верхнего гребня.`, motifs: ['APPROACH', 'MORAINE', 'GLACIER_BASIN', 'PLATEAU', 'HIGH_COL', 'FALSE_SUMMIT', 'RIDGE', 'SUMMIT_DOME'], difficultyBias: -7, riskBias: -4, durationBias: 1.3, gear: ['rope', 'rock-kit', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'] },
+    { slot: 'SECONDARY', idSuffix: 'east-glacier', startOffset: -50, archetype: 'BASIN_CIRCUIT', style: 'Ледниковый обход массива', name: mountain => `Большая дуга «${landmark(mountain, 1)}»`, summary: mountain => `Технически спокойная дуга проходит через несколько чаш и плато. Расстояние, высота лагерей и расход топлива важнее одного сложного участка.`, motifs: ['APPROACH', 'GLACIER_BASIN', 'CREVASSE_FIELD', 'PLATEAU', 'TRAVERSE', 'HIGH_COL', 'FALSE_SUMMIT', 'SUMMIT_DOME'], difficultyBias: -3, riskBias: 0, durationBias: 1.42, gear: ['rope', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'] },
+    { slot: 'DIRECT', idSuffix: 'north-line', startOffset: 50, archetype: 'SKYLINE_TRAVERSE', style: 'Длинный высотный траверс', name: mountain => `Траверс «${landmark(mountain, 3)}»`, summary: mountain => `Линия быстрее выходит наверх, но потом долго идёт по ложным вершинам. Отступление возможно, но не возвращает потраченное время и силы.`, motifs: ['APPROACH', 'ROCK_RIBS', 'TRAVERSE', 'FALSE_SUMMIT', 'WIND_GAP', 'RIDGE', 'SUMMIT_DOME'], difficultyBias: 5, riskBias: 8, durationBias: 1.17, gear: ['rope', 'rock-kit', 'ice-kit', 'stove', 'medkit', 'bivy'] },
+  ],
+  ALTITUDE: [
+    { slot: 'CLASSIC', idSuffix: 'south-ridge', startOffset: 0, archetype: 'CAMP_ROUTE', style: 'Многоэтапная высотная линия', name: mountain => `Лагерный путь через «${landmark(mountain, 3)}»`, summary: mountain => `Самая надёжная линия строится вокруг последовательных ночёвок и переносов груза. Технические места короткие, но всё происходит на большой высоте.`, motifs: ['APPROACH', 'MORAINE', 'GLACIER_BASIN', 'PLATEAU', 'HIGH_COL', 'FALSE_SUMMIT', 'SUMMIT_DOME'], difficultyBias: -8, riskBias: -3, durationBias: 1.34, gear: ['rope', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'] },
+    { slot: 'SECONDARY', idSuffix: 'east-glacier', startOffset: -50, archetype: 'HIGH_PLATEAU', style: 'Высотное ледниковое плато', name: mountain => `Белое плато «${landmark(mountain, 1)}»`, summary: mountain => `Длинная открытая линия с небольшим числом технических ключей. Она требует сильной акклиматизации и точного контроля воды.`, motifs: ['APPROACH', 'GLACIER_BASIN', 'CREVASSE_FIELD', 'PLATEAU', 'PLATEAU', 'CORNICE', 'SUMMIT_DOME'], difficultyBias: -2, riskBias: 3, durationBias: 1.25, gear: ['rope', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'] },
+    { slot: 'DIRECT', idSuffix: 'north-line', startOffset: 50, archetype: 'SUMMIT_PUSH', style: 'Быстрый высотный штурм', name: mountain => `Прямая к «${landmark(mountain, 3)}»`, summary: mountain => `Короткая линия экономит расстояние, но пропускает удобные лагеря. Слабая акклиматизация превращает верхний склон в главную опасность.`, motifs: ['APPROACH', 'SNOW_COULOIR', 'MIXED_RAMP', 'PLATEAU', 'FALSE_SUMMIT', 'SUMMIT_DOME'], difficultyBias: 6, riskBias: 12, durationBias: .91, gear: ['rope', 'ice-kit', 'stove', 'medkit', 'bivy'] },
+  ],
+  DESCENT: [
+    { slot: 'CLASSIC', idSuffix: 'south-ridge', startOffset: 0, archetype: 'MEMORY_ROUTE', style: 'Классическая линия с отдельным спуском', name: mountain => `Путь ориентиров «${landmark(mountain, 0)}»`, summary: mountain => `Подъём читается уверенно, но траверсы и развилки нужно запоминать. ${mountain.identity.descentProblem}.`, motifs: ['APPROACH', 'MORAINE', 'ROCK_RIBS', 'TRAVERSE', 'HIGH_COL', 'RIDGE', 'SUMMIT_DOME'], difficultyBias: -4, riskBias: 2, durationBias: 1.08, gear: ['rope', 'rock-kit', 'ice-kit', 'stove', 'medkit', 'bivy'] },
+    { slot: 'SECONDARY', idSuffix: 'east-glacier', startOffset: -50, archetype: 'HANGING_GLACIER', style: 'Ледниковая линия с тяжёлым возвращением', name: mountain => `Висячий ледник «${landmark(mountain, 1)}»`, summary: mountain => `Подъём проходит по понятному леднику, но на спуске снежные мосты и сераки выглядят иначе. Защищённые точки нужно готовить заранее.`, motifs: ['APPROACH', 'GLACIER_BASIN', 'CREVASSE_FIELD', 'ICEFALL', 'PLATEAU', 'CORNICE', 'SUMMIT_DOME'], difficultyBias: 0, riskBias: 8, durationBias: 1.13, gear: ['rope', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'] },
+    { slot: 'DIRECT', idSuffix: 'north-line', startOffset: 50, archetype: 'ONE_WAY_FACE', style: 'Стеновая линия с отдельным отходом', name: mountain => `Северный щит «${landmark(mountain, 2)}»`, summary: mountain => `Прямой подъём заканчивается на вершине, но спуск по стене слишком дорог. Группа должна сохранить силы для длинного выхода по соседнему гребню.`, motifs: ['APPROACH', 'SNOW_COULOIR', 'ROCK_WALL', 'MIXED_RAMP', 'WIND_GAP', 'RIDGE'], difficultyBias: 12, riskBias: 16, durationBias: 1.02, gear: ['rope', 'rock-kit', 'ice-kit', 'medkit', 'bivy'] },
+  ],
+};
+
+function splitGain(total: number, weights: number[]) {
+  const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+  const values = weights.map(weight => Math.round(total * weight / Math.max(1, weightTotal)));
+  values[values.length - 1] += total - values.reduce((sum, value) => sum + value, 0);
+  return values;
+}
+
+function decisionForSegment(route: ExpeditionRoute, segment: RouteSegment, index: number): RouteDecisionPoint {
+  const id = `${route.id}-decision-${index + 1}`;
+  const normalized = `${segment.terrain} ${segment.hazard}`.toLowerCase();
+  if (normalized.includes('трещин') || normalized.includes('ледник')) {
+    return {
+      id, segmentId: segment.id, title: segment.name,
+      situation: 'Прямая линия короче, но снежные мосты не проверены. По краю рельеф читается лучше, зато группа дольше остаётся на высоте.',
+      options: [
+        { id: 'probe', title: 'Проверять прямую линию', tone: 'BALANCED', description: 'Идти медленно в связке и проверять каждый подозрительный мост.', durationModifier: 1.08, energyModifier: 1, riskModifier: -.025, requiresGearId: 'rope', resultNote: 'Группа прошла участок по проверенной прямой линии.' },
+        { id: 'outer-arc', title: 'Внешняя дуга', tone: 'SAFE', description: 'Потратить больше времени на хорошо читаемый край ледника.', durationModifier: 1.28, energyModifier: .96, riskModifier: -.075, resultNote: 'Группа обошла центральную зону по внешней дуге.' },
+      ],
+    };
   }
-  if (routeIndex === 1) {
-    return [
-      {
-        id: `${prefix}-crevasses`, segmentId: firstSegment.id, title: 'Лабиринт трещин',
-        situation: 'Старая линия короче, но мосты после снегопада не проверены. Внешняя дуга длиннее и лучше читается.',
-        options: [
-          { id: 'old-track', title: 'Старая линия', tone: 'BOLD' as const, description: 'Сохранить около часа, принять риск скрытого моста.', durationModifier: .74, energyModifier: 1.03, riskModifier: .11, resultNote: 'Группа пошла по старой линии через закрытые трещины.' },
-          { id: 'outer-arc', title: 'Внешняя дуга', tone: 'SAFE' as const, description: 'Потратить время на проверяемый рельеф.', durationModifier: 1.34, energyModifier: .94, riskModifier: -.08, resultNote: 'Группа обошла центр ледника по внешней дуге.' },
-        ],
-      },
-      {
-        id: `${prefix}-serac`, segmentId: keySegment.id, title: 'Серачная зона',
-        situation: 'Под обломками нельзя стоять. Можно форсировать участок или переждать холодный час у защищённой стенки.',
-        options: [
-          { id: 'dash', title: 'Форсировать', tone: 'BOLD' as const, description: 'Быстрее выйти из зоны, сильнее нагрузить группу.', durationModifier: .66, energyModifier: 1.3, riskModifier: .065, resultNote: 'Группа форсировала серачную зону без остановки.' },
-          { id: 'cold-hour', title: 'Ждать холодный час', tone: 'BALANCED' as const, description: 'Потратить время и часть запасов, снизить вероятность обвала.', durationModifier: 1.38, energyModifier: .88, riskModifier: -.065, resultNote: 'Группа дождалась более холодного часа у защищённой стенки.' },
-        ],
-      },
-    ];
+  if (normalized.includes('стен') || normalized.includes('скал') || normalized.includes('микст') || normalized.includes('рёбр')) {
+    return {
+      id, segmentId: segment.id, title: segment.name,
+      situation: 'Прямая линия быстрее, но станции придётся собирать на ходу. Боковая полка длиннее и позволяет оставить защищённый путь для спуска.',
+      options: [
+        { id: 'direct', title: 'Прямая линия', tone: 'BOLD', description: 'Сэкономить время и сохранить верёвку для верхней части.', durationModifier: .82, energyModifier: 1.1, riskModifier: .085, resultNote: 'Связка выбрала прямую техническую линию.' },
+        { id: 'protected', title: 'Защищённая полка', tone: 'SAFE', description: 'Потратить 25 м верёвки и подготовить обратный путь.', durationModifier: 1.22, energyModifier: .97, riskModifier: -.08, requiresRopeMeters: 25, resultNote: 'Группа оставила защищённую линию для возвращения.' },
+      ],
+    };
   }
+  if (normalized.includes('лавин') || normalized.includes('снег') || normalized.includes('кулуар')) {
+    return {
+      id, segmentId: segment.id, title: segment.name,
+      situation: 'Слой ещё холодный, но солнце уже касается склона. Можно быстро пересечь центр или уйти на длинный каменный край.',
+      options: [
+        { id: 'cross-now', title: 'Пересечь сейчас', tone: 'BOLD', description: 'Сократить время на склоне, сильнее нагрузить группу.', durationModifier: .72, energyModifier: 1.22, riskModifier: .055, resultNote: 'Группа форсировала снежный склон одним рывком.' },
+        { id: 'rock-edge', title: 'Каменный край', tone: 'SAFE', description: 'Дольше двигаться по неровному рельефу, снизить лавинный риск.', durationModifier: 1.3, energyModifier: 1.03, riskModifier: -.075, resultNote: 'Группа обошла центр склона по каменному краю.' },
+      ],
+    };
+  }
+  if (normalized.includes('греб') || normalized.includes('карниз') || normalized.includes('ветр') || normalized.includes('кромк')) {
+    return {
+      id, segmentId: segment.id, title: segment.name,
+      situation: 'По самой кромке быстрее, но ветер и карнизы не оставляют запаса. Ниже гребня рельеф тяжелее, зато линия защищена.',
+      options: [
+        { id: 'crest', title: 'По кромке', tone: 'BOLD', description: 'Сохранить время и принять открытость ветру.', durationModifier: .78, energyModifier: 1.05, riskModifier: .1, resultNote: 'Группа осталась на открытой кромке гребня.' },
+        { id: 'lee-side', title: 'Подветренный склон', tone: 'SAFE', description: 'Идти медленнее по смешанному рельефу под гребнем.', durationModifier: 1.24, energyModifier: 1.04, riskModifier: -.07, resultNote: 'Группа ушла под кромку на защищённую сторону.' },
+      ],
+    };
+  }
+  return {
+    id, segmentId: segment.id, title: segment.name,
+    situation: 'До следующей безопасной точки ещё несколько часов. Можно сохранить рабочий темп или сделать ранний лагерь и потерять часть погодного окна.',
+    options: [
+      { id: 'continue', title: 'Продолжить', tone: 'BALANCED', description: 'Сохранить план и прийти к следующей площадке в текущем окне.', durationModifier: 1, energyModifier: 1.08, riskModifier: .025, resultNote: 'Группа продолжила движение без дополнительной ночёвки.' },
+      { id: 'early-camp', title: 'Ранний лагерь', tone: 'SAFE', description: 'Потратить время и запасы, восстановить группу перед верхом.', durationModifier: 1.36, energyModifier: .82, riskModifier: -.06, requiresGearId: 'bivy', resultNote: 'Группа поставила ранний лагерь перед верхней частью.' },
+    ],
+  };
+}
+
+function decisionIndexes(segments: RouteSegment[]) {
+  const candidates = segments
+    .map((segment, index) => ({ segment, index }))
+    .filter(({ segment, index }) => index > 0 && index < segments.length - 1 && !segment.campPossible);
+  if (!candidates.length) return [];
+  const first = candidates[Math.min(candidates.length - 1, Math.floor(candidates.length * .28))]!;
+  const second = candidates[Math.min(candidates.length - 1, Math.floor(candidates.length * .72))]!;
+  return first.index === second.index ? [first.index] : [first.index, second.index];
+}
+
+function routeStoryFor(mountain: MountainData, recipe: RouteRecipe, segments: RouteSegment[]) {
+  const firstCamp = segments.find(segment => segment.campPossible && segment.skill !== 'ENDURANCE') ?? segments.find(segment => segment.campPossible);
+  const key = [...segments].sort((a, b) => b.difficulty + b.exposure - (a.difficulty + a.exposure))[0]!;
   return [
-    {
-      id: `${prefix}-couloir`, segmentId: firstSegment.id, title: 'Тёмный кулуар',
-      situation: 'Центр кулуара быстрее, но собирает лёд и камни. Правый край требует сложного микста.',
-      options: [
-        { id: 'center', title: 'Центр кулуара', tone: 'BOLD' as const, description: 'Короткая линия под объективными опасностями.', durationModifier: .72, energyModifier: 1.06, riskModifier: .12, resultNote: 'Связка пошла по центру кулуара.' },
-        { id: 'right-mixed', title: 'Правый микст', tone: 'SAFE' as const, description: 'Технически тяжелее, но меньше времени под падающим льдом.', durationModifier: 1.2, energyModifier: 1.1, riskModifier: -.055, resultNote: 'Связка ушла на правый микстовый край.' },
-      ],
-    },
-    {
-      id: `${prefix}-wall`, segmentId: keySegment.id, title: 'Северная стена',
-      situation: 'После стены простой отход закончится. Можно оставить стационарную линию или сохранить верёвку для верхней части.',
-      options: [
-        { id: 'free', title: 'Сохранить верёвку', tone: 'BOLD' as const, description: 'Меньше времени сейчас, сложнее аварийный спуск.', durationModifier: .86, energyModifier: 1.08, riskModifier: .07, resultNote: 'Группа прошла стену без оставленной линии.' },
-        { id: 'fixed', title: 'Оставить 30 м верёвки', tone: 'SAFE' as const, description: 'Потратить верёвку и время, создать защищённый отход.', durationModifier: 1.28, energyModifier: .96, riskModifier: -.09, requiresRopeMeters: 30, resultNote: 'На стене оставлена стационарная линия.' },
-      ],
-    },
+    `${mountain.identity.approachCharacter}. Нижняя часть выводит к ${firstCamp?.name ?? segments[1]?.name ?? segments[0]!.name}.`,
+    `Характер линии «${recipe.archetype}» определяет участок ${key.name}: здесь маршрут требует главного навыка и меняет запас на спуск.`,
+    `${mountain.identity.upperCharacter}. После вершины ${mountain.identity.descentProblem}.`,
   ];
 }
 
-function enrichRouteForVerticalSlice(route: ExpeditionRoute, routeIndex: number, signatureMountain: boolean): ExpeditionRoute {
-  const decisions = signatureMountain ? signatureDecisionTemplates(route, routeIndex) : [];
-  const bySegment = new Map(decisions.map(item => [item.segmentId, item.id]));
-  const segments = route.segments.map((item, index) => ({
-    ...item,
-    terrainModuleId: item.terrainModuleId ?? detectTerrainModule(item.terrain).id,
-    decisionId: bySegment.get(item.id),
-    noReturn: signatureMountain && index >= Math.ceil(route.segments.length * .58),
-    safeHaven: item.campPossible,
-    descentNote: index >= route.segments.length - 2
-      ? 'На обратном пути здесь мало места, а усталость усиливает каждую ошибку.'
-      : item.note,
-  }));
-  const enriched = { ...route, segments };
-  return attachGraph({
-    ...enriched,
-    isSignature: signatureMountain,
-    decisions,
-    descentSegments: defaultDescentSegments(enriched),
-    routeStory: signatureMountain ? [
-      'Нижняя часть позволяет проверить темп и оставить запас до серьёзного рельефа.',
-      'Средняя часть содержит выбор линии, который меняет время, риск и обратный путь.',
-      'После верхней трети простого отхода нет: вершина требует сохранённого резерва на спуск.',
-    ] : undefined,
-    descentSummary: signatureMountain
-      ? 'Спуск идёт отдельной линией: знакомые места становятся опаснее из-за усталости, снятия страховки и времени без сна.'
-      : 'Обратный путь повторяет основные элементы маршрута и становится тяжелее из-за накопленной усталости.',
-  });
-}
-
-function makeMountainRoutes(world: WorldState, mountain: WorldState['region']['mountains'][number]): ExpeditionRoute[] {
+function makeRoute(world: WorldState, mountain: MountainData, recipe: RouteRecipe, routeIndex: number, signatureMountain: boolean): ExpeditionRoute {
   const eraPenalty = routeEraPenalty(world);
-  const startElevation = expeditionStartElevation(world, mountain);
+  const startElevation = expeditionStartElevation(world, mountain, recipe.startOffset);
   const actualGain = Math.max(1, mountain.elevation - startElevation);
-  const baseDifficulty = mountain.technicality * .48 + mountain.altitudeSeverity * .32 + mountain.remoteness * .16 + eraPenalty;
-  const baseRisk = mountain.altitudeSeverity * .36 + mountain.remoteness * .22 + mountain.technicality * .24;
-  const characterTech = mountain.characterId === 'TECHNICAL' ? 9 : 0;
-  const characterRisk = mountain.characterId === 'WEATHER' ? 8 : mountain.characterId === 'DESCENT' ? 6 : 0;
-  const characterHours = mountain.characterId === 'ENDURANCE' ? 1.18 : 1;
+  const baseDifficulty = mountain.technicality * .5 + mountain.altitudeSeverity * .23 + mountain.remoteness * .12 + eraPenalty + recipe.difficultyBias;
+  const baseRisk = mountain.altitudeSeverity * .34 + mountain.remoteness * .21 + mountain.technicality * .25 + recipe.riskBias;
+  const characterDifficulty = mountain.characterId === 'TECHNICAL' ? 7 : mountain.characterId === 'ALTITUDE' ? 2 : 0;
+  const characterRisk = mountain.characterId === 'WEATHER' ? 8 : mountain.characterId === 'DESCENT' ? 7 : 0;
+  const gains = splitGain(actualGain, recipe.motifs.map(id => MOTIFS[id].durationWeight));
   const slug = mountain.id.replace(/[^a-zA-Z0-9-]/g, '-');
+  const routeId = `${slug}-${recipe.idSuffix}`;
+  const rng = createRng(`${world.config.seed}:${mountain.id}:${recipe.slot}:authored-route`);
 
-  const eastStartElevation = expeditionStartElevation(world, mountain, -50);
-  const northStartElevation = expeditionStartElevation(world, mountain, 50);
-  const ridgeGain = splitGain(mountain.elevation - startElevation, [.12, .18, .22, .21, .27]);
-  const glacierGain = splitGain(mountain.elevation - eastStartElevation, [.1, .16, .18, .19, .17, .2]);
-  const faceGain = splitGain(mountain.elevation - northStartElevation, [.08, .17, .25, .24, .26]);
+  const segments = recipe.motifs.map((motifId, index): RouteSegment => {
+    const motif = MOTIFS[motifId];
+    const altitudeDuration = 1 + mountain.altitudeSeverity / 260;
+    const durationVariance = .93 + rng.next() * .14;
+    const difficulty = clamp(Math.round(baseDifficulty + motif.difficultyDelta + characterDifficulty + (routeIndex === 2 ? 3 : 0)), 18, 99);
+    const exposure = clamp(Math.round(baseRisk + motif.exposureDelta + characterRisk + (routeIndex === 2 ? 4 : 0)), 8, 99);
+    return {
+      id: `${routeId}-${index + 1}-${motifId.toLowerCase()}`,
+      name: motif.name(mountain, routeIndex),
+      terrain: motif.terrain,
+      elevationGain: gains[index]!,
+      baseDurationMinutes: Math.max(55, Math.round(82 * motif.durationWeight * recipe.durationBias * altitudeDuration * durationVariance)),
+      difficulty,
+      exposure,
+      skill: motif.skill,
+      note: motif.note(mountain),
+      campPossible: motif.campPossible,
+      hazard: motif.hazard,
+      terrainModuleId: detectTerrainModule(motif.terrain).id,
+      safeHaven: motif.campPossible,
+    };
+  });
 
-  const ridgeTech = clamp(Math.round(18 + baseDifficulty * .62 + characterTech), 28, 92);
-  const glacierTech = clamp(Math.round(15 + baseDifficulty * .56 + characterTech), 25, 90);
-  const faceTech = clamp(Math.round(28 + baseDifficulty * .76 + characterTech), 40, 98);
-  const ridgeRisk = clamp(Math.round(16 + baseRisk * .55 + characterRisk), 24, 92);
-  const glacierRisk = clamp(Math.round(22 + baseRisk * .66 + characterRisk), 30, 96);
-  const faceRisk = clamp(Math.round(30 + baseRisk * .76 + characterRisk), 42, 99);
-  const altitudeHours = actualGain / 165 + mountain.altitudeSeverity / 10 + mountain.remoteness / 18;
+  const provisional: ExpeditionRoute = {
+    id: routeId,
+    regionId: world.region.id,
+    mountainId: mountain.id,
+    mountainName: mountain.name,
+    mountainCharacterId: mountain.characterId,
+    mountainFormId: mountain.identity.formId,
+    routeArchetype: recipe.archetype,
+    signatureFeature: mountain.identity.signatureFeature,
+    campRhythm: mountain.identity.campPattern,
+    name: recipe.name(mountain),
+    style: recipe.style,
+    summary: recipe.summary(mountain),
+    startElevation,
+    summitElevation: mountain.elevation,
+    estimatedHours: 1,
+    technicality: clamp(Math.round(segments.reduce((sum, segment) => sum + segment.difficulty, 0) / segments.length)),
+    objectiveRisk: clamp(Math.round(segments.reduce((sum, segment) => sum + segment.exposure, 0) / segments.length)),
+    recommendedTeamSize: mountain.elevation > 6500 || recipe.slot === 'DIRECT' ? 4 : 3,
+    requiredGearIds: recipe.gear,
+    segments,
+    isSignature: signatureMountain,
+    routeStory: [],
+    descentSummary: '',
+  };
 
-  const routes: ExpeditionRoute[] = [
-    {
-      id: `${slug}-south-ridge`, regionId: world.region.id, mountainId: mountain.id, mountainName: mountain.name, mountainCharacterId: mountain.characterId, name: 'Южный гребень',
-      style: 'Классический смешанный маршрут',
-      summary: 'Самая читаемая линия массива. Длинный набор, смешанный рельеф и несколько мест, где можно остановить попытку до серьёзной аварии.',
-      startElevation, summitElevation: mountain.elevation, estimatedHours: Math.round((8 + altitudeHours) * characterHours), technicality: ridgeTech,
-      objectiveRisk: ridgeRisk, recommendedTeamSize: mountain.elevation > 6200 ? 4 : 3,
-      requiredGearIds: ['rope', 'rock-kit', 'ice-kit', 'stove', 'medkit'],
-      segments: [
-        segment(`${slug}-sr-moraine`, 'Верхняя морена', 'Осыпь и камень', ridgeGain[0]!, 80, clamp(ridgeTech - 22), 14, 'ENDURANCE', 'Длинный набор с грузом. Здесь проще всего заметить неверный темп.', true, 'Сход камней'),
-        segment(`${slug}-sr-ribs`, 'Разрушенные рёбра', 'Простые скалы', ridgeGain[1]!, 105, clamp(ridgeTech - 12), 31, 'ROCK', 'Короткие стенки и обязательные станции.', false, 'Срыв камней'),
-        segment(`${slug}-sr-glacier`, 'Ледниковый траверс', 'Закрытый ледник', ridgeGain[2]!, 125, clamp(ridgeTech - 8), 35, 'NAVIGATION', 'Трещины читаются плохо. Связка обязана держать дистанцию.', true, 'Трещины'),
-        segment(`${slug}-sr-ice`, 'Ледовый взлёт', 'Жёсткий лёд', ridgeGain[3]!, 110, clamp(ridgeTech - 1), 48, 'ICE', 'Крутой участок. Ошибка затрагивает всю связку.', false, 'Срыв'),
-        segment(`${slug}-sr-summit`, 'Вершинный гребень', 'Снег и скальные выходы', ridgeGain[4]!, 135, clamp(ridgeTech + 4), 59, 'ROCK', 'Узкий гребень. Ветер и усталость сильнее влияют на спуск.', false, 'Ветер'),
-      ],
-    },
-    {
-      id: `${slug}-east-glacier`, regionId: world.region.id, mountainId: mountain.id, mountainName: mountain.name, mountainCharacterId: mountain.characterId, name: 'Восточный ледник',
-      style: 'Длинная ледниковая линия',
-      summary: 'Меньше сложного лазания, больше времени на высоте, закрытых трещин и зависимости от холодного утреннего окна.',
-      startElevation: eastStartElevation, summitElevation: mountain.elevation,
-      estimatedHours: Math.round((11 + altitudeHours * 1.14) * characterHours), technicality: glacierTech, objectiveRisk: glacierRisk,
-      recommendedTeamSize: mountain.elevation > 5600 ? 4 : 3,
-      requiredGearIds: ['rope', 'ice-kit', 'tent', 'stove', 'medkit', 'bivy'],
-      segments: [
-        segment(`${slug}-eg-basin`, 'Ледниковая чаша', 'Снег и морена', glacierGain[0]!, 95, clamp(glacierTech - 18), 16, 'ENDURANCE', 'Тяжёлый подход и ранняя проверка темпа.', true, 'Переохлаждение'),
-        segment(`${slug}-eg-labyrinth`, 'Лабиринт трещин', 'Закрытый ледник', glacierGain[1]!, 145, clamp(glacierTech - 4), 40, 'NAVIGATION', 'Нужна точная линия и постоянная работа верёвки.', false, 'Провал в трещину'),
-        segment(`${slug}-eg-plateau`, 'Белое плато', 'Открытый ледник', glacierGain[2]!, 150, clamp(glacierTech - 9), 28, 'ENDURANCE', 'Монотонный набор без укрытия от ветра.', true, 'Потеря направления'),
-        segment(`${slug}-eg-serac`, 'Серачная зона', 'Лёд и обломки', glacierGain[3]!, 115, clamp(glacierTech + 2), 54, 'ICE', 'Здесь нельзя останавливаться надолго.', false, 'Ледовый обвал'),
-        segment(`${slug}-eg-shoulder`, 'Восточное плечо', 'Фирн', glacierGain[4]!, 120, clamp(glacierTech - 1), 45, 'ENDURANCE', 'Наклон умеренный, но высота забирает скорость.', true, 'Лавинная доска'),
-        segment(`${slug}-eg-top`, 'Купол', 'Снег и лёд', glacierGain[5]!, 140, clamp(glacierTech + 5), 57, 'NAVIGATION', 'В плохой видимости легко уйти на карниз.', false, 'Карниз'),
-      ],
-    },
-    {
-      id: `${slug}-north-line`, regionId: world.region.id, mountainId: mountain.id, mountainName: mountain.name, mountainCharacterId: mountain.characterId, name: 'Северная линия',
-      style: 'Прямая техническая линия',
-      summary: 'Короткая по расстоянию, но жёсткая по технике. Высокая открытость, мало мест для отдыха и тяжёлый отход после ключевой стены.',
-      startElevation: northStartElevation, summitElevation: mountain.elevation,
-      estimatedHours: Math.round((7 + altitudeHours * .92) * characterHours), technicality: faceTech, objectiveRisk: faceRisk,
-      recommendedTeamSize: mountain.elevation > 6500 ? 4 : 3,
-      requiredGearIds: ['rope', 'rock-kit', 'ice-kit', 'medkit', 'bivy'],
-      segments: [
-        segment(`${slug}-nl-cone`, 'Северный конус', 'Осыпь', faceGain[0]!, 70, clamp(faceTech - 25), 20, 'ENDURANCE', 'Короткий подход под стену.', true, 'Камнепад'),
-        segment(`${slug}-nl-couloir`, 'Тёмный кулуар', 'Снег и лёд', faceGain[1]!, 105, clamp(faceTech - 11), 50, 'ICE', 'Узкий кулуар собирает лёд и камни.', false, 'Ледовый обвал'),
-        segment(`${slug}-nl-wall`, 'Северная стена', 'Микст и скалы', faceGain[2]!, 165, clamp(faceTech), 71, 'ROCK', 'Ключ маршрута. Отступление после середины сложно.', false, 'Срыв'),
-        segment(`${slug}-nl-ramp`, 'Ледовая рампа', 'Крутой лёд', faceGain[3]!, 135, clamp(faceTech - 3), 66, 'ICE', 'Станции требуют времени и точности.', false, 'Разрушение станции'),
-        segment(`${slug}-nl-edge`, 'Кромка вершины', 'Смешанный гребень', faceGain[4]!, 125, clamp(faceTech - 6), 73, 'ROCK', 'Открытый финиш без места для лагеря.', false, 'Штормовой ветер'),
-      ],
-    },
-  ];
+  const decisions = decisionIndexes(segments).map((segmentIndex, index) => decisionForSegment(provisional, segments[segmentIndex]!, index));
+  const decisionBySegment = new Map(decisions.map(decision => [decision.segmentId, decision.id]));
+  const noReturnRatio = mountain.characterId === 'DESCENT' || recipe.slot === 'DIRECT' ? .52 : .68;
+  const enrichedSegments = segments.map((segment, index) => ({
+    ...segment,
+    decisionId: decisionBySegment.get(segment.id),
+    noReturn: index >= Math.ceil(segments.length * noReturnRatio),
+    descentNote: index >= segments.length - 2
+      ? `Верхний участок проходится повторно при накопленной усталости; ${mountain.identity.descentProblem}.`
+      : segment.campPossible
+        ? `На спуске это возможная точка остановки. ${mountain.identity.campPattern}.`
+        : `Сверху линия читается иначе. ${segment.note}`,
+  }));
+  const estimatedHours = Math.max(7, Math.round((enrichedSegments.reduce((sum, segment) => sum + segment.baseDurationMinutes, 0) / 60 + mountain.remoteness / 24) * 10) / 10);
+  const route: ExpeditionRoute = {
+    ...provisional,
+    estimatedHours,
+    segments: enrichedSegments,
+    decisions,
+    routeStory: routeStoryFor(mountain, recipe, enrichedSegments),
+    descentSummary: `${mountain.identity.descentProblem}. ${recipe.slot === 'DIRECT' ? 'Прямой подъём не означает прямого возвращения: часть линии приходится обходить.' : 'Нижние ориентиры и места лагерей нужно запомнить до выхода наверх.'}`,
+  };
+  return attachGraph({ ...route, descentSegments: defaultDescentSegments(route) });
+}
+
+function makeMountainRoutes(world: WorldState, mountain: MountainData): ExpeditionRoute[] {
   const signatureMountain = getQualificationTarget(world).mountain.id === mountain.id;
-  return routes.map((route, routeIndex) => enrichRouteForVerticalSlice(route, routeIndex, signatureMountain));
+  return CHARACTER_RECIPES[mountain.characterId].map((recipe, routeIndex) => makeRoute(world, mountain, recipe, routeIndex, signatureMountain));
 }
 
 export function generateRoutesForWorld(world: WorldState): ExpeditionRoute[] {
@@ -322,4 +475,3 @@ export function generateRoutesForWorld(world: WorldState): ExpeditionRoute[] {
     .sort((a, b) => mountainDifficulty(a) - mountainDifficulty(b))
     .flatMap(mountain => makeMountainRoutes(world, mountain));
 }
-

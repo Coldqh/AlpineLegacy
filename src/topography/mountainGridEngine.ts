@@ -6,6 +6,12 @@ export type LocalStageType = 'APPROACH' | 'MORAINE' | 'GLACIER' | 'SNOWFIELD' | 
 export type RouteProfile = 'CLASSIC' | 'GLACIER' | 'RIDGE' | 'DIRECT';
 export type LocalRouteProfile = 'SAFE' | 'BALANCED' | 'TECHNICAL' | 'DIRECT';
 export type LocalSurface = 'FIRM' | 'LOOSE' | 'SOFT' | 'ICE' | 'ROCK' | 'MIXED';
+export type MountainGridFormId = 'SHARP_PYRAMID' | 'LONG_RIDGE' | 'GLACIER_DOME' | 'BROKEN_MASSIF' | 'TWIN_SUMMIT' | 'ASYMMETRIC_WALL';
+export type MountainGridCharacterId = 'WEATHER' | 'TECHNICAL' | 'ENDURANCE' | 'ALTITUDE' | 'DESCENT';
+export type MountainGridGenerationProfile = {
+  formId?: MountainGridFormId;
+  characterId?: MountainGridCharacterId;
+};
 
 export type MountainCell = {
   x: number;
@@ -31,6 +37,7 @@ export type MountainGrid = {
   summit: GridPoint;
   entries: Record<EntrySide, GridPoint>;
   start: GridPoint;
+  generationProfile: Required<MountainGridGenerationProfile>;
 };
 
 export type MountainRouteOption = {
@@ -160,40 +167,138 @@ function mountainDiameterForRelief(relief: number) {
   return round1(clamp(4.6 + relief / 620, 5.5, 18.5));
 }
 
-function elevationField(seed: string, x: number, y: number, size: number, base: number, summit: number) {
+const DEFAULT_GRID_PROFILE: Required<MountainGridGenerationProfile> = {
+  formId: 'SHARP_PYRAMID',
+  characterId: 'TECHNICAL',
+};
+
+function resolvedGridProfile(profile?: MountainGridGenerationProfile): Required<MountainGridGenerationProfile> {
+  return {
+    formId: profile?.formId ?? DEFAULT_GRID_PROFILE.formId,
+    characterId: profile?.characterId ?? DEFAULT_GRID_PROFILE.characterId,
+  };
+}
+
+function rotatedCoordinates(seed: string, nx: number, ny: number) {
+  const phase = (hash(`${seed}:orientation`) % 628) / 100;
+  const cos = Math.cos(phase);
+  const sin = Math.sin(phase);
+  return { u: nx * cos - ny * sin, v: nx * sin + ny * cos, phase };
+}
+
+function elevationField(
+  seed: string,
+  x: number,
+  y: number,
+  size: number,
+  base: number,
+  summit: number,
+  profile: Required<MountainGridGenerationProfile>,
+) {
   const center = (size - 1) / 2;
   const nx = (x - center) / center;
   const ny = (y - center) / center;
-  const radius = Math.hypot(nx, ny);
+  const { u, v, phase } = rotatedCoordinates(seed, nx, ny);
+  const rawRadius = Math.hypot(nx, ny);
+
+  let radius = rawRadius;
+  let exponent = 1.46;
+  let ridgeStrength = .13;
+  let shoulderStrength = .085;
+  let roughStrength = .06;
+  let formFeature = 0;
+
+  if (profile.formId === 'SHARP_PYRAMID') {
+    exponent = 1.72;
+    ridgeStrength = .17;
+    shoulderStrength = .045;
+    roughStrength = .07;
+  } else if (profile.formId === 'LONG_RIDGE') {
+    radius = Math.hypot(u * .72, v * 1.18);
+    exponent = 1.34;
+    ridgeStrength = .19;
+    shoulderStrength = .075;
+    formFeature = Math.max(0, 1 - Math.abs(v) * 4.4) * Math.max(0, 1 - Math.abs(u) * .95) * .13;
+  } else if (profile.formId === 'GLACIER_DOME') {
+    radius = Math.hypot(u * .88, v * .98);
+    exponent = 1.08;
+    ridgeStrength = .055;
+    shoulderStrength = .12;
+    roughStrength = .025;
+  } else if (profile.formId === 'BROKEN_MASSIF') {
+    radius = Math.hypot(u * .9, v * 1.04);
+    exponent = 1.38;
+    ridgeStrength = .16;
+    shoulderStrength = .13;
+    roughStrength = .115;
+    formFeature = Math.max(0, Math.cos((u + v) * 8 + phase) * .075) * Math.max(0, 1 - radius);
+  } else if (profile.formId === 'TWIN_SUMMIT') {
+    const main = Math.max(0, 1 - Math.hypot(u + .12, v * 1.03));
+    const second = Math.max(0, 1 - Math.hypot((u - .28) * 1.08, (v + .03) * 1.12));
+    const saddle = Math.max(0, 1 - Math.abs(v) * 5.2 - Math.abs(u - .08) * 1.9) * .055;
+    const twinNormalized = Math.max(Math.pow(main, 1.48), Math.pow(second, 1.58) * .88) + saddle;
+    const edgeFade = Math.pow(Math.max(0, 1 - rawRadius), .78);
+    const rough = smoothNoise(seed, x, y) * .04 + smoothNoise(`${seed}:large`, Math.floor(x / 2), Math.floor(y / 2)) * .055;
+    return Math.round(base + clamp(twinNormalized * edgeFade + rough * edgeFade, 0, 1) * (summit - base));
+  } else if (profile.formId === 'ASYMMETRIC_WALL') {
+    radius = Math.hypot(u * .84, v * 1.06);
+    exponent = 1.5;
+    ridgeStrength = .12;
+    shoulderStrength = .06;
+    roughStrength = .085;
+    const wallSide = clamp((u + .18) * 1.35, -.45, .55);
+    formFeature = wallSide * Math.max(0, 1 - radius) * .22;
+  }
+
   const radial = clamp(1 - radius, 0, 1);
-  const angle = Math.atan2(ny, nx);
-  const phase = (hash(seed) % 628) / 100;
-  const ridge = Math.max(0, Math.cos(angle * 3 + phase) * 0.13 + Math.cos(angle * 5 - phase * 0.7) * 0.075);
-  const shoulder = Math.max(0, 1 - Math.abs(radius - 0.46) * 4.2) * 0.085;
-  const valleyCut = Math.max(0, Math.cos(angle * 2 - phase * 0.5)) * Math.max(0, 0.62 - radius) * 0.11;
-  const rough = smoothNoise(seed, x, y) * 0.06 + smoothNoise(`${seed}:large`, Math.floor(x / 2), Math.floor(y / 2)) * 0.085;
-  const normalized = clamp(Math.pow(radial, 1.46) + ridge * radial + shoulder + rough * radial - valleyCut, 0, 1);
+  const angle = Math.atan2(v, u);
+  const ridgeCount = profile.formId === 'LONG_RIDGE' ? 2 : profile.formId === 'BROKEN_MASSIF' ? 5 : 3;
+  const ridge = Math.max(0, Math.cos(angle * ridgeCount + phase) * ridgeStrength + Math.cos(angle * (ridgeCount + 2) - phase * .7) * ridgeStrength * .56);
+  const shoulder = Math.max(0, 1 - Math.abs(radius - .46) * 4.2) * shoulderStrength;
+  const valleyCut = Math.max(0, Math.cos(angle * 2 - phase * .5)) * Math.max(0, .62 - radius) * (profile.formId === 'GLACIER_DOME' ? .055 : .11);
+  const rough = smoothNoise(seed, x, y) * roughStrength + smoothNoise(`${seed}:large`, Math.floor(x / 2), Math.floor(y / 2)) * roughStrength * 1.35;
+  const normalized = clamp(Math.pow(radial, exponent) + ridge * radial + shoulder + rough * radial - valleyCut + formFeature, 0, 1);
   return Math.round(base + normalized * (summit - base));
 }
 
-function terrainFor(elevationRatio: number, slope: number, x: number, y: number, size: number): MountainTerrain {
+function terrainFor(
+  elevationRatio: number,
+  slope: number,
+  x: number,
+  y: number,
+  size: number,
+  profile: Required<MountainGridGenerationProfile>,
+): MountainTerrain {
   const center = (size - 1) / 2;
   const angle = Math.atan2(y - center, x - center);
-  if (elevationRatio >= 0.972) return 'SUMMIT';
-  if (elevationRatio >= 0.78 && slope >= 35) return 'RIDGE';
-  if (slope >= 54) return 'ROCK';
-  if (elevationRatio >= 0.57 && Math.cos(angle - 0.7) > -0.22) return 'SNOW';
-  if (elevationRatio >= 0.31 && Math.sin(angle + 0.6) < 0.5) return 'GLACIER';
-  if (elevationRatio >= 0.16) return 'SCREE';
+  const technical = profile.characterId === 'TECHNICAL' || profile.formId === 'ASYMMETRIC_WALL' || profile.formId === 'SHARP_PYRAMID';
+  const glaciated = profile.characterId === 'ALTITUDE' || profile.formId === 'GLACIER_DOME';
+  const ridged = profile.characterId === 'DESCENT' || profile.characterId === 'WEATHER' || profile.formId === 'LONG_RIDGE';
+  if (elevationRatio >= (profile.formId === 'GLACIER_DOME' ? .985 : .972)) return 'SUMMIT';
+  if (elevationRatio >= (ridged ? .69 : .78) && slope >= (ridged ? 27 : 35)) return 'RIDGE';
+  if (slope >= (technical ? 46 : 55)) return 'ROCK';
+  if (elevationRatio >= (glaciated ? .48 : .57) && Math.cos(angle - .7) > (glaciated ? -.58 : -.22)) return 'SNOW';
+  if (elevationRatio >= (glaciated ? .2 : .31) && Math.sin(angle + .6) < (glaciated ? .78 : .5)) return 'GLACIER';
+  if (elevationRatio >= .16) return 'SCREE';
   return 'VALLEY';
 }
 
-function hazardFor(seed: string, terrain: MountainTerrain, slope: number, x: number, y: number): MountainHazard {
+function hazardFor(
+  seed: string,
+  terrain: MountainTerrain,
+  slope: number,
+  x: number,
+  y: number,
+  profile: Required<MountainGridGenerationProfile>,
+): MountainHazard {
   const roll = (noise(`${seed}:hazard`, x, y) + 1) / 2;
-  if (terrain === 'GLACIER' && roll > 0.76) return 'CREVASSE';
-  if (terrain === 'SNOW' && slope > 34 && roll > 0.72) return 'AVALANCHE';
-  if (terrain === 'ROCK' && roll > 0.77) return 'ROCKFALL';
-  if (terrain === 'RIDGE' && roll > 0.82) return 'CORNICE';
+  const weatherBias = profile.characterId === 'WEATHER' ? .055 : 0;
+  const technicalBias = profile.characterId === 'TECHNICAL' ? .045 : 0;
+  const descentBias = profile.characterId === 'DESCENT' ? .035 : 0;
+  if (terrain === 'GLACIER' && roll > .76 - (profile.characterId === 'ALTITUDE' ? .055 : 0)) return 'CREVASSE';
+  if (terrain === 'SNOW' && slope > 32 && roll > .73 - weatherBias) return 'AVALANCHE';
+  if (terrain === 'ROCK' && roll > .78 - technicalBias) return 'ROCKFALL';
+  if (terrain === 'RIDGE' && roll > .83 - weatherBias - descentBias) return 'CORNICE';
   return 'NONE';
 }
 
@@ -206,12 +311,19 @@ function nearestEdgePoint(side: EntrySide, size: number, seed: string): GridPoin
   return { x: 0, y: clamp(center + offset, 1, size - 2) };
 }
 
-export function generateMountainGrid(seed: string, baseElevation = 620, summitElevation = 3480, sizeOrName?: number | string): MountainGrid {
+export function generateMountainGrid(
+  seed: string,
+  baseElevation = 620,
+  summitElevation = 3480,
+  sizeOrName?: number | string,
+  generationProfile?: MountainGridGenerationProfile,
+): MountainGrid {
+  const profile = resolvedGridProfile(generationProfile);
   const relief = Math.max(500, summitElevation - baseElevation);
   const size = typeof sizeOrName === 'number' ? odd(sizeOrName) : mountainGridSizeForRelief(relief);
   const elevations: number[] = [];
   for (let y = 0; y < size; y += 1) {
-    for (let x = 0; x < size; x += 1) elevations.push(elevationField(seed, x, y, size, baseElevation, summitElevation));
+    for (let x = 0; x < size; x += 1) elevations.push(elevationField(seed, x, y, size, baseElevation, summitElevation, profile));
   }
 
   let summitIndex = 0;
@@ -229,12 +341,14 @@ export function generateMountainGrid(seed: string, baseElevation = 620, summitEl
       const slope = clamp(Math.round(Math.hypot(dxSigned, dySigned) / Math.max(18, relief / 145)), 0, 80);
       const aspect = (Math.atan2(dySigned, dxSigned) * 180 / Math.PI + 360) % 360;
       const ratio = (elevation - baseElevation) / Math.max(1, relief);
-      const terrain = (x === summit.x && y === summit.y) ? 'SUMMIT' : terrainFor(ratio, slope, x, y, size);
-      const hazard = hazardFor(seed, terrain, slope, x, y);
+      const terrain = (x === summit.x && y === summit.y) ? 'SUMMIT' : terrainFor(ratio, slope, x, y, size, profile);
+      const hazard = hazardFor(seed, terrain, slope, x, y, profile);
       const edge = x === 0 || y === 0 || x === size - 1 || y === size - 1;
       const passable = edge || slope < 74;
-      const campQuality = passable && hazard === 'NONE' && slope <= 17 && ratio > 0.14 && ratio < 0.84
-        ? Math.round(100 - slope * 4 - Math.abs(ratio - 0.48) * 28)
+      const campSlopeLimit = profile.formId === 'GLACIER_DOME' ? 20 : profile.formId === 'ASYMMETRIC_WALL' ? 13 : 17;
+      const campFormBonus = profile.formId === 'GLACIER_DOME' ? 8 : profile.formId === 'LONG_RIDGE' ? 3 : profile.formId === 'ASYMMETRIC_WALL' ? -12 : 0;
+      const campQuality = passable && hazard === 'NONE' && slope <= campSlopeLimit && ratio > .14 && ratio < .84
+        ? clamp(Math.round(100 - slope * 4 - Math.abs(ratio - .48) * 28 + campFormBonus), 0, 100)
         : 0;
       cells.push({ x, y, elevation, slope, aspect, terrain, hazard, passable, campQuality });
     }
@@ -258,6 +372,7 @@ export function generateMountainGrid(seed: string, baseElevation = 620, summitEl
     summit,
     entries,
     start: entries.SOUTH,
+    generationProfile: profile,
   };
 }
 
@@ -343,8 +458,50 @@ function pathfind(grid: MountainGrid, start: GridPoint, goal: GridPoint, profile
   return [start];
 }
 
+function nearestPassable(grid: MountainGrid, target: GridPoint) {
+  const direct = cellAt(grid, target);
+  if (direct?.passable) return target;
+  for (let radius = 1; radius <= 5; radius += 1) {
+    const candidates: GridPoint[] = [];
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const point = { x: clamp(target.x + dx, 1, grid.width - 2), y: clamp(target.y + dy, 1, grid.height - 2) };
+        if (cellAt(grid, point)?.passable) candidates.push(point);
+      }
+    }
+    if (candidates.length) return candidates.sort((a, b) => Math.hypot(a.x - target.x, a.y - target.y) - Math.hypot(b.x - target.x, b.y - target.y))[0]!;
+  }
+  return target;
+}
+
+function profileWaypoint(grid: MountainGrid, start: GridPoint, goal: GridPoint, profile: RouteProfile) {
+  if (profile === 'DIRECT') return null;
+  const t = profile === 'RIDGE' ? .58 : profile === 'GLACIER' ? .48 : .42;
+  const baseX = start.x + (goal.x - start.x) * t;
+  const baseY = start.y + (goal.y - start.y) * t;
+  const dx = goal.x - start.x;
+  const dy = goal.y - start.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const px = -dy / length;
+  const py = dx / length;
+  const seedSign = hash(`${grid.seed}:${profile}:waypoint`) % 2 === 0 ? 1 : -1;
+  const offset = profile === 'CLASSIC' ? grid.width * .11 : profile === 'GLACIER' ? grid.width * .19 : grid.width * .27;
+  const direction = profile === 'GLACIER' ? seedSign : profile === 'RIDGE' ? -seedSign : seedSign;
+  return nearestPassable(grid, {
+    x: clamp(Math.round(baseX + px * offset * direction), 1, grid.width - 2),
+    y: clamp(Math.round(baseY + py * offset * direction), 1, grid.height - 2),
+  });
+}
+
 export function findGuidedRoute(grid: MountainGrid, side: EntrySide = 'SOUTH', profile: RouteProfile = 'CLASSIC') {
-  return pathfind(grid, grid.entries[side], grid.summit, profile);
+  const start = grid.entries[side];
+  const waypoint = profileWaypoint(grid, start, grid.summit, profile);
+  if (!waypoint) return pathfind(grid, start, grid.summit, profile);
+  const first = pathfind(grid, start, waypoint, profile);
+  const second = pathfind(grid, waypoint, grid.summit, profile);
+  if (first.length < 2 || second.length < 2) return pathfind(grid, start, grid.summit, profile);
+  return [...first, ...second.slice(1)];
 }
 
 function routeMetrics(grid: MountainGrid, route: GridPoint[]) {
