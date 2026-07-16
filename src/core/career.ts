@@ -1,6 +1,21 @@
 import { createRng } from './rng';
 import { buildMountainDynamics, routeIsClosed } from './mountainDynamics';
 import { buildSchoolExpeditionBoard, daysUntilSchoolDeparture, schoolExpeditionPhase, schoolOfferCanAccept } from './schoolExpeditions';
+import {
+  addSeasonPreparation,
+  createSeasonCampaignPlan,
+  normalizeSeasonCampaignPlan,
+  recordSeasonExpeditionResult,
+  recordSeasonExpeditionStart,
+  seasonBudgetLimit,
+  seasonCostSupport,
+  seasonPreparationBonus,
+  seasonRiskReadinessModifier,
+  setSeasonBudgetPolicy as setSeasonBudgetPolicyState,
+  setSeasonRiskPolicy as setSeasonRiskPolicyState,
+  toggleSeasonGoal as toggleSeasonGoalState,
+  usePermanentTeamForSeason as usePermanentTeamForSeasonState,
+} from './seasonPlanning';
 import { defaultDescentSegments, generateRoutesForWorld, getQualificationTarget } from './routeFactory';
 export { getQualificationTarget } from './routeFactory';
 import { getEntryOrganizations, getOrganization, organizationToClub, rankAtLeast, rosterForOrganization } from './ecosystem';
@@ -41,6 +56,8 @@ import type {
   ExpeditionFieldActionId,
   ExpeditionRank,
   PermanentTeamStyle,
+  SeasonBudgetPolicy,
+  SeasonRiskPolicy,
   ExpeditionReadiness,
   StrategicRestId,
   StrategicSectorPlan,
@@ -481,9 +498,9 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     descentRoute: activeRoute.descentSegments ?? defaultDescentSegments(activeRoute),
   } : activeClimbBase;
   const activeClimb = normalizedActiveClimb && activeRoute ? { ...normalizedActiveClimb, simulation: normalizedActiveClimb.simulation ? hydrateExpeditionSimulation(normalizedActiveClimb, activeRoute) : null, strategic: hydrateStrategicExpedition(normalizedActiveClimb, activeRoute) } : normalizedActiveClimb;
-  return hydrateCareerProgression({
+  const foundation = {
     ...career,
-    schemaVersion: 18,
+    schemaVersion: 19,
     club,
     routes,
     teamRoster,
@@ -503,7 +520,9 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     },
     livingWorld: hydrateLivingWorld(world, teamRoster, club, career.livingWorld),
     activeClimb,
-  } as CareerState);
+  } as CareerState;
+  foundation.seasonPlan = normalizeSeasonCampaignPlan(foundation);
+  return hydrateCareerProgression(foundation);
 }
 
 export function createCareer(world: WorldState, draft: CareerDraft): CareerState {
@@ -515,7 +534,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = rosterForOrganization(world, membership.organizationId);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 18,
+    schemaVersion: 19,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,
@@ -563,11 +582,13 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     recoveryDays: 0,
     permanentTeam: { name: `${draft.name.trim() || 'Новый альпинист'} · связка`, style: 'BALANCED', memberIds: [], createdYear: world.config.startYear, createdDay: 1, cohesion: 24, climbs: 0, summits: 0, rescues: 0, losses: 0 },
     acceptedOffer: null,
+    seasonPlan: null as unknown as CareerState['seasonPlan'],
   };
 
   const opening = membership.mode === 'INDEPENDENT'
     ? 'Начата независимая карьера. Постоянной команды и гарантированных мест в экспедициях нет.'
     : `Принят новичком в «${club.name}». Команды пока нет: сначала нужно получить место в чужой экспедиции.`;
+  career.seasonPlan = createSeasonCampaignPlan(career);
   career.log.push(careerLog(career, 'CAREER', 'Начало карьеры', `${career.hero.name}, ${career.hero.age} лет. ${opening}`));
   career.log.push(careerLog(career, 'CLUB', membership.mode === 'INDEPENDENT' ? 'Самостоятельный путь' : 'Первый инструктор', membership.mode === 'INDEPENDENT' ? club.doctrine : `${club.mentorName}, ${club.mentorTitle}. Его правило: «${club.doctrine}»`));
   career.progression = createCareerProgression(career);
@@ -764,7 +785,7 @@ export function applyTraining(career: CareerState, trainingId: TrainingId): Care
     skillXp = progressed.skillXp;
   }
   const cost = action.cost;
-  const next: CareerState = {
+  let next: CareerState = {
     ...career,
     year: timeline.year,
     seasonDay: timeline.seasonDay,
@@ -784,7 +805,8 @@ export function applyTraining(career: CareerState, trainingId: TrainingId): Care
     recoveryDays: Math.max(0, career.recoveryDays - action.days),
   };
   next.log = [...career.log, careerLog(next, 'TRAINING', action.title, `${action.days} дней работы${mentor ? ` под руководством ${mentor.name}` : ''}. ${cost < 0 ? `Заработано ${Math.abs(cost)} кр.` : `Расходы ${cost} кр.`}`)];
-  const advanced = advanceLivingWorld(next, action.days);
+  const prepared = addSeasonPreparation(next, trainingId === 'RECOVERY' ? Math.ceil(action.days * .35) : action.days);
+  const advanced = advanceLivingWorld(prepared, action.days);
   return timeline.year > career.year ? rollCareerSeason(career, advanced) : syncCareerProgression(advanced);
 }
 
@@ -883,6 +905,27 @@ export function leaveExpeditionOffer(career: CareerState): CareerState {
       teamMemberIds: [],
     },
   };
+}
+
+export function setSeasonRiskPolicy(career: CareerState, policy: SeasonRiskPolicy) {
+  return setSeasonRiskPolicyState(career, policy);
+}
+
+export function setSeasonBudgetPolicy(career: CareerState, policy: SeasonBudgetPolicy) {
+  return setSeasonBudgetPolicyState(career, policy);
+}
+
+export function toggleSeasonGoal(career: CareerState, routeId: string) {
+  return toggleSeasonGoalState(career, routeId);
+}
+
+export function usePermanentTeamForSeason(career: CareerState) {
+  return usePermanentTeamForSeasonState(career);
+}
+
+export function seasonBudgetRemaining(career: CareerState) {
+  const plan = normalizeSeasonCampaignPlan(career);
+  return Math.max(0, plan.reserveCredits - plan.spentCredits);
 }
 
 export function canControlExpedition(career: CareerState) {
@@ -998,8 +1041,15 @@ export function expeditionWeight(career: CareerState) {
 }
 
 export function expeditionCost(career: CareerState) {
+  const route = getSelectedRoute(career);
   const gearCost = GEAR_CATALOG.reduce((sum, item) => sum + item.unitCost * (career.expeditionPlan.gear[item.id] ?? 0), 0);
-  return Math.round(gearCost * .18 + career.expeditionPlan.foodDays * 9 + career.expeditionPlan.fuelUnits * 5);
+  const teamSize = selectedTeam(career).length + 1;
+  const transport = 12 + Math.ceil(route.estimatedHours / 8) * 5;
+  const permit = route.expeditionScale === 'GIANT' ? 65 : route.expeditionScale === 'MAJOR' ? 35 : 15;
+  const insurance = Math.round(teamSize * Math.max(3, route.objectiveRisk / 14));
+  const participantPay = career.membership.mode === 'INDEPENDENT' ? Math.round(Math.max(0, teamSize - 1) * (8 + route.technicality * .1)) : 0;
+  const raw = Math.round(gearCost * .18 + career.expeditionPlan.foodDays * 9 + career.expeditionPlan.fuelUnits * 5 + transport + permit + insurance + participantPay);
+  return seasonCostSupport(career, route.id, raw);
 }
 
 export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
@@ -1009,7 +1059,8 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   const soloPlan = career.expeditionPlan.offerId?.includes('independent-solo') || (career.membership.mode === 'INDEPENDENT' && team.length === 0);
   const heroBase = careerReadiness(career);
   const primarySkills = route.segments.map(item => career.hero.skills[item.skill]);
-  const routeFit = clamp(Math.round(primarySkills.reduce((sum, value) => sum + value, 0) / primarySkills.length * 11 + 24 - route.technicality * .28), 0, 100);
+  const seasonPreparation = seasonPreparationBonus(career, route.id);
+  const routeFit = clamp(Math.round(primarySkills.reduce((sum, value) => sum + value, 0) / primarySkills.length * 11 + 24 - route.technicality * .28 + seasonPreparation), 0, 100);
   const permanentCount = team.filter(member => career.permanentTeam.memberIds.includes(member.id)).length;
   const cohesionBonus = permanentCount >= 2 ? career.permanentTeam.cohesion * .12 : 0;
   const teamScore = soloPlan
@@ -1020,12 +1071,14 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   const dynamics = buildMountainDynamics(career, route.mountainId, route.id);
   const weatherScore = clamp(Math.round(weather.stability + dynamics.stabilityDelta - (weather.windKmh + dynamics.windDelta) * .25 - weather.snowfallCm * .7 + weather.durationHours * .4), 0, 100);
   const acclimatization = clamp(career.expeditionPlan.acclimatizationDays * 13 + career.hero.skills.ENDURANCE * 4, 0, 100);
-  const total = Math.round(heroBase * .25 + routeFit * .18 + teamScore * .17 + equipment * .18 + weatherScore * .12 + acclimatization * .1);
+  const seasonPlan = normalizeSeasonCampaignPlan(career);
+  const total = Math.round(heroBase * .25 + routeFit * .18 + teamScore * .17 + equipment * .18 + weatherScore * .12 + acclimatization * .1 + seasonRiskReadinessModifier(seasonPlan.riskPolicy));
   const blockers: string[] = [];
   if (career.acceptedOffer && career.membership.mode !== 'INDEPENDENT') {
     const phase = schoolExpeditionPhase(career.acceptedOffer, career.seasonDay);
     const untilDeparture = daysUntilSchoolDeparture(career.acceptedOffer, career.seasonDay);
-    if (untilDeparture > 0) blockers.push(`Школьная экспедиция ещё готовится. До выхода ${untilDeparture} дн.`);
+    if (career.acceptedOffer.scheduleStatus === 'CANCELLED') blockers.push(`План школы отменён: ${career.acceptedOffer.cancellationReason ?? 'выбери другую экспедицию'}.`);
+    else if (untilDeparture > 0) blockers.push(`Школьная экспедиция ещё готовится. До выхода ${untilDeparture} дн.`);
     else if (phase === 'ON_ROUTE' || phase === 'RECOVERING') blockers.push('Ты пропустил выход этой группы. Выбери новый план школы.');
   }
   if (!career.selectedOfferId && !career.membership.permissions.canOrganize && !career.membership.permissions.canStartSolo) blockers.push('Сначала получи место в чужой экспедиции.');
@@ -1038,7 +1091,10 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   if (career.recoveryDays > 0) blockers.push(`Герой восстанавливается ещё ${career.recoveryDays} дн.`);
   if (career.hero.fatigue > 72) blockers.push('Герой слишком утомлён для выхода.');
   if (career.expeditionPlan.acclimatizationDays < 2) blockers.push('Акклиматизация сорвана.');
-  if (expeditionCost(career) > career.hero.money) blockers.push('Не хватает средств на подготовку.');
+  const plannedCost = expeditionCost(career);
+  if (plannedCost > career.hero.money) blockers.push('Не хватает средств на подготовку.');
+  if (seasonPlan.spentCredits + plannedCost > seasonPlan.reserveCredits) blockers.push('Сезонный бюджет исчерпан. Измени бюджет или выбери более дешёвую цель.');
+  if (seasonPlan.riskPolicy === 'CAUTIOUS' && route.objectiveRisk > 82) blockers.push('Маршрут выше допустимого риска сезона. Измени риск-политику или цель.');
   const progression = normalizeCareerProgression(career);
   if (currentSeasonExpeditionCount(career) >= expeditionLimitForTier(progression.tier)) blockers.push('Лимит экспедиций сезона исчерпан.');
   return { total: clamp(total, 0, 100), hero: heroBase, routeFit, team: teamScore, equipment, weather: weatherScore, acclimatization, blockers };
@@ -1214,7 +1270,7 @@ function weatherLabel(temperatureC: number, windKmh: number, visibility: number)
 
 export function startPlannedClimb(career: CareerState): CareerState {
   const readiness = expeditionReadiness(career);
-  const hardBlockers = readiness.blockers.filter(item => !item.startsWith('Школьная экспедиция') && !item.startsWith('Ты пропустил выход'));
+  const hardBlockers = readiness.blockers;
   if (hardBlockers.length || readiness.total < 54 || career.activeClimb) return career;
   const route = getSelectedRoute(career);
   const window = getSelectedWeather(career);
@@ -1290,7 +1346,7 @@ export function startPlannedClimb(career: CareerState): CareerState {
     climb.participant.targetActions = climb.strategic.ascentSectors.length + climb.strategic.descentSectors.length;
   }
   const timeline = advanceDays(career, window.startsInDays + career.expeditionPlan.acclimatizationDays);
-  const next: CareerState = {
+  let next: CareerState = {
     ...career,
     year: timeline.year,
     seasonDay: timeline.seasonDay,
@@ -1298,6 +1354,7 @@ export function startPlannedClimb(career: CareerState): CareerState {
     activeClimb: climb,
     hero: { ...career.hero, money: career.hero.money - cost, age: career.hero.age + timeline.ageDelta },
   };
+  next = recordSeasonExpeditionStart(next, route.id, cost);
   next.log = [...career.log, careerLog(next, 'EXPEDITION', `Выход на ${route.mountainName}`, `${route.name}. Группа: ${team.length + 1}. Расходы: ${cost} кр. Готовность: ${readiness.total}/100.`)];
   return timeline.year > career.year ? rollCareerSeason(career, next) : syncCareerProgression(next);
 }
@@ -1727,7 +1784,7 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     careerLog(next, 'PRESS', 'Реакция после экспедиции', `${report.clubReaction} ${report.pressReaction}`),
     careerLog(next, 'INJURY', 'Восстановление после выхода', `${recoveryDays} дн. без тяжёлой подготовки. Обслуживание снаряжения: ${maintenanceCost} кр.`),
   ];
-  return next;
+  return recordSeasonExpeditionResult(next, climb.routeId, successful);
 }
 
 function descentRouteFor(career: CareerState, climb: QualificationClimb) {
@@ -2412,6 +2469,7 @@ export function closeClimb(career: CareerState): CareerState {
     activeClimb: null,
     selectedOfferId: null,
     acceptedOffer: null,
+    seasonPlan: null as unknown as CareerState['seasonPlan'],
   };
   const advanced = advanceLivingWorld(closed, 3);
   return timeline.year > finalized.year ? rollCareerSeason(finalized, advanced) : syncCareerProgression(advanced);

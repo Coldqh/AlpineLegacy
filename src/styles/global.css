@@ -4341,3 +4341,41 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
   .regional-expedition-list article { grid-template-columns: 1fr auto; }
   .regional-expedition-list article > span { grid-column: 1 / -1; }
 }
+
+/* 0.16.0 season command and expedition schedules */
+.season-command-panel { margin-top: 26px; }
+.season-command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.season-command-card { display: grid; align-content: start; gap: 12px; min-height: 210px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: rgba(10, 18, 15, .46); }
+.season-command-card > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.season-command-card > header small { color: var(--muted); font-size: 9px; letter-spacing: .12em; }
+.season-command-card > header strong { font-size: 11px; }
+.season-command-card > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.season-command-card--goals { grid-row: span 2; }
+.season-goal-list { display: grid; gap: 7px; }
+.season-goal-list > button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; padding: 11px 12px; border: 1px solid rgba(105, 181, 148, .35); border-radius: 10px; background: rgba(21, 42, 34, .6); color: var(--text); text-align: left; }
+.season-goal-list span { font-family: var(--serif); font-size: 18px; }
+.season-goal-list small { color: var(--muted); font-size: 9px; }
+.season-goal-list b { grid-row: 1 / span 2; grid-column: 2; align-self: center; color: #7bc9a6; }
+.season-command-card details { border-top: 1px solid var(--line); padding-top: 9px; }
+.season-command-card summary { cursor: pointer; color: var(--muted); font-size: 9px; letter-spacing: .08em; }
+.season-goal-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 9px; }
+.season-goal-picker button { padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: rgba(14, 24, 20, .76); color: var(--text); text-align: left; }
+.season-goal-picker button.is-active { border-color: rgba(104, 198, 158, .7); background: rgba(25, 58, 45, .72); }
+.season-goal-picker strong, .season-goal-picker small { display: block; }
+.season-goal-picker strong { font-size: 11px; }
+.season-goal-picker small { margin-top: 3px; color: var(--muted); font-size: 8px; }
+.season-command-action { min-height: 38px; border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(24, 48, 39, .78); color: var(--text); font-size: 9px; font-weight: 700; }
+.season-segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.season-segmented button { min-height: 34px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: rgba(10, 17, 15, .7); color: var(--muted); font-size: 9px; }
+.season-segmented button.is-active { border-color: rgba(99, 188, 151, .72); background: rgba(31, 69, 53, .74); color: var(--text); }
+.school-plan-progress { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.school-plan-progress > i { height: 4px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.08); }
+.school-plan-progress > i > b { display: block; height: 100%; background: #69b994; }
+.school-plan-progress > span { color: var(--muted); font-size: 8px; letter-spacing: .08em; }
+.school-expedition-card.is-cancelled { opacity: .58; border-style: dashed; }
+.school-expedition-card.is-cancelled .school-plan-progress > i > b { background: #a45d55; }
+
+@media (max-width: 900px) {
+  .season-command-grid { grid-template-columns: 1fr; }
+  .season-command-card--goals { grid-row: auto; }
+}

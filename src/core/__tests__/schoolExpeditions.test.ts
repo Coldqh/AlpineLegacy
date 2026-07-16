@@ -30,8 +30,9 @@ describe('rotating school expeditions and permanent teams', () => {
     const { world, organization, career } = organizationCareer();
     const board = schoolExpeditionBoard(world, career, true);
     const own = board.filter(item => item.organizationId === organization.id);
-    expect(own).toHaveLength(3);
+    expect(own.length).toBeGreaterThanOrEqual(6);
     expect(new Set(own.map(item => item.leaderNpcId)).size).toBe(3);
+    expect(own.some(item => item.planSeries === 1)).toBe(true);
     expect(new Set(own.map(item => item.routeId)).size).toBeGreaterThan(1);
     expect(own.some(item => schoolExpeditionPhase(item, career.seasonDay) === 'RECRUITING')).toBe(true);
   });
@@ -53,6 +54,7 @@ describe('rotating school expeditions and permanent teams', () => {
     expect(accepted.acceptedOffer?.id).toBe(offer.id);
     expect(accepted.expeditionPlan.leaderNpcId).toBe(offer.leaderNpcId);
     expect(expeditionReadiness(accepted).blockers.some(item => item.includes('До выхода'))).toBe(true);
+    expect(startPlannedClimb(accepted).activeClimb).toBeNull();
   });
 
   it('saves a recurring rope team and uses its style in the expedition engine', () => {

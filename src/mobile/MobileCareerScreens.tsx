@@ -18,6 +18,7 @@ import { buildMountainDynamics } from '../core/mountainDynamics';
 import { SCHOOL_EXPEDITION_PHASE_LABELS, schoolExpeditionPhase, schoolOfferCanAccept } from '../core/schoolExpeditions';
 import { CAREER_TIER_LABELS, SEASON_PHASE_LABELS, careerSeasonPhase, careerWorldRank, currentSeasonExpeditionCount, expeditionLimitForTier, nextCareerMilestone, normalizeCareerProgression } from '../core/progression';
 import { buildMountainMemory } from '../core/mountainMemory';
+import { normalizeSeasonCampaignPlan, seasonPlanRoutes } from '../core/seasonPlanning';
 import type {
   CareerState,
   CareerTabId,
@@ -27,6 +28,8 @@ import type {
   GearCategory,
   MountainData,
   PermanentTeamStyle,
+  SeasonBudgetPolicy,
+  SeasonRiskPolicy,
   TrainingId,
   WorldEventType,
   WorldState,
@@ -48,7 +51,7 @@ function StepLine({ step, title, value }: { step: string; title: string; value?:
   return <div className="m-step-line"><span>{step}</span><strong>{title}</strong>{value !== undefined && <b>{value}</b>}</div>;
 }
 
-export function MobileOverview({ world, career, onTrain, onOpenExpedition }: { world: WorldState; career: CareerState; onTrain: (id: TrainingId) => void; onOpenExpedition: () => void; onOpenWorld: () => void }) {
+export function MobileOverview({ world, career, onTrain, onOpenExpedition, onSeasonRisk, onSeasonBudget, onSeasonGoal, onSeasonTeam }: { world: WorldState; career: CareerState; onTrain: (id: TrainingId) => void; onOpenExpedition: () => void; onOpenWorld: () => void; onSeasonRisk: (policy: SeasonRiskPolicy) => void; onSeasonBudget: (policy: SeasonBudgetPolicy) => void; onSeasonGoal: (routeId: string) => void; onSeasonTeam: () => void }) {
   const route = getSelectedRoute(career);
   const expedition = expeditionReadiness(career);
   const progression = normalizeCareerProgression(career);
@@ -59,6 +62,10 @@ export function MobileOverview({ world, career, onTrain, onOpenExpedition }: { w
   const worldRank = careerWorldRank(career);
   const primaryTraining = trainingOrder.slice(0, 4);
   const extraTraining = trainingOrder.slice(4);
+  const seasonPlan = normalizeSeasonCampaignPlan(career);
+  const seasonGoals = seasonPlanRoutes(career);
+  const seasonCandidates = [...career.routes].sort((a, b) => a.objectiveRisk - b.objectiveRisk).filter((item, index, list) => list.findIndex(route => route.mountainId === item.mountainId) === index).slice(0, 6);
+  const seasonCore = career.teamRoster.filter(member => seasonPlan.coreMemberIds.includes(member.id));
 
   const renderTraining = (id: TrainingId) => {
     const action = TRAINING_ACTIONS[id];
@@ -76,6 +83,19 @@ export function MobileOverview({ world, career, onTrain, onOpenExpedition }: { w
     <button className="m-focus-card m-focus-card--compact" onClick={career.recoveryDays > 0 ? () => onTrain('RECOVERY') : onOpenExpedition}><div><small>СЕЙЧАС</small><strong>{career.recoveryDays > 0 ? 'Восстановление' : career.activeClimb ? 'Вернуться на маршрут' : expedition.blockers.length ? 'Закончить подготовку' : 'Начать экспедицию'}</strong><span>{career.recoveryDays > 0 ? `Ещё ${career.recoveryDays} дн. до тяжёлой работы` : career.activeClimb ? 'Экспедиция продолжается' : expedition.blockers[0] ?? route.mountainName}</span></div><b>→</b></button>
     <section className="m-season-card"><header><div><small>{SEASON_PHASE_LABELS[phase]}</small><strong>Сезон {progression.seasonNumber}</strong></div><span>{expeditionCount}/{expeditionLimit} выходов</span></header><div className="m-season-facts"><span>{CAREER_TIER_LABELS[progression.tier]}<b>уровень</b></span><span>№ {worldRank}<b>в мире</b></span><span>{progression.sponsor ? progression.sponsor.name : 'Без поддержки'}<b>партнёр</b></span></div>{milestone && <footer><small>СЛЕДУЮЩАЯ ЦЕЛЬ</small><strong>{milestone.title}</strong></footer>}</section>
     <div className="m-state-strip"><span>Здоровье <b>{Math.round(career.hero.health)}</b></span><span>{career.recoveryDays > 0 ? 'Отдых' : 'Форма'} <b>{career.recoveryDays > 0 ? `${career.recoveryDays}д` : Math.round(career.hero.form)}</b></span><span>Усталость <b>{Math.round(career.hero.fatigue)}</b></span></div>
+    <details className="m-details m-season-plan-mobile" open={seasonPlan.preparationDays === 0 || undefined}>
+      <summary>План сезона · {seasonPlan.spentCredits}/{seasonPlan.reserveCredits} кр.</summary>
+      <div className="m-season-plan-body">
+        <div className="m-season-plan-goals">{seasonGoals.map(route => <button key={route.id} className="is-active" onClick={() => onSeasonGoal(route.id)}><strong>{route.mountainName}</strong><small>{route.name}</small><b>{seasonPlan.completedGoalRouteIds.includes(route.id) ? '✓' : '×'}</b></button>)}</div>
+        <details className="m-details m-details--flat"><summary>Сменить цели</summary><div className="m-season-goal-picker">{seasonCandidates.map(route => <button key={route.id} className={seasonPlan.goalRouteIds.includes(route.id) ? 'is-active' : ''} onClick={() => onSeasonGoal(route.id)}><strong>{route.mountainName}</strong><small>{route.summitElevation} м</small></button>)}</div></details>
+        <div className="m-season-plan-label"><span>Основной состав</span><b>{seasonCore.length ? seasonCore.map(member => member.name.split(' ')[0]).join(' · ') : 'не задан'}</b></div>
+        <button className="m-season-team-button" onClick={onSeasonTeam} disabled={!career.permanentTeam.memberIds.length}>Взять постоянную связку</button>
+        <div className="m-season-plan-label"><span>Бюджет</span><b>{Math.max(0, seasonPlan.reserveCredits - seasonPlan.spentCredits)} кр. осталось</b></div>
+        <div className="m-segmented">{([['LEAN', 'Эконом'], ['STANDARD', 'Рабочий'], ['FULL', 'Полный']] as Array<[SeasonBudgetPolicy, string]>).map(([policy, label]) => <button key={policy} className={seasonPlan.budgetPolicy === policy ? 'is-active' : ''} onClick={() => onSeasonBudget(policy)}>{label}</button>)}</div>
+        <div className="m-season-plan-label"><span>Риск</span><b>{seasonPlan.preparationDays} дн. подготовки</b></div>
+        <div className="m-segmented">{([['CAUTIOUS', 'Осторожно'], ['BALANCED', 'Рабоче'], ['AGGRESSIVE', 'Жёстко']] as Array<[SeasonRiskPolicy, string]>).map(([policy, label]) => <button key={policy} className={seasonPlan.riskPolicy === policy ? 'is-active' : ''} onClick={() => onSeasonRisk(policy)}>{label}</button>)}</div>
+      </div>
+    </details>
     <div className="m-section-head"><h2>Тренировки</h2></div>
     <div className="m-action-list">{primaryTraining.map(renderTraining)}</div>
     <details className="m-details m-details--flat"><summary>Все действия</summary><div className="m-action-list">{extraTraining.map(renderTraining)}</div></details>
@@ -108,7 +128,7 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
     const rankOk = rankAllows(career.membership.rank, offer.requiredRank);
     const canApply = rankOk && schoolOfferCanAccept(offer, career.seasonDay);
     const status = active || application?.status === 'ACCEPTED' ? 'МЕСТО' : !rankOk ? 'РАНГ' : SCHOOL_EXPEDITION_PHASE_LABELS[phase].toUpperCase();
-    return <button key={offer.id} disabled={!canApply && !active} className={`${active ? 'is-active' : ''} is-${phase.toLowerCase()} ${application?.status === 'REJECTED' ? 'is-rejected' : ''}`} onClick={() => onAcceptOffer(offer.id)}><div><small>{status} · {leader?.name ?? 'Инструктор'}</small><strong>{offerMountain?.name ?? offerRoute?.mountainName ?? 'Неизвестная гора'}</strong><span>{offerRoute?.name ?? 'Маршрут'} · выход день {offer.departureDay ?? '—'} · {offer.memberNpcIds.length + 1} чел.</span><em>{offer.briefing}</em>{application && <i>{application.reason}</i>}</div><b>{active ? '✓' : canApply ? '›' : '—'}</b></button>;
+    return <button key={offer.id} disabled={!canApply && !active} className={`${active ? 'is-active' : ''} is-${phase.toLowerCase()} ${application?.status === 'REJECTED' ? 'is-rejected' : ''}`} onClick={() => onAcceptOffer(offer.id)}><div><small>{status} · {leader?.name ?? 'Инструктор'}</small><strong>{offerMountain?.name ?? offerRoute?.mountainName ?? 'Неизвестная гора'}</strong><span>{offerRoute?.name ?? 'Маршрут'} · выход день {offer.departureDay ?? '—'} · готовность {offer.preparationProgress ?? 0}%{offer.delayDays ? ` · задержка ${offer.delayDays} дн.` : ''}</span><em>{offer.briefing}</em>{application && <i>{application.reason}</i>}</div><b>{active ? '✓' : canApply ? '›' : '—'}</b></button>;
   };
 
   if (!canPlan) {

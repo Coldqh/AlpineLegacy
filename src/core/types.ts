@@ -35,8 +35,10 @@ export type RouteChoiceTone = 'SAFE' | 'BALANCED' | 'BOLD';
 export type ParticipantActionTone = 'OBEY' | 'QUESTION' | 'REFUSE' | 'INITIATIVE' | 'CARE';
 export type ParticipantSceneKind = 'ORDER' | 'ROLE' | 'FIELD' | 'MORAL';
 export type ExpeditionApplicationStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
-export type SchoolExpeditionPhase = 'ANNOUNCED' | 'RECRUITING' | 'PREPARING' | 'WEATHER_HOLD' | 'DEPARTING' | 'ON_ROUTE' | 'RECOVERING';
+export type SchoolExpeditionPhase = 'ANNOUNCED' | 'RECRUITING' | 'PREPARING' | 'WEATHER_HOLD' | 'DEPARTING' | 'ON_ROUTE' | 'RECOVERING' | 'CANCELLED';
 export type PermanentTeamStyle = 'CAUTIOUS' | 'BALANCED' | 'AGGRESSIVE';
+export type SeasonRiskPolicy = 'CAUTIOUS' | 'BALANCED' | 'AGGRESSIVE';
+export type SeasonBudgetPolicy = 'LEAN' | 'STANDARD' | 'FULL';
 
 export type RegionId = string;
 export type MountainId = string;
@@ -359,6 +361,11 @@ export interface ExpeditionOffer {
   cycle?: number;
   briefing?: string;
   openSlots?: number;
+  scheduleStatus?: 'ON_TIME' | 'DELAYED' | 'CANCELLED';
+  delayDays?: number;
+  cancellationReason?: string | null;
+  preparationProgress?: number;
+  planSeries?: number;
 }
 
 export interface WorldContentRegistry {
@@ -1247,6 +1254,23 @@ export interface CareerMembership {
 }
 
 
+
+export interface SeasonCampaignPlan {
+  version: 1;
+  year: number;
+  riskPolicy: SeasonRiskPolicy;
+  budgetPolicy: SeasonBudgetPolicy;
+  goalRouteIds: RouteId[];
+  coreMemberIds: NpcId[];
+  reserveCredits: number;
+  spentCredits: number;
+  preparationDays: number;
+  completedGoalRouteIds: RouteId[];
+  delayedPlans: number;
+  cancelledPlans: number;
+  lastReviewDay: number;
+}
+
 export interface PermanentTeamState {
   name: string;
   style: PermanentTeamStyle;
@@ -1261,7 +1285,7 @@ export interface PermanentTeamState {
 }
 
 export interface CareerState {
-  schemaVersion: 18;
+  schemaVersion: 19;
   id: string;
   worldId: string;
   rootSeed: string;
@@ -1293,6 +1317,7 @@ export interface CareerState {
   recoveryDays: number;
   permanentTeam: PermanentTeamState;
   acceptedOffer: ExpeditionOffer | null;
+  seasonPlan: SeasonCampaignPlan;
 }
 
 export interface CareerDraft {

@@ -31,6 +31,10 @@ import {
   setPermanentTeamStyle,
   saveCurrentAsPermanentTeam,
   usePermanentTeam,
+  setSeasonRiskPolicy,
+  setSeasonBudgetPolicy,
+  toggleSeasonGoal,
+  usePermanentTeamForSeason,
   updateExpeditionPlan,
 } from '../core/career';
 import type { CareerState, CareerTabId, ExpeditionPlan, TrainingId, WorldState } from '../core/types';
@@ -109,7 +113,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     />;
   }
   function renderMobileTab() {
-    if (tab === 'OVERVIEW') return <MobileOverview world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} />;
+    if (tab === 'OVERVIEW') return <MobileOverview world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} onSeasonRisk={policy => onPersist(setSeasonRiskPolicy(career, policy))} onSeasonBudget={policy => onPersist(setSeasonBudgetPolicy(career, policy))} onSeasonGoal={routeId => onPersist(toggleSeasonGoal(career, routeId))} onSeasonTeam={() => onPersist(usePermanentTeamForSeason(career))} />;
     if (tab === 'WORLD') return <MobileWorld world={world} career={career} />;
     if (tab === 'NEWS') return <MobileNews career={career} />;
     if (tab === 'RIVALS') return <MobileRivals career={career} />;
@@ -125,7 +129,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
 
   function renderTab() {
     if (tab === 'OVERVIEW') {
-      return <CareerOverviewScreen world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} />;
+      return <CareerOverviewScreen world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} onSeasonRisk={policy => onPersist(setSeasonRiskPolicy(career, policy))} onSeasonBudget={policy => onPersist(setSeasonBudgetPolicy(career, policy))} onSeasonGoal={routeId => onPersist(toggleSeasonGoal(career, routeId))} onSeasonTeam={() => onPersist(usePermanentTeamForSeason(career))} />;
     }
     if (tab === 'WORLD') return <WorldScreen world={world} career={career} />;
     if (tab === 'NEWS') return <NewsScreen career={career} />;

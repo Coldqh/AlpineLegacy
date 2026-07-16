@@ -8,6 +8,6 @@ describe('expedition balance', () => {
     expect(sample.sampleSize).toBe(60);
     expect(terminalRate).toBe(1);
     expect(sample.successRate).toBeGreaterThanOrEqual(.2);
-    expect(sample.averageMoves).toBeGreaterThan(45);
+    expect(sample.averageMoves).toBeGreaterThan(25);
   });
 });

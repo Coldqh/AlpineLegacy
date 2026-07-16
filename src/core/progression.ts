@@ -8,6 +8,7 @@ import type {
   SeasonSummary,
   SponsorDeal,
 } from './types';
+import { createSeasonCampaignPlan } from './seasonPlanning';
 
 const MILESTONES: Array<Omit<CareerMilestone, 'completed' | 'completedYear'>> = [
   { id: 'FIRST_SUMMIT', title: 'Первая вершина', description: 'Вернуться с первого засчитанного восхождения.', rewardMoney: 100, rewardReputation: 8 },
@@ -248,9 +249,11 @@ export function rollCareerSeason(source: CareerState, next: CareerState): Career
     title: `Сезон ${source.year} завершён`,
     description: `${summary.expeditions} экспедиций, ${summary.summits} вершин, место в мире: ${summary.worldRank}.${stipend ? ` Поддержка ${sponsor!.name}: +${stipend} кр.` : ''}`,
   };
-  return syncCareerProgression({ ...next, hero: nextHero, log: [...next.log, seasonLog], progression });
+  const rolled = { ...next, hero: nextHero, log: [...next.log, seasonLog], progression } as CareerState;
+  rolled.seasonPlan = createSeasonCampaignPlan(rolled);
+  return syncCareerProgression(rolled);
 }
 
 export function hydrateCareerProgression(career: CareerState): CareerState {
-  return syncCareerProgression({ ...career, schemaVersion: 18, progression: normalizeCareerProgression(career) });
+  return syncCareerProgression({ ...career, schemaVersion: 19, progression: normalizeCareerProgression(career) });
 }

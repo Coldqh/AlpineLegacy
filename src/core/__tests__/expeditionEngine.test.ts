@@ -26,6 +26,7 @@ function acceptedCareer() {
     career = applyToExpeditionOffer(world, career, offer.id);
     if (career.selectedOfferId) break;
   }
+  if (career.acceptedOffer?.departureDay) career = { ...career, seasonDay: career.acceptedOffer.departureDay, week: Math.ceil(career.acceptedOffer.departureDay / 7) };
   return { world, career };
 }
 

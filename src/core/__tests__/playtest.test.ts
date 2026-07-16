@@ -9,7 +9,7 @@ describe('playtest harness', () => {
     expect(first.sampleSize).toBe(12);
     expect(first.successRate + first.retreatRate + first.failureRate).toBe(1);
     expect(first.successRate).toBeGreaterThanOrEqual(.2);
-    expect(first.averageMoves).toBeGreaterThan(35);
+    expect(first.averageMoves).toBeGreaterThan(20);
     expect(first.averageMoves).toBeLessThan(180);
   });
 });

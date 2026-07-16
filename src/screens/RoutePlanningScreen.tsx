@@ -68,6 +68,7 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
                   <h3>{offerMountain?.name ?? offerRoute?.mountainName}</h3>
                   <strong>{offerRoute?.name}</strong>
                   <p>{offer.briefing}</p>
+                  <div className="school-plan-progress"><i><b style={{ width: `${offer.preparationProgress ?? 0}%` }} /></i><span>{offer.scheduleStatus === 'CANCELLED' ? 'ОТМЕНЕНО' : `ГОТОВНОСТЬ ${offer.preparationProgress ?? 0}%${offer.delayDays ? ` · +${offer.delayDays} ДН.` : ''}`}</span></div>
                   <dl>
                     <div><dt>Выход</dt><dd>день {offer.departureDay ?? '—'}</dd></div>
                     <div><dt>Возврат</dt><dd>день {offer.expectedReturnDay ?? '—'}</dd></div>

@@ -563,3 +563,22 @@
 .m-school-plan-list article.is-departing small { color: #df835d; }
 .m-school-plan-list article strong { display: block; margin-top: 5px; font-size: 11px; }
 .m-school-plan-list article span { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
+
+/* 0.16.0 mobile season plan */
+.m-season-plan-mobile { margin-top: 10px; }
+.m-season-plan-body { display: grid; gap: 10px; padding-top: 8px; }
+.m-season-plan-goals { display: grid; gap: 6px; }
+.m-season-plan-goals > button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 9px; padding: 10px; border: 1px solid rgba(94, 181, 144, .4); border-radius: 9px; background: rgba(20, 43, 34, .66); color: var(--text); text-align: left; }
+.m-season-plan-goals strong, .m-season-plan-goals small { display: block; }
+.m-season-plan-goals strong { font-size: 12px; }
+.m-season-plan-goals small { color: var(--muted); font-size: 9px; }
+.m-season-plan-goals b { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
+.m-season-goal-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding-top: 7px; }
+.m-season-goal-picker button { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: rgba(12, 22, 18, .7); color: var(--text); text-align: left; }
+.m-season-goal-picker button.is-active { border-color: #65b88f; }
+.m-season-goal-picker strong, .m-season-goal-picker small { display: block; }
+.m-season-goal-picker strong { font-size: 10px; }
+.m-season-goal-picker small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.m-season-plan-label { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 9px; }
+.m-season-plan-label b { color: var(--text); text-align: right; }
+.m-season-team-button { min-height: 36px; border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(24, 50, 39, .74); color: var(--text); font-size: 10px; }
