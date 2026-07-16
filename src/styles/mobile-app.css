@@ -621,3 +621,17 @@
 .m-region-carousel strong { display: block; margin: 3px 0; font-size: 12px; }
 .m-region-carousel button { min-height: 34px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--text); font-size: 8px; font-weight: 700; white-space: nowrap; }
 .m-region-carousel button:disabled { opacity: .45; }
+
+@media (max-width: 760px) {
+  .mountain-model--hero { min-height: 240px; }
+  .mountain-model--detail { min-height: 310px; }
+  .mountain-model--card { min-height: 105px; }
+  .m-menu-art .mountain-model { min-height: 230px; border: 0; background: transparent; }
+  .m-target-card .mountain-model { min-height: 215px; border: 0; border-radius: 0; }
+  .m-region > .mountain-model { margin: 10px 0 14px; }
+  .mountain-model__hint { display: none; }
+  .mountain-model__readout { left: 8px; right: 8px; bottom: 8px; padding: 6px 8px; }
+  .mountain-model__readout span { font-size: 7px; }
+  .mountain-model__readout b { font-size: 14px; }
+  .school-wait-action { position: sticky; bottom: 74px; z-index: 5; }
+}

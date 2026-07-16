@@ -31,11 +31,8 @@ import {
   setPermanentTeamStyle,
   saveCurrentAsPermanentTeam,
   usePermanentTeam,
-  setSeasonRiskPolicy,
-  setSeasonBudgetPolicy,
-  toggleSeasonGoal,
-  usePermanentTeamForSeason,
   travelToRegion,
+  waitForSchoolDeparture,
   updateExpeditionPlan,
 } from '../core/career';
 import type { CareerState, CareerTabId, ExpeditionPlan, TrainingId, WorldState } from '../core/types';
@@ -71,23 +68,14 @@ const preparationTabs: Array<{ id: CareerTabId; label: string; note: string }> =
   { id: 'PEOPLE', label: 'Досье', note: 'Отношения и память' },
 ];
 
-const worldTabs: Array<{ id: CareerTabId; label: string }> = [
-  { id: 'WORLD', label: 'Обзор' },
-  { id: 'NEWS', label: 'Новости' },
-  { id: 'RIVALS', label: 'Соперники' },
-  { id: 'RECORDS', label: 'Рекорды' },
-];
 
 function WorkspaceSubnav({ activeTab, onTab }: { activeTab: CareerTabId; onTab: (tab: CareerTabId) => void }) {
-  const inPreparation = preparationTabs.some(tab => tab.id === activeTab);
-  const inWorld = worldTabs.some(tab => tab.id === activeTab);
-  const tabs = inPreparation ? preparationTabs : inWorld ? worldTabs : [];
-  if (!tabs.length) return null;
+  if (!preparationTabs.some(tab => tab.id === activeTab)) return null;
   return (
-    <nav className="workspace-subnav" aria-label={inPreparation ? 'Шаги подготовки' : 'Разделы мира'}>
-      {tabs.map(tab => (
+    <nav className="workspace-subnav" aria-label="Шаги подготовки">
+      {preparationTabs.map(tab => (
         <button key={tab.id} className={activeTab === tab.id ? 'is-active' : ''} onClick={() => onTab(tab.id)}>
-          <strong>{tab.label}</strong>{'note' in tab ? <small>{String(tab.note)}</small> : null}
+          <strong>{tab.label}</strong><small>{tab.note}</small>
         </button>
       ))}
     </nav>
@@ -99,6 +87,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   const expeditionLocked = Boolean(career.activeClimb);
   const tab = expeditionLocked ? 'CLIMB' as const : activeTab;
   const navigate = (next: CareerTabId) => { if (!expeditionLocked || next === 'CLIMB') onTab(next); };
+  const waitAndLaunch = () => { const next = waitForSchoolDeparture(world, career); onPersist(next); if (next.activeClimb) onTab('CLIMB'); };
   useScrollReset(tab);
   if (tab === 'CLIMB' && career.activeClimb) {
     return <TopoExpeditionPrototype
@@ -114,14 +103,14 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     />;
   }
   function renderMobileTab() {
-    if (tab === 'OVERVIEW') return <MobileOverview world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} onSeasonRisk={policy => onPersist(setSeasonRiskPolicy(career, policy))} onSeasonBudget={policy => onPersist(setSeasonBudgetPolicy(career, policy))} onSeasonGoal={routeId => onPersist(toggleSeasonGoal(career, routeId))} onSeasonTeam={() => onPersist(usePermanentTeamForSeason(career))} />;
+    if (tab === 'OVERVIEW') return <MobileOverview world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} />;
     if (tab === 'WORLD') return <MobileWorld world={world} career={career} onTravel={regionId => onPersist(travelToRegion(world, career, regionId))} />;
     if (tab === 'NEWS') return <MobileNews career={career} />;
     if (tab === 'RIVALS') return <MobileRivals career={career} />;
     if (tab === 'RECORDS') return <MobileRecords career={career} />;
     if (tab === 'JOURNAL') return <MobileJournal career={career} />;
     if (tab === 'PEOPLE') return <MobilePeople career={career} />;
-    if (tab === 'ROUTE') return <MobileRoute world={world} career={career} offers={schoolExpeditionBoard(world, career)} onAcceptOffer={offerId => onPersist(applyToExpeditionOffer(world, career, offerId))} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} />;
+    if (tab === 'ROUTE') return <MobileRoute world={world} career={career} offers={schoolExpeditionBoard(world, career)} onAcceptOffer={offerId => onPersist(applyToExpeditionOffer(world, career, offerId))} onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))} onSelectRoute={routeId => onPersist(selectRoute(career, routeId))} onContinue={() => onTab('TEAM')} onWaitForDeparture={waitAndLaunch} />;
     if (tab === 'TEAM') return <MobileTeam career={career} onToggle={memberId => onPersist(toggleTeamMember(career, memberId))} onSavePermanent={() => onPersist(saveCurrentAsPermanentTeam(career))} onTeamStyle={style => onPersist(setPermanentTeamStyle(career, style))} onUsePermanent={() => onPersist(usePermanentTeam(career))} onContinue={() => onTab('EQUIPMENT')} onPeople={() => onTab('PEOPLE')} />;
     if (tab === 'EQUIPMENT') return <MobileEquipment career={career} onSetQuantity={(gearId, quantity) => onPersist(setGearQuantity(career, gearId, quantity))} onSetPlan={(patch: Partial<ExpeditionPlan>) => onPersist(updateExpeditionPlan(career, patch))} onPreset={preset => onPersist(applyEquipmentPreset(career, preset))} onContinue={() => onTab('EXPEDITION')} />;
     if (tab === 'EXPEDITION') return <MobileExpedition career={career} difficulty={world.config.difficulty} onOpenTab={navigate} onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))} onSetAcclimatization={days => onPersist(updateExpeditionPlan(career, { acclimatizationDays: days }))} onLaunch={() => { const readiness = expeditionReadiness(career); const next = startPlannedClimb(career); onPersist(next); if (next.activeClimb && readiness.blockers.length === 0) onTab('CLIMB'); }} />;
@@ -130,7 +119,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
 
   function renderTab() {
     if (tab === 'OVERVIEW') {
-      return <CareerOverviewScreen world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} onSeasonRisk={policy => onPersist(setSeasonRiskPolicy(career, policy))} onSeasonBudget={policy => onPersist(setSeasonBudgetPolicy(career, policy))} onSeasonGoal={routeId => onPersist(toggleSeasonGoal(career, routeId))} onSeasonTeam={() => onPersist(usePermanentTeamForSeason(career))} />;
+      return <CareerOverviewScreen world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} />;
     }
     if (tab === 'WORLD') return <WorldScreen world={world} career={career} onTravel={regionId => onPersist(travelToRegion(world, career, regionId))} />;
     if (tab === 'NEWS') return <NewsScreen career={career} />;
@@ -146,6 +135,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
           onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))}
           onSelectRoute={routeId => onPersist(selectRoute(career, routeId))}
           onContinue={() => onTab('TEAM')}
+          onWaitForDeparture={waitAndLaunch}
         />
       );
     }
@@ -198,14 +188,12 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   }
 
   const mobilePrep = !expeditionLocked && ['TEAM', 'EQUIPMENT', 'EXPEDITION'].includes(tab);
-  const mobileWorld = !expeditionLocked && ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'].includes(tab);
 
   if (mobile) {
     return (
       <MobileCareerShell world={world} career={career} activeTab={tab} onTab={navigate} locked={expeditionLocked} onExit={onExit} onAtlas={onAtlas}>
         {!expeditionLocked && <CareerFlowGuide career={career} activeTab={tab} onTab={navigate} onStep={step => onPersist(setCareerTutorialStep(career, step))} onDismiss={() => onPersist(dismissOnboarding(career))} />}
         {mobilePrep && <nav className="m-subnav" aria-label="Подготовка"><button className={tab === 'TEAM' ? 'is-active' : ''} onClick={() => navigate('TEAM')}>Люди</button><button className={tab === 'EQUIPMENT' ? 'is-active' : ''} onClick={() => navigate('EQUIPMENT')}>Груз</button><button className={tab === 'EXPEDITION' ? 'is-active' : ''} onClick={() => navigate('EXPEDITION')}>Выход</button></nav>}
-        {mobileWorld && <nav className="m-subnav m-subnav--world" aria-label="Живой мир"><button className={tab === 'WORLD' ? 'is-active' : ''} onClick={() => navigate('WORLD')}>Обзор</button><button className={tab === 'NEWS' ? 'is-active' : ''} onClick={() => navigate('NEWS')}>Новости</button><button className={tab === 'RIVALS' ? 'is-active' : ''} onClick={() => navigate('RIVALS')}>Люди</button><button className={tab === 'RECORDS' ? 'is-active' : ''} onClick={() => navigate('RECORDS')}>Рекорды</button></nav>}
         {renderMobileTab()}
       </MobileCareerShell>
     );

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { MountainArt } from '../components/MountainArt';
+import { MountainModel } from '../components/MountainModel';
 import {
   EXPEDITION_RANK_LABELS,
   GEAR_CATALOG,
@@ -19,7 +19,6 @@ import { careerRegion, regionAccessList, regionMountains } from '../core/regiona
 import { SCHOOL_EXPEDITION_PHASE_LABELS, schoolExpeditionPhase, schoolOfferCanAccept } from '../core/schoolExpeditions';
 import { CAREER_TIER_LABELS, SEASON_PHASE_LABELS, careerSeasonPhase, careerWorldRank, currentSeasonExpeditionCount, expeditionLimitForTier, nextCareerMilestone, normalizeCareerProgression } from '../core/progression';
 import { buildMountainMemory } from '../core/mountainMemory';
-import { normalizeSeasonCampaignPlan, seasonPlanRoutes } from '../core/seasonPlanning';
 import type {
   CareerState,
   CareerTabId,
@@ -29,8 +28,6 @@ import type {
   GearCategory,
   MountainData,
   PermanentTeamStyle,
-  SeasonBudgetPolicy,
-  SeasonRiskPolicy,
   TrainingId,
   WorldEventType,
   WorldState,
@@ -52,7 +49,7 @@ function StepLine({ step, title, value }: { step: string; title: string; value?:
   return <div className="m-step-line"><span>{step}</span><strong>{title}</strong>{value !== undefined && <b>{value}</b>}</div>;
 }
 
-export function MobileOverview({ world, career, onTrain, onOpenExpedition, onSeasonRisk, onSeasonBudget, onSeasonGoal, onSeasonTeam }: { world: WorldState; career: CareerState; onTrain: (id: TrainingId) => void; onOpenExpedition: () => void; onOpenWorld: () => void; onSeasonRisk: (policy: SeasonRiskPolicy) => void; onSeasonBudget: (policy: SeasonBudgetPolicy) => void; onSeasonGoal: (routeId: string) => void; onSeasonTeam: () => void }) {
+export function MobileOverview({ world, career, onTrain, onOpenExpedition }: { world: WorldState; career: CareerState; onTrain: (id: TrainingId) => void; onOpenExpedition: () => void; onOpenWorld: () => void }) {
   const route = getSelectedRoute(career);
   const expedition = expeditionReadiness(career);
   const progression = normalizeCareerProgression(career);
@@ -63,10 +60,6 @@ export function MobileOverview({ world, career, onTrain, onOpenExpedition, onSea
   const worldRank = careerWorldRank(career);
   const primaryTraining = trainingOrder.slice(0, 4);
   const extraTraining = trainingOrder.slice(4);
-  const seasonPlan = normalizeSeasonCampaignPlan(career);
-  const seasonGoals = seasonPlanRoutes(career);
-  const seasonCandidates = [...career.routes].sort((a, b) => a.objectiveRisk - b.objectiveRisk).filter((item, index, list) => list.findIndex(route => route.mountainId === item.mountainId) === index).slice(0, 6);
-  const seasonCore = career.teamRoster.filter(member => seasonPlan.coreMemberIds.includes(member.id));
 
   const renderTraining = (id: TrainingId) => {
     const action = TRAINING_ACTIONS[id];
@@ -84,26 +77,13 @@ export function MobileOverview({ world, career, onTrain, onOpenExpedition, onSea
     <button className="m-focus-card m-focus-card--compact" onClick={career.recoveryDays > 0 ? () => onTrain('RECOVERY') : onOpenExpedition}><div><small>СЕЙЧАС</small><strong>{career.recoveryDays > 0 ? 'Восстановление' : career.activeClimb ? 'Вернуться на маршрут' : expedition.blockers.length ? 'Закончить подготовку' : 'Начать экспедицию'}</strong><span>{career.recoveryDays > 0 ? `Ещё ${career.recoveryDays} дн. до тяжёлой работы` : career.activeClimb ? 'Экспедиция продолжается' : expedition.blockers[0] ?? route.mountainName}</span></div><b>→</b></button>
     <section className="m-season-card"><header><div><small>{SEASON_PHASE_LABELS[phase]}</small><strong>Сезон {progression.seasonNumber}</strong></div><span>{expeditionCount}/{expeditionLimit} выходов</span></header><div className="m-season-facts"><span>{CAREER_TIER_LABELS[progression.tier]}<b>уровень</b></span><span>№ {worldRank}<b>в мире</b></span><span>{progression.sponsor ? progression.sponsor.name : 'Без поддержки'}<b>партнёр</b></span></div>{milestone && <footer><small>СЛЕДУЮЩАЯ ЦЕЛЬ</small><strong>{milestone.title}</strong></footer>}</section>
     <div className="m-state-strip"><span>Здоровье <b>{Math.round(career.hero.health)}</b></span><span>{career.recoveryDays > 0 ? 'Отдых' : 'Форма'} <b>{career.recoveryDays > 0 ? `${career.recoveryDays}д` : Math.round(career.hero.form)}</b></span><span>Усталость <b>{Math.round(career.hero.fatigue)}</b></span></div>
-    <details className="m-details m-season-plan-mobile" open={seasonPlan.preparationDays === 0 || undefined}>
-      <summary>План сезона · {seasonPlan.spentCredits}/{seasonPlan.reserveCredits} кр.</summary>
-      <div className="m-season-plan-body">
-        <div className="m-season-plan-goals">{seasonGoals.map(route => <button key={route.id} className="is-active" onClick={() => onSeasonGoal(route.id)}><strong>{route.mountainName}</strong><small>{route.name}</small><b>{seasonPlan.completedGoalRouteIds.includes(route.id) ? '✓' : '×'}</b></button>)}</div>
-        <details className="m-details m-details--flat"><summary>Сменить цели</summary><div className="m-season-goal-picker">{seasonCandidates.map(route => <button key={route.id} className={seasonPlan.goalRouteIds.includes(route.id) ? 'is-active' : ''} onClick={() => onSeasonGoal(route.id)}><strong>{route.mountainName}</strong><small>{route.summitElevation} м</small></button>)}</div></details>
-        <div className="m-season-plan-label"><span>Основной состав</span><b>{seasonCore.length ? seasonCore.map(member => member.name.split(' ')[0]).join(' · ') : 'не задан'}</b></div>
-        <button className="m-season-team-button" onClick={onSeasonTeam} disabled={!career.permanentTeam.memberIds.length}>Взять постоянную связку</button>
-        <div className="m-season-plan-label"><span>Бюджет</span><b>{Math.max(0, seasonPlan.reserveCredits - seasonPlan.spentCredits)} кр. осталось</b></div>
-        <div className="m-segmented">{([['LEAN', 'Эконом'], ['STANDARD', 'Рабочий'], ['FULL', 'Полный']] as Array<[SeasonBudgetPolicy, string]>).map(([policy, label]) => <button key={policy} className={seasonPlan.budgetPolicy === policy ? 'is-active' : ''} onClick={() => onSeasonBudget(policy)}>{label}</button>)}</div>
-        <div className="m-season-plan-label"><span>Риск</span><b>{seasonPlan.preparationDays} дн. подготовки</b></div>
-        <div className="m-segmented">{([['CAUTIOUS', 'Осторожно'], ['BALANCED', 'Рабоче'], ['AGGRESSIVE', 'Жёстко']] as Array<[SeasonRiskPolicy, string]>).map(([policy, label]) => <button key={policy} className={seasonPlan.riskPolicy === policy ? 'is-active' : ''} onClick={() => onSeasonRisk(policy)}>{label}</button>)}</div>
-      </div>
-    </details>
     <div className="m-section-head"><h2>Тренировки</h2></div>
     <div className="m-action-list">{primaryTraining.map(renderTraining)}</div>
     <details className="m-details m-details--flat"><summary>Все действия</summary><div className="m-action-list">{extraTraining.map(renderTraining)}</div></details>
   </section>;
 }
 
-export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMountain, onSelectRoute, onContinue }: { world: WorldState; career: CareerState; offers: ExpeditionOffer[]; onAcceptOffer: (id: string) => void; onSelectMountain: (id: string) => void; onSelectRoute: (id: string) => void; onContinue: () => void }) {
+export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMountain, onSelectRoute, onContinue, onWaitForDeparture }: { world: WorldState; career: CareerState; offers: ExpeditionOffer[]; onAcceptOffer: (id: string) => void; onSelectMountain: (id: string) => void; onSelectRoute: (id: string) => void; onContinue: () => void; onWaitForDeparture: () => void }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const route = getSelectedRoute(career);
   const currentRegion = careerRegion(world, career);
@@ -115,6 +95,7 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
   const mountainMemory = useMemo(() => buildMountainMemory(career, mountain.id), [career, mountain.id]);
   const applicationFor = (offerId: string) => [...career.applications].reverse().find(application => application.offerId === offerId) ?? null;
   const routeDynamics = buildMountainDynamics(career, mountain.id, route.id);
+  const waitDays = career.acceptedOffer?.departureDay ? Math.max(0, career.acceptedOffer.departureDay - career.seasonDay) : 0;
 
   const chooseMountain = (id: string) => {
     onSelectMountain(id);
@@ -140,7 +121,8 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
       <div className="m-status-line"><strong>{career.selectedOfferId ? `Выход: день ${career.acceptedOffer?.departureDay ?? career.seasonDay}` : 'Выбери план и дождись выхода'}</strong><span>{offers.length} планов</span></div>
       <div className="m-offer-list">{offers.map(renderOffer)}</div>
       {!offers.length && <div className="m-note">Сейчас нет доступных заявок. Продвигай время тренировками.</div>}
-      {career.selectedOfferId && <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>НАЗНАЧЕННАЯ ЦЕЛЬ</small><strong>{mountain.name}</strong><span>{route.name} · роль: {roleLabel[career.expeditionPlan.playerRole]}</span></div><b>{route.estimatedDecisionCount ?? 20} реш.</b></footer></section>}
+      {career.selectedOfferId && <section className="m-target-card m-target-card--route"><MountainModel mountain={mountain} seed={world.config.seed} variant="hero" label={mountain.name} /><footer><div><small>НАЗНАЧЕННАЯ ЦЕЛЬ</small><strong>{mountain.name}</strong><span>{route.name} · роль: {roleLabel[career.expeditionPlan.playerRole]}</span></div><b>{route.estimatedDecisionCount ?? 20} реш.</b></footer></section>}
+      {career.selectedOfferId && career.acceptedOffer?.scheduleStatus !== 'CANCELLED' && <button className="school-wait-action" onClick={onWaitForDeparture}><span><strong>{waitDays > 0 ? `Подождать ${waitDays} дн. и выйти` : 'Начать экспедицию'}</strong><small>календарь и планы школ обновятся</small></span><b>→</b></button>}
       <button className="m-sticky-action" disabled={!career.selectedOfferId} onClick={onContinue}><span>{career.selectedOfferId ? 'Состав экспедиции' : 'Нужна принятая заявка'}</span><b>→</b></button>
     </section>;
   }
@@ -150,7 +132,7 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
   return <section className="m-screen m-screen--with-action">
     <StepLine step="1/4" title={career.selectedOfferId ? 'Чужая экспедиция' : career.membership.mode === 'INDEPENDENT' ? 'Одиночный выход' : 'Цель'} />
     {career.membership.mode === 'INDEPENDENT' && foreignOffers.length > 0 && <details className="m-details m-details--flat m-foreign-offers"><summary>Чужие походы · {foreignOffers.length}</summary><div className="m-offer-list">{foreignOffers.map(renderOffer)}</div></details>}
-    <section className="m-target-card m-target-card--route"><MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} /><footer><div><small>{career.selectedOfferId ? 'НАЗНАЧЕННАЯ ЦЕЛЬ' : mountain.characterTitle}</small><strong>{mountain.name}</strong><span>{career.selectedOfferId ? `${route.name} · роль: ${roleLabel[career.expeditionPlan.playerRole]}` : mountain.dangerProfile}</span></div><b>{mountain.elevation} м</b></footer></section>
+    <section className="m-target-card m-target-card--route"><MountainModel mountain={mountain} seed={world.config.seed} variant="hero" label={mountain.name} /><footer><div><small>{career.selectedOfferId ? 'НАЗНАЧЕННАЯ ЦЕЛЬ' : mountain.characterTitle}</small><strong>{mountain.name}</strong><span>{career.selectedOfferId ? `${route.name} · роль: ${roleLabel[career.expeditionPlan.playerRole]}` : mountain.dangerProfile}</span></div><b>{mountain.elevation} м</b></footer></section>
     <section className={`m-dynamic-condition is-${routeDynamics.status.toLowerCase()}`}><div><small>СОСТОЯНИЕ МАССИВА</small><strong>{routeDynamics.seasonTitle}</strong><span>{routeDynamics.seasonSummary}</span></div><b>{routeDynamics.statusLabel}</b>{routeDynamics.closureReason && <p>{routeDynamics.closureReason}</p>}</section>
     <details className="m-details m-details--flat m-memory-details">
       <summary>Память горы</summary>
@@ -166,6 +148,7 @@ export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMoun
       </div>
     </details>
     {!career.selectedOfferId && <><button className="m-picker-button" onClick={() => setPickerOpen(true)}><span>Сменить вершину</span><b>{mountains.length} доступно ›</b></button><div className="m-section-head"><h2>Маршрут</h2></div><div className="m-route-list">{routes.map(item => { const dynamics = buildMountainDynamics(career, mountain.id, item.id); const closed = dynamics.status === 'CLOSED'; return <button key={item.id} disabled={closed} className={`${item.id === route.id ? 'is-active' : ''} is-dynamic-${dynamics.status.toLowerCase()}`} onClick={() => onSelectRoute(item.id)}><div><small>{item.style} · {dynamics.statusLabel}</small><strong>{item.name}</strong><span>{closed ? dynamics.closureReason : `${item.estimatedDecisionCount ?? 20} решений · ≈ ${item.expectedPlayMinutes ?? 20} мин · риск ${level(item.objectiveRisk)}`}</span></div><b>{closed ? '×' : item.id === route.id ? '✓' : '○'}</b></button>; })}</div></>}
+    {career.selectedOfferId && career.acceptedOffer?.scheduleStatus !== 'CANCELLED' && <button className="school-wait-action" onClick={onWaitForDeparture}><span><strong>{waitDays > 0 ? `Подождать ${waitDays} дн. и выйти` : 'Начать экспедицию'}</strong><small>календарь и планы школ обновятся</small></span><b>→</b></button>}
     <button className="m-sticky-action" disabled={routeDynamics.status === 'CLOSED'} onClick={onContinue}><span>{routeDynamics.status === 'CLOSED' ? 'Выбери открытую линию' : career.selectedOfferId ? 'Состав экспедиции' : 'Подготовить выход'}</span><b>→</b></button>
     {pickerOpen && <div className="m-modal-layer" onClick={() => setPickerOpen(false)}><section className="m-picker-sheet" onClick={event => event.stopPropagation()}><header><div><small>РЕЕСТР ГОР</small><strong>Выбери вершину</strong></div><button onClick={() => setPickerOpen(false)}>×</button></header><div className="m-list">{mountains.map((item, index) => <button key={item.id} className={item.id === mountain.id ? 'is-active' : ''} onClick={() => chooseMountain(item.id)}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{item.name}</strong><small>{item.characterTitle} · техника {level(item.technicality)}</small></div><b>{item.elevation} м</b></button>)}</div></section></div>}
   </section>;

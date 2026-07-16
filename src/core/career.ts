@@ -521,6 +521,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
       : world.ecosystem.content.primaryRegionId,
     unlockedRegionIds: career.unlockedRegionIds ?? [world.ecosystem.content.primaryRegionId],
     travelHistory: career.travelHistory ?? [],
+    resolvedSchoolOfferIds: career.resolvedSchoolOfferIds ?? [],
     expeditionPlan: {
       ...career.expeditionPlan,
       offerId: career.expeditionPlan?.offerId ?? null,
@@ -602,6 +603,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     currentRegionId: world.ecosystem.content.primaryRegionId,
     unlockedRegionIds: [world.ecosystem.content.primaryRegionId],
     travelHistory: [],
+    resolvedSchoolOfferIds: [],
   };
 
   const opening = membership.mode === 'INDEPENDENT'
@@ -829,6 +831,38 @@ export function applyTraining(career: CareerState, trainingId: TrainingId): Care
   return timeline.year > career.year ? rollCareerSeason(career, advanced) : syncCareerProgression(advanced);
 }
 
+export function waitForSchoolDeparture(world: WorldState, career: CareerState): CareerState {
+  const offer = career.acceptedOffer;
+  if (!offer || !career.selectedOfferId || offer.scheduleStatus === 'CANCELLED') return career;
+  const days = Math.max(0, (offer.departureDay ?? career.seasonDay) - career.seasonDay);
+  let next = career;
+  if (days > 0) {
+    const timeline = advanceDays(career, days);
+    next = {
+      ...career,
+      year: timeline.year,
+      seasonDay: timeline.seasonDay,
+      week: timeline.week,
+      hero: {
+        ...career.hero,
+        age: career.hero.age + timeline.ageDelta,
+        fatigue: clamp(career.hero.fatigue - Math.max(2, days * .6), 0, 100),
+        form: clamp(career.hero.form + Math.min(4, days * .18), 0, 100),
+        morale: clamp(career.hero.morale + 1, 0, 100),
+      },
+      recoveryDays: Math.max(0, career.recoveryDays - days),
+    };
+    next = addSeasonPreparation(next, Math.max(1, days));
+    next.log = [...career.log, careerLog(next, 'EXPEDITION', 'Ожидание выхода', `Прошло ${days} дн. Школа завершила набор, подготовку груза и ожидание погодного окна.`)];
+    next = advanceLivingWorld(next, days);
+    if (timeline.year > career.year) next = rollCareerSeason(career, next);
+  }
+  const currentOffer = buildSchoolExpeditionBoard(world, next).find(item => item.id === offer.id) ?? { ...offer, phase: schoolExpeditionPhase(offer, next.seasonDay), preparationProgress: 100 };
+  next = { ...next, acceptedOffer: currentOffer };
+  const started = startPlannedClimb(next);
+  return started.activeClimb ? started : syncCareerProgression(next);
+}
+
 export function travelToRegion(world: WorldState, career: CareerState, regionId: RegionId): CareerState {
   if (career.activeClimb || regionId === career.currentRegionId) return career;
   const region = world.ecosystem.content.regions.byId[regionId];
@@ -895,12 +929,18 @@ export function updateExpeditionPlan(career: CareerState, patch: Partial<Expedit
 export function schoolExpeditionBoard(world: WorldState, career: CareerState, allSchools = false): ExpeditionOffer[] {
   const homeOrganization = getOrganization(world, career.membership.organizationId);
   const awayFromHome = Boolean(homeOrganization && homeOrganization.regionId !== career.currentRegionId);
+  const resolved = new Set(career.resolvedSchoolOfferIds ?? []);
   return buildSchoolExpeditionBoard(world, career)
     .filter(offer => {
       const route = world.ecosystem.content.routes.byId[offer.routeId];
       return route?.regionId === career.currentRegionId;
     })
-    .filter(offer => allSchools || awayFromHome || career.membership.mode === 'INDEPENDENT' || offer.organizationId === career.membership.organizationId);
+    .filter(offer => !resolved.has(offer.id))
+    .filter(offer => allSchools || awayFromHome || career.membership.mode === 'INDEPENDENT' || offer.organizationId === career.membership.organizationId)
+    .filter(offer => {
+      if (allSchools || offer.id === career.selectedOfferId) return true;
+      return ['ANNOUNCED', 'RECRUITING', 'PREPARING', 'WEATHER_HOLD'].includes(schoolExpeditionPhase(offer, career.seasonDay));
+    });
 }
 
 export function availableExpeditionOffers(world: WorldState, career: CareerState): ExpeditionOffer[] {
@@ -1146,6 +1186,7 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   const weather = getSelectedWeather(career);
   const team = selectedTeam(career);
   const soloPlan = career.expeditionPlan.offerId?.includes('independent-solo') || (career.membership.mode === 'INDEPENDENT' && team.length === 0);
+  const scheduledSchoolPlan = Boolean(career.acceptedOffer && career.membership.mode !== 'INDEPENDENT');
   const heroBase = careerReadiness(career);
   const primarySkills = route.segments.map(item => career.hero.skills[item.skill]);
   const seasonPreparation = seasonPreparationBonus(career, route.id);
@@ -1173,7 +1214,7 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   if (!career.selectedOfferId && !career.membership.permissions.canOrganize && !career.membership.permissions.canStartSolo) blockers.push('Сначала получи место в чужой экспедиции.');
   if (dynamics.status === 'CLOSED') blockers.push(`Маршрут временно закрыт: ${dynamics.closureReason ?? dynamics.seasonSummary}`);
   if (missingGear.length) blockers.push(`Не хватает обязательного снаряжения: ${missingGear.map(id => GEAR_CATALOG.find(item => item.id === id)?.name ?? id).join(', ')}`);
-  if (!soloPlan && team.length + 1 < route.recommendedTeamSize) blockers.push('Группа меньше рекомендованного состава.');
+  if (!soloPlan && !scheduledSchoolPlan && team.length + 1 < route.recommendedTeamSize) blockers.push('Группа меньше рекомендованного состава.');
   if (soloPlan && route.objectiveRisk > 62) blockers.push('Этот маршрут слишком опасен для одиночного выхода.');
   if (career.expeditionPlan.foodDays < 2) blockers.push('Недостаточный запас еды.');
   if (career.expeditionPlan.fuelUnits < 2) blockers.push('Недостаточный запас топлива.');
@@ -2549,6 +2590,9 @@ export function closeClimb(career: CareerState): CareerState {
   }
   finalized = syncCareerProgression(finalized);
   const timeline = advanceDays(finalized, 3);
+  const resolvedSchoolOfferIds = climb.expeditionOfferId
+    ? [...new Set([...(finalized.resolvedSchoolOfferIds ?? []), climb.expeditionOfferId])]
+    : finalized.resolvedSchoolOfferIds ?? [];
   const closed: CareerState = {
     ...finalized,
     year: timeline.year,
@@ -2558,6 +2602,7 @@ export function closeClimb(career: CareerState): CareerState {
     activeClimb: null,
     selectedOfferId: null,
     acceptedOffer: null,
+    resolvedSchoolOfferIds,
     seasonPlan: null as unknown as CareerState['seasonPlan'],
   };
   const advanced = advanceLivingWorld(closed, 3);

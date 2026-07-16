@@ -1344,6 +1344,7 @@ export interface CareerState {
   currentRegionId: RegionId;
   unlockedRegionIds: RegionId[];
   travelHistory: RegionTravelRecord[];
+  resolvedSchoolOfferIds: ExpeditionOfferId[];
 }
 
 export interface CareerDraft {

@@ -1,4 +1,4 @@
-import { MountainArt } from '../components/MountainArt';
+import { MountainModel } from '../components/MountainModel';
 import { EXPEDITION_RANK_LABELS, expeditionReadiness, getSelectedRoute, routesForMountain } from '../core/career';
 import type { CareerState, ExpeditionOffer, WorldState } from '../core/types';
 import { buildMountainMemory } from '../core/mountainMemory';
@@ -14,6 +14,7 @@ type Props = {
   onSelectMountain: (mountainId: string) => void;
   onSelectRoute: (routeId: string) => void;
   onContinue: () => void;
+  onWaitForDeparture: () => void;
 };
 
 function level(value: number) {
@@ -33,7 +34,7 @@ function mountainScore(mountain: WorldState['region']['mountains'][number]) {
   return mountain.elevation * .01 + mountain.technicality * .72 + mountain.altitudeSeverity * .55 + mountain.remoteness * .32;
 }
 
-export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSelectMountain, onSelectRoute, onContinue }: Props) {
+export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSelectMountain, onSelectRoute, onContinue, onWaitForDeparture }: Props) {
   const route = getSelectedRoute(career);
   const currentRegion = careerRegion(world, career);
   const currentMountains = regionMountains(world, currentRegion.id);
@@ -44,6 +45,7 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
   const latestApplication = career.applications[career.applications.length - 1] ?? null;
   const mountainMemory = buildMountainMemory(career, mountain.id);
   const routeDynamics = buildMountainDynamics(career, mountain.id, route.id);
+  const waitDays = career.acceptedOffer?.departureDay ? Math.max(0, career.acceptedOffer.departureDay - career.seasonDay) : 0;
 
   if (!career.membership.permissions.canChooseRoute) {
     return (
@@ -84,7 +86,7 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
             })}
           </div>
         </section>
-        {career.selectedOfferId && <section className="route-summary-panel"><div><p className="eyebrow">ASSIGNED EXPEDITION</p><h2>{route.mountainName} · {route.name}</h2><p>Место подтверждено. До выхода группа проходит подготовку, распределяет груз и ждёт своё погодное окно.</p></div><div className="route-summary-panel__metrics"><span><small>ВЫХОД</small><strong>день {career.acceptedOffer?.departureDay ?? career.seasonDay}</strong></span><span><small>ВЕРШИНА</small><strong>{route.summitElevation} м</strong></span><span><small>СОСТАВ</small><strong>{career.expeditionPlan.teamMemberIds.length + 1}</strong></span><span><small>РОЛЬ</small><strong>{career.expeditionPlan.playerRole}</strong></span></div></section>}
+        {career.selectedOfferId && <section className="route-summary-panel"><div><p className="eyebrow">ASSIGNED EXPEDITION</p><h2>{route.mountainName} · {route.name}</h2><p>Место подтверждено. План обновляется вместе с календарём школы. Можно заниматься своими делами или промотать время прямо до выхода.</p></div><div className="route-summary-panel__metrics"><span><small>ВЫХОД</small><strong>день {career.acceptedOffer?.departureDay ?? career.seasonDay}</strong></span><span><small>ОСТАЛОСЬ</small><strong>{waitDays} дн.</strong></span><span><small>СОСТАВ</small><strong>{career.expeditionPlan.teamMemberIds.length + 1}</strong></span><span><small>РОЛЬ</small><strong>{career.expeditionPlan.playerRole}</strong></span></div>{career.acceptedOffer?.scheduleStatus !== 'CANCELLED' && <button className="school-wait-action" onClick={onWaitForDeparture}><span><strong>{waitDays > 0 ? `Подождать ${waitDays} дн. и выйти` : 'Начать экспедицию сейчас'}</strong><small>время, планы школ и мир будут промотаны автоматически</small></span><b>→</b></button>}</section>}
         <button className="flow-next-action" disabled={!career.selectedOfferId} onClick={onContinue}><span><small>СЛЕДУЮЩИЙ ШАГ</small><strong>{career.selectedOfferId ? 'Посмотреть состав и подготовку' : 'Выбери план инструктора'}</strong></span><b>→</b></button>
       </section>
     );
@@ -128,7 +130,7 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
       </section>
 
       <div className="route-hero-panel route-hero-panel--clear">
-        <MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} />
+        <MountainModel mountain={mountain} seed={world.config.seed} variant="hero" label={mountain.name} />
         <div className="selected-objective-card">
           <small>{route.isSignature ? 'ЭТАЛОННЫЙ ВЕРТИКАЛЬНЫЙ СРЕЗ' : 'ВЫБРАННАЯ ВЕРШИНА'}</small>
           <strong>{mountain.name}</strong>

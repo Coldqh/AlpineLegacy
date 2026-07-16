@@ -3,8 +3,7 @@ import { SkillBars } from '../components/SkillBars';
 import { TRAINING_ACTIONS, SKILL_LABELS, careerReadiness, expeditionReadiness, getSelectedRoute } from '../core/career';
 import { normalizeCareerProgression } from '../core/progression';
 import { careerRegion } from '../core/regionalCareer';
-import { normalizeSeasonCampaignPlan, seasonPlanRoutes } from '../core/seasonPlanning';
-import type { CareerState, SeasonBudgetPolicy, SeasonRiskPolicy, TrainingId, WorldState } from '../core/types';
+import type { CareerState, TrainingId, WorldState } from '../core/types';
 
 type Props = {
   world: WorldState;
@@ -12,10 +11,6 @@ type Props = {
   onTrain: (trainingId: TrainingId) => void;
   onOpenExpedition: () => void;
   onOpenWorld: () => void;
-  onSeasonRisk: (policy: SeasonRiskPolicy) => void;
-  onSeasonBudget: (policy: SeasonBudgetPolicy) => void;
-  onSeasonGoal: (routeId: string) => void;
-  onSeasonTeam: () => void;
 };
 
 const trainingOrder: TrainingId[] = ['CONDITIONING', 'ROCK_PRACTICE', 'ICE_PRACTICE', 'MAP_ROOM', 'FIRST_AID', 'CLUB_DUTY', 'RECOVERY'];
@@ -24,7 +19,7 @@ function signed(value: number) {
   return value > 0 ? `+${value}` : String(value);
 }
 
-export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition, onOpenWorld, onSeasonRisk, onSeasonBudget, onSeasonGoal, onSeasonTeam }: Props) {
+export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition, onOpenWorld }: Props) {
   const target = getSelectedRoute(career);
   const currentRegion = careerRegion(world, career);
   const mountain = world.ecosystem.content.mountains.byId[target.mountainId] ?? world.region.mountains[0]!;
@@ -35,10 +30,6 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
   const incompleteGoals = progression.milestones.filter(item => !item.completed).slice(0, 4);
   const clubMentorIds = new Set(career.club.mentors.map(item => item.id));
   const mentorActivity = [...career.livingWorld.expeditions].reverse().filter(item => clubMentorIds.has(item.leaderAthleteId)).slice(0, 3);
-  const seasonPlan = normalizeSeasonCampaignPlan(career);
-  const seasonGoals = seasonPlanRoutes(career);
-  const seasonCandidates = career.routes.filter(route => route.regionId === career.currentRegionId).sort((a, b) => a.objectiveRisk - b.objectiveRisk || a.summitElevation - b.summitElevation).filter((route, index, list) => list.findIndex(item => item.mountainId === route.mountainId) === index).slice(0, 8);
-  const seasonCore = career.teamRoster.filter(member => seasonPlan.coreMemberIds.includes(member.id));
   const nextMessage = career.recoveryDays > 0
     ? `После экспедиции нужен отдых: ещё ${career.recoveryDays} дн. Тяжёлые тренировки временно закрыты.`
     : career.activeClimb
@@ -92,33 +83,6 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
           {mentorActivity.length > 0 && <div className="mentor-route-strip">{mentorActivity.map(item => <span key={item.id}><b>{item.mountainName}</b><small>{item.routeName} · {item.outcome === 'SUMMIT' ? 'вершина' : item.outcome === 'RETREAT' ? 'отход' : item.outcome === 'TRAGEDY' ? 'трагедия' : 'авария'}</small></span>)}</div>}
         </section>
       </div>
-
-      <section className="workspace-panel season-command-panel">
-        <div className="panel-heading"><div><p className="eyebrow">ПЛАН СЕЗОНА · {career.year}</p><h2>Цели, состав, деньги, риск</h2></div><span>{seasonPlan.spentCredits}/{seasonPlan.reserveCredits} КР.</span></div>
-        <p className="section-explainer">Ты задаёшь только четыре рамки. Подготовка копится через тренировки, а школа сама двигает наборы, переносы и выходы.</p>
-        <div className="season-command-grid">
-          <article className="season-command-card season-command-card--goals">
-            <header><small>01 · ЦЕЛИ</small><strong>{seasonPlan.completedGoalRouteIds.length}/{seasonPlan.goalRouteIds.length} выполнено</strong></header>
-            <div className="season-goal-list">{seasonGoals.map(route => <button key={route.id} className="is-active" onClick={() => onSeasonGoal(route.id)}><span>{route.mountainName}</span><small>{route.name} · {route.summitElevation} м</small><b>{seasonPlan.completedGoalRouteIds.includes(route.id) ? '✓' : '×'}</b></button>)}</div>
-            <details><summary>Изменить цели</summary><div className="season-goal-picker">{seasonCandidates.map(route => <button key={route.id} className={seasonPlan.goalRouteIds.includes(route.id) ? 'is-active' : ''} onClick={() => onSeasonGoal(route.id)}><strong>{route.mountainName}</strong><small>{route.name}</small></button>)}</div></details>
-          </article>
-          <article className="season-command-card">
-            <header><small>02 · ОСНОВНОЙ СОСТАВ</small><strong>{seasonCore.length} человек</strong></header>
-            <p>{seasonCore.length ? seasonCore.map(member => member.name).join(' · ') : 'Основной состав не закреплён.'}</p>
-            <button className="season-command-action" onClick={onSeasonTeam} disabled={!career.permanentTeam.memberIds.length}>Взять постоянную связку</button>
-          </article>
-          <article className="season-command-card">
-            <header><small>03 · БЮДЖЕТ</small><strong>{Math.max(0, seasonPlan.reserveCredits - seasonPlan.spentCredits)} кр. осталось</strong></header>
-            <div className="season-segmented">{([['LEAN', 'Экономный'], ['STANDARD', 'Рабочий'], ['FULL', 'Полный']] as Array<[SeasonBudgetPolicy, string]>).map(([policy, label]) => <button key={policy} className={seasonPlan.budgetPolicy === policy ? 'is-active' : ''} onClick={() => onSeasonBudget(policy)}>{label}</button>)}</div>
-            <p>{seasonPlan.budgetPolicy === 'FULL' ? 'Больше резерв и лучше подготовка целей.' : seasonPlan.budgetPolicy === 'LEAN' ? 'Меньше резерв, без скидки на целевые экспедиции.' : 'Средний резерв и поддержка основных целей.'}</p>
-          </article>
-          <article className="season-command-card">
-            <header><small>04 · ДОПУСТИМЫЙ РИСК</small><strong>{seasonPlan.preparationDays} дн. подготовки</strong></header>
-            <div className="season-segmented">{([['CAUTIOUS', 'Осторожно'], ['BALANCED', 'Рабоче'], ['AGGRESSIVE', 'Жёстко']] as Array<[SeasonRiskPolicy, string]>).map(([policy, label]) => <button key={policy} className={seasonPlan.riskPolicy === policy ? 'is-active' : ''} onClick={() => onSeasonRisk(policy)}>{label}</button>)}</div>
-            <p>Переносов школы: {seasonPlan.delayedPlans}. Отмен: {seasonPlan.cancelledPlans}. Риск влияет на готовность и допустимую сложность цели.</p>
-          </article>
-        </div>
-      </section>
 
       <section className="workspace-panel career-goals-panel">
         <div className="panel-heading"><div><p className="eyebrow">ДОЛГОСРОЧНАЯ КАРЬЕРА</p><h2>Следующие цели</h2></div><span>{progression.milestones.filter(item => item.completed).length}/{progression.milestones.length}</span></div>

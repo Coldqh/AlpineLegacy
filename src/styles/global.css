@@ -4412,3 +4412,92 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
 @media (max-width: 620px) {
   .world-region-grid { grid-template-columns: 1fr; }
 }
+
+/* 0.19.0 unified 3D mountain previews */
+.mountain-model {
+  position: relative;
+  overflow: hidden;
+  min-height: 260px;
+  border: 1px solid rgba(194, 218, 205, .16);
+  border-radius: 16px;
+  background: radial-gradient(circle at 52% 40%, rgba(115, 145, 130, .12), transparent 48%), rgba(7, 13, 11, .7);
+  isolation: isolate;
+}
+.mountain-model svg { display: block; width: 100%; height: 100%; min-height: inherit; touch-action: none; }
+.mountain-model.is-interactive svg { cursor: grab; }
+.mountain-model.is-interactive svg:active { cursor: grabbing; }
+.mountain-model__backdrop { fill: rgba(8, 14, 12, .32); }
+.mountain-model--hero { min-height: 360px; }
+.mountain-model--detail { min-height: 520px; }
+.mountain-model--card { min-height: 164px; border: 0; border-radius: 10px; background: rgba(5, 10, 9, .42); }
+.mountain-model__readout {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid rgba(201, 221, 210, .13);
+  border-radius: 9px;
+  background: rgba(7, 12, 10, .72);
+  backdrop-filter: blur(8px);
+}
+.mountain-model__readout span { color: var(--muted); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+.mountain-model__readout b { font-family: var(--serif); font-size: 18px; font-weight: 500; }
+.mountain-model__hint { position: absolute; right: 14px; top: 12px; color: rgba(213, 228, 220, .56); font-size: 8px; letter-spacing: .12em; text-transform: uppercase; }
+.hero-composition .mountain-model { width: 100%; min-height: 480px; border: 0; background: transparent; }
+.region-page > .mountain-model--hero { margin-top: 24px; }
+.mountain-card .mountain-model { margin: 10px 0 14px; }
+.route-hero-panel > .mountain-model { min-height: 410px; }
+.overview-poster > .mountain-model { min-height: 370px; }
+
+/* 0.19.0 desktop More menu */
+.career-sidebar__more { position: relative; }
+.career-sidebar__more-button { width: 100%; }
+.career-more-popover {
+  position: absolute;
+  z-index: 40;
+  left: calc(100% + 10px);
+  bottom: 0;
+  width: 240px;
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(8, 14, 12, .98);
+  box-shadow: 0 20px 60px rgba(0,0,0,.42);
+}
+.career-more-popover button {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.career-more-popover button:last-child { border-bottom: 0; }
+.career-more-popover button.is-active { background: rgba(108, 151, 128, .13); }
+.career-more-popover small { color: var(--muted); }
+
+.school-wait-action {
+  display: flex;
+  width: 100%;
+  margin-top: 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(130, 176, 151, .4);
+  border-radius: 10px;
+  background: rgba(73, 119, 94, .14);
+  color: inherit;
+}
+.school-wait-action strong { font-size: 13px; }
+.school-wait-action span { color: var(--muted); font-size: 10px; }
+.school-wait-action b { font-size: 20px; }

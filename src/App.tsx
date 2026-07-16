@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { MountainArt } from './components/MountainArt';
+import { MountainModel } from './components/MountainModel';
 import { ScreenShell } from './components/ScreenShell';
 import { applyTraining, createCareer, formatSeasonDate } from './core/career';
 import { generateWorld } from './core/generator';
@@ -54,6 +54,7 @@ function App() {
   }, []);
 
   const [screen, setScreen] = useState<ScreenId>('MENU');
+  const [atlasReturnScreen, setAtlasReturnScreen] = useState<'MENU' | 'CAREER'>('MENU');
   const [careerTab, setCareerTab] = useState<CareerTabId>('OVERVIEW');
   const [world, setWorld] = useState<WorldState | null>(initial.world);
   const [career, setCareer] = useState<CareerState | null>(initial.career);
@@ -70,7 +71,7 @@ function App() {
   useScrollReset(screen, careerTab, selectedMountain?.id);
 
   if (topoPreview) {
-    if (!career?.activeClimb) return <main className="mg-app"><header className="mg-header"><div><span>ALPINE LEGACY / 0.9.5</span><h1>Нет активной экспедиции</h1></div><div className="mg-header-actions"><button onClick={() => setTopoPreview(false)}>Вернуться</button></div></header></main>;
+    if (!career?.activeClimb) return <main className="mg-app"><header className="mg-header"><div><span>ALPINE LEGACY / 0.18.1</span><h1>Нет активной экспедиции</h1></div><div className="mg-header-actions"><button onClick={() => setTopoPreview(false)}>Вернуться</button></div></header></main>;
     return <TopoExpeditionPrototype career={career} onPersist={next => { setCareer(next); saveCareer(next); }} onExit={() => setTopoPreview(false)} allowRegenerate={false} />;
   }
 
@@ -92,6 +93,7 @@ function App() {
           deleteCareer();
           setWorld(created);
           setCareer(null);
+          setAtlasReturnScreen('MENU');
           setScreen('REGION');
         } catch (error) {
           console.error('World generation failed', error);
@@ -143,6 +145,24 @@ function App() {
     }
   }
 
+  function closeAtlas() {
+    if (atlasReturnScreen === 'CAREER' && career && world) {
+      setScreen('CAREER');
+      return;
+    }
+    setScreen('MENU');
+  }
+
+  function openAtlasFromCareer() {
+    setAtlasReturnScreen('CAREER');
+    setScreen('REGION');
+  }
+
+  function openAtlasFromMenu() {
+    setAtlasReturnScreen('MENU');
+    setScreen(world ? 'REGION' : 'SETUP');
+  }
+
   if (screen === 'CHARACTER' && world) {
     return mobile
       ? <MobileCharacterCreation world={world} onBack={() => setScreen('REGION')} onCreate={createHero} />
@@ -159,7 +179,7 @@ function App() {
         onPersist={persistCareer}
         onTrain={train}
         onExit={() => setScreen('MENU')}
-        onAtlas={() => setScreen('REGION')}
+        onAtlas={openAtlasFromCareer}
       />
     );
   }
@@ -174,7 +194,7 @@ function App() {
             <p className="eyebrow">NEW WORLD / NEW LIFE</p>
             <h1>Создай мир, который переживёт тебя.</h1>
             <p className="lead">Один seed определит географию, историю, вершины и людей. Смерть героя завершит карьеру, но не обязательно уничтожит мир.</p>
-            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.9.5</small></div>
+            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.18.1</small></div>
           </div>
 
           <div className="setup-form">
@@ -257,10 +277,10 @@ function App() {
   }
 
   if (screen === 'REGION' && world) {
-    if (mobile) return <MobileRegionScreen world={world} career={career} onBack={() => setScreen('MENU')} onCareer={startCharacterCreation} onMountain={openMountain} />;
+    if (mobile) return <MobileRegionScreen world={world} career={career} onBack={closeAtlas} onCareer={startCharacterCreation} onMountain={openMountain} />;
     const { region } = world;
     return (
-      <ScreenShell onBack={() => setScreen('MENU')} rightLabel={`${world.config.startYear} / ${world.config.seed}`} onPrint={() => window.print()}>
+      <ScreenShell onBack={closeAtlas} rightLabel={`${world.config.startYear} / ${world.config.seed}`} onPrint={() => window.print()}>
         <section className="region-page page-enter">
           <div className="region-title-block">
             <div>
@@ -271,7 +291,7 @@ function App() {
             <div className="region-index-number">01</div>
           </div>
 
-          <MountainArt points={region.mountains[0]!.profilePoints} variant="hero" label={region.name} elevation={region.elevationMax} />
+          <MountainModel mountain={region.mountains[0]!} seed={world.config.seed} variant="hero" label={region.name} />
 
           <div className="region-metrics">
             <div><span>Вершины</span><strong>{region.mountains.length}</strong></div>
@@ -307,7 +327,7 @@ function App() {
             {region.mountains.map((mountain, index) => (
               <button className="mountain-card" key={mountain.id} onClick={() => openMountain(mountain)}>
                 <div className="mountain-card__head"><span>{String(index + 1).padStart(2, '0')}</span><strong>{mountain.status}</strong></div>
-                <MountainArt points={mountain.profilePoints} variant="card" />
+                <MountainModel mountain={mountain} seed={world.config.seed} variant="card" interactive={false} />
                 <div className="mountain-card__name"><h3>{mountain.name}</h3><span>{mountain.elevation} M</span></div>
                 <p>{mountain.epithet}</p>
                 <div className="mountain-card__stats"><span>TECH {mountain.technicality}</span><span>ALT {mountain.altitudeSeverity}</span><span>REM {mountain.remoteness}</span></div>
@@ -330,7 +350,7 @@ function App() {
             <div className="detail-elevation"><strong>{mountain.elevation}</strong><span>METRES ABOVE SEA LEVEL</span></div>
           </div>
 
-          <MountainArt points={mountain.profilePoints} variant="detail" label={mountain.name} elevation={mountain.elevation} />
+          <MountainModel mountain={mountain} seed={world?.config.seed ?? config.seed} variant="detail" label={mountain.name} />
 
           <div className="detail-grid">
             <div className="detail-summary"><p className="eyebrow">MOUNTAIN CHARACTER</p><p className="large-copy">{mountain.summary}</p></div>
@@ -404,9 +424,9 @@ function App() {
   }
 
   const archiveCount = career?.log.length ?? 0;
-  if (mobile) return <MobileMenu world={world} career={career} onNew={() => setScreen('SETUP')} onContinue={continueCareer} onAtlas={() => setScreen(world ? 'REGION' : 'SETUP')} onArchive={() => { if (career) { setCareerTab('JOURNAL'); setScreen('CAREER'); } else setScreen('ARCHIVE'); }} onTopo={() => setTopoPreview(true)} />;
+  if (mobile) return <MobileMenu world={world} career={career} onNew={() => setScreen('SETUP')} onContinue={continueCareer} onAtlas={openAtlasFromMenu} onArchive={() => { if (career) { setCareerTab('JOURNAL'); setScreen('CAREER'); } else setScreen('ARCHIVE'); }} onTopo={() => setTopoPreview(true)} />;
   return (
-    <ScreenShell rightLabel="EDITION 0.9.5 / INTEGRATED EXPEDITION">
+    <ScreenShell rightLabel="EDITION 0.18.1 / INTEGRATED EXPEDITION">
       <section className="menu-page page-enter">
         <div className="menu-hero-copy">
           <p className="eyebrow">A MOUNTAINEERING CAREER ROGUELIKE</p>
@@ -416,7 +436,7 @@ function App() {
 
         <div className="hero-composition">
           <div className="hero-coordinate">46°48′ N<br />9°50′ E</div>
-          <MountainArt variant="hero" />
+          <MountainModel mountain={world?.region.mountains[0]} seed={world?.config.seed ?? 'ALPINE-MENU'} variant="hero" label="Alpine Legacy" />
           <div className="hero-vertical-label">THE MOUNTAIN DOES NOT CARE</div>
         </div>
 

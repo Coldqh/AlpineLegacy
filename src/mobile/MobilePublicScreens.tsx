@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MountainArt } from '../components/MountainArt';
+import { MountainModel } from '../components/MountainModel';
 import type { DifficultyId, EraId, MountainData, WorldSeedConfig, WorldState, CareerState } from '../core/types';
 import { useScrollReset } from './useMobile';
 
@@ -62,7 +62,7 @@ export function MobileWorldSetup({ config, onConfig, onRandomSeed, onCreate, onB
 
 export function MobileGeneratingScreen({ seed, error, onRetry, onBack }: { seed: string; error: string | null; onRetry: () => void; onBack: () => void }) {
   if (error) return <main className="m-public-shell m-generating"><section className="generation-error"><p className="m-kicker">{seed}</p><h2>Мир не создан</h2><p>{error}</p><div><button onClick={onRetry}>Повторить</button><button onClick={onBack}>Назад</button></div></section></main>;
-  return <main className="m-public-shell m-generating"><p className="m-kicker">{seed}</p><MountainArt variant="hero" /><h1>Строим хребет</h1><div className="m-loading"><i /><i /><i /><i /></div></main>;
+  return <main className="m-public-shell m-generating"><p className="m-kicker">{seed}</p><MountainModel seed={seed} variant="hero" label="Генерация массива" /><h1>Строим хребет</h1><div className="m-loading"><i /><i /><i /><i /></div></main>;
 }
 
 type RegionProps = {
@@ -81,7 +81,7 @@ export function MobileRegionScreen({ world, career, onBack, onCareer, onMountain
       <header className="m-public-topbar"><button onClick={onBack}>←</button><strong>Атлас</strong><span>{world.config.startYear}</span></header>
       <section className="m-region">
         <p className="m-kicker">{region.coordinates}</p><h1>{region.name}</h1>
-        <MountainArt points={region.mountains[0]?.profilePoints} variant="hero" label={region.name} elevation={region.elevationMax} />
+        <MountainModel mountain={region.mountains[0]} seed={world.config.seed} variant="hero" label={region.name} />
         <div className="m-inline-meta"><span>{region.climate}</span><span>Престиж {region.prestige}</span></div>
         <button className="m-primary-card" onClick={onCareer}><span><small>{career ? 'КАРЬЕРА' : 'НОВЫЙ ГЕРОЙ'}</small><strong>{career ? career.hero.name : 'Войти в историю'}</strong></span><b>→</b></button>
         <div className="m-section-head"><h2>Вершины</h2><span>{region.mountains.length}</span></div>
@@ -99,7 +99,7 @@ export function MobileMountainScreen({ mountain, onBack, onCareer }: { mountain:
       <header className="m-public-topbar"><button onClick={onBack}>←</button><strong>Вершина</strong><span>{mountain.elevation} м</span></header>
       <section className="m-region">
         <p className="m-kicker">{mountain.characterTitle}</p><h1>{mountain.name}</h1>
-        <MountainArt points={mountain.profilePoints} variant="detail" label={mountain.name} elevation={mountain.elevation} />
+        <MountainModel mountain={mountain} variant="detail" label={mountain.name} />
         <div className="m-inline-meta"><span>Техника {mountain.technicality}</span><span>Высота {mountain.altitudeSeverity}</span><span>Удалённость {mountain.remoteness}</span></div>
         <section className="m-authored-mountain">
           <small>ХАРАКТЕР ГОРЫ</small>
@@ -115,5 +115,5 @@ export function MobileMountainScreen({ mountain, onBack, onCareer }: { mountain:
 }
 
 export function MobileMenu({ world, career, onNew, onContinue, onAtlas, onArchive, onTopo }: { world: WorldState | null; career: CareerState | null; onNew: () => void; onContinue: () => void; onAtlas: () => void; onArchive: () => void; onTopo: () => void }) {
-  return <main className="m-menu"><div className="m-menu-art"><MountainArt variant="hero" /></div><h1>Alpine<br />Legacy</h1><p>Карьера альпиниста.</p><div className="m-menu-actions"><button onClick={onTopo} disabled={!career?.activeClimb}><span>Активная экспедиция</span><small>{career?.activeClimb ? 'продолжить' : 'нет выхода'}</small></button><button onClick={onNew}><span>Новая карьера</span><b>→</b></button><button disabled={!world} onClick={onContinue}><span>{career ? 'Продолжить' : 'Открыть мир'}</span><small>{career?.hero.name ?? world?.region.name ?? ''}</small></button><button disabled={!world} onClick={onAtlas}><span>Атлас</span><small>{world?.region.mountains.length ?? 0} вершин</small></button><button onClick={onArchive}><span>Архив</span><small>{career?.log.length ?? 0} записей</small></button></div></main>;
+  return <main className="m-menu"><div className="m-menu-art"><MountainModel mountain={world?.region.mountains[0]} seed={world?.config.seed ?? 'ALPINE-MENU'} variant="hero" label="Alpine Legacy" /></div><h1>Alpine<br />Legacy</h1><p>Карьера альпиниста.</p><div className="m-menu-actions"><button onClick={onTopo} disabled={!career?.activeClimb}><span>Активная экспедиция</span><small>{career?.activeClimb ? 'продолжить' : 'нет выхода'}</small></button><button onClick={onNew}><span>Новая карьера</span><b>→</b></button><button disabled={!world} onClick={onContinue}><span>{career ? 'Продолжить' : 'Открыть мир'}</span><small>{career?.hero.name ?? world?.region.name ?? ''}</small></button><button disabled={!world} onClick={onAtlas}><span>Атлас</span><small>{world?.region.mountains.length ?? 0} вершин</small></button><button onClick={onArchive}><span>Архив</span><small>{career?.log.length ?? 0} записей</small></button></div></main>;
 }

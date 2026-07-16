@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { MobileCareerShell } from '../mobile/MobileCareerShell';
 import { useIsMobile } from '../mobile/useMobile';
 import { formatSeasonDate } from '../core/career';
@@ -29,8 +29,14 @@ const tabs: PrimaryTab[] = [
   { id: 'ROUTE', label: 'Цель', mobileLabel: 'Цель', short: 'Ц', description: 'Гора и маршрут' },
   { id: 'EXPEDITION', label: 'Подготовка', mobileLabel: 'Сбор', short: 'П', description: 'Люди, груз, выход', children: ['TEAM', 'PEOPLE', 'EQUIPMENT', 'EXPEDITION'] },
   { id: 'CLIMB', label: 'Восхождение', mobileLabel: 'Путь', short: 'В', description: 'Маршрут в реальном времени' },
-  { id: 'WORLD', label: 'Мир', mobileLabel: 'Мир', short: 'М', description: 'Новости и соперники', children: ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'] },
   { id: 'JOURNAL', label: 'Архив', mobileLabel: 'Архив', short: 'А', description: 'История карьеры' },
+];
+
+const moreTabs: Array<{ id: CareerTabId; label: string; description: string }> = [
+  { id: 'WORLD', label: 'Живой мир', description: 'Школы, регионы и экспедиции' },
+  { id: 'NEWS', label: 'Новости', description: 'События и аварии' },
+  { id: 'RIVALS', label: 'Соперники', description: 'Люди мировой карьеры' },
+  { id: 'RECORDS', label: 'Рекорды', description: 'Исторические результаты' },
 ];
 
 function isPrimaryActive(tab: PrimaryTab, activeTab: CareerTabId) {
@@ -39,10 +45,12 @@ function isPrimaryActive(tab: PrimaryTab, activeTab: CareerTabId) {
 
 export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, locked = false, children }: Props) {
   const mobile = useIsMobile();
+  const [moreOpen, setMoreOpen] = useState(false);
   if (mobile) return <MobileCareerShell world={world} career={career} activeTab={activeTab} onTab={onTab} onExit={onExit} onAtlas={onAtlas} locked={locked}>{children}</MobileCareerShell>;
 
   const initials = career.hero.name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();
-  const current = tabs.find(tab => isPrimaryActive(tab, activeTab)) ?? tabs[0]!;
+  const current = tabs.find(tab => isPrimaryActive(tab, activeTab)) ?? moreTabs.find(tab => tab.id === activeTab) ?? tabs[0]!;
+  const moreActive = moreTabs.some(tab => tab.id === activeTab);
 
   return (
     <main className={`career-shell ${locked ? 'is-expedition-locked' : ''}`}>
@@ -56,7 +64,7 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
                 key={tab.id}
                 className={active ? 'is-active' : ''}
                 disabled={disabled}
-                onClick={() => onTab(tab.id === 'EXPEDITION' ? 'TEAM' : tab.id)}
+                onClick={() => { setMoreOpen(false); onTab(tab.id === 'EXPEDITION' ? 'TEAM' : tab.id); }}
                 title={`${tab.label}: ${tab.description}`}
               >
                 <span className="career-sidebar__short">{tab.short}</span>
@@ -67,6 +75,15 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
               </button>
             );
           })}
+          <div className="career-sidebar__more">
+            <button className={`career-sidebar__more-button ${moreActive || moreOpen ? 'is-active' : ''}`} disabled={locked} onClick={() => setMoreOpen(value => !value)} aria-expanded={moreOpen}>
+              <span className="career-sidebar__short">•••</span>
+              <span className="career-sidebar__index">06</span>
+              <span className="career-sidebar__copy"><strong>Ещё</strong><small>Мир, новости, соперники</small></span>
+              <span className="career-sidebar__mobile-label">Ещё</span>
+            </button>
+            {moreOpen && <div className="career-more-popover">{moreTabs.map(item => <button key={item.id} className={activeTab === item.id ? 'is-active' : ''} onClick={() => { setMoreOpen(false); onTab(item.id); }}><span><strong>{item.label}</strong><small>{item.description}</small></span><b>›</b></button>)}</div>}
+          </div>
         </nav>
 
         <div className="career-sidebar__footer">
@@ -77,7 +94,7 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
 
       <section className="career-workspace">
         <header className="career-topbar">
-          <button className="career-topbar__menu" disabled={locked} onClick={onExit}>{locked ? "Экспедиция идёт" : "← Меню"}</button>
+          <button className="career-topbar__menu" disabled={locked} onClick={onExit}>{locked ? 'Экспедиция идёт' : '← Меню'}</button>
           <div className="career-topbar__place">
             <small>{current.label} · {world.region.name}</small>
             <strong>{formatSeasonDate(career.year, career.seasonDay)}</strong>

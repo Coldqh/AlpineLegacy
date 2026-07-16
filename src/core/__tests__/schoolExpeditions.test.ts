@@ -8,6 +8,8 @@ import {
   schoolExpeditionBoard,
   setPermanentTeamStyle,
   startPlannedClimb,
+  waitForSchoolDeparture,
+  closeClimb,
   updateExpeditionPlan,
   usePermanentTeam,
 } from '../career';
@@ -75,4 +77,29 @@ describe('rotating school expeditions and permanent teams', () => {
     expect(career.permanentTeam.memberIds).toEqual(ids);
     expect(career.activeClimb?.topo?.pace).toBe('CAUTIOUS');
   });
+
+  it('waits to the accepted departure and starts the expedition', () => {
+    const { world, career } = organizationCareer();
+    const offer = schoolExpeditionBoard(world, career).find(item => ['ANNOUNCED', 'RECRUITING'].includes(schoolExpeditionPhase(item, career.seasonDay)))!;
+    let accepted = applyToExpeditionOffer(world, career, offer.id);
+    accepted = applyEquipmentPreset(accepted, 'RECOMMENDED');
+    const started = waitForSchoolDeparture(world, accepted);
+    expect(started.seasonDay).toBeGreaterThanOrEqual(offer.departureDay!);
+    expect(started.activeClimb).toBeTruthy();
+    expect(started.activeClimb?.expeditionOfferId).toBe(offer.id);
+  });
+
+  it('removes a resolved school plan after retreat', () => {
+    const { world, career } = organizationCareer();
+    const offer = schoolExpeditionBoard(world, career).find(item => ['ANNOUNCED', 'RECRUITING'].includes(schoolExpeditionPhase(item, career.seasonDay)))!;
+    let accepted = applyToExpeditionOffer(world, career, offer.id);
+    accepted = applyEquipmentPreset(accepted, 'RECOMMENDED');
+    const started = waitForSchoolDeparture(world, accepted);
+    expect(started.activeClimb).toBeTruthy();
+    const retreated = { ...started, activeClimb: { ...started.activeClimb!, phase: 'RETREATED' as const, retreating: true } };
+    const closed = closeClimb(retreated);
+    expect(closed.resolvedSchoolOfferIds).toContain(offer.id);
+    expect(schoolExpeditionBoard(world, closed).some(item => item.id === offer.id)).toBe(false);
+  });
+
 });
