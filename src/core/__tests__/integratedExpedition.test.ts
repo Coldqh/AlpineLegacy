@@ -383,6 +383,8 @@ describe('integrated expedition career loop', () => {
     expect(debrief.risks.join(' ')).toContain('камнепад');
     expect(debrief.risks.join(' ')).toContain('потери линии');
     expect(debrief.contributors.length).toBeGreaterThan(0);
+    expect(debrief.equipment.join(' ')).toContain('Верёвка');
+    expect(Array.isArray(debrief.mistakes)).toBe(true);
   });
 
   it('reports concrete hazards and old route traces during scouting', () => {

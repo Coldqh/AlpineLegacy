@@ -1,0 +1,178 @@
+/* 0.24.0 — live expedition feedback, weather, moments and debrief */
+.mg-expedition-shell {
+  --field-sky: #0a1411;
+  --field-glow: rgba(112, 157, 140, .1);
+  background:
+    radial-gradient(circle at 50% -10%, var(--field-glow), transparent 42%),
+    #080d0c;
+  transition: background .8s ease;
+}
+.mg-expedition-shell.is-dawn { --field-sky: #1a2621; --field-glow: rgba(225, 144, 97, .16); }
+.mg-expedition-shell.is-day { --field-sky: #12211d; --field-glow: rgba(129, 184, 168, .14); }
+.mg-expedition-shell.is-dusk { --field-sky: #191b19; --field-glow: rgba(207, 98, 67, .15); }
+.mg-expedition-shell.is-night { --field-sky: #050908; --field-glow: rgba(69, 104, 126, .12); }
+
+.mg-feedback-toggle {
+  min-width: 56px;
+  color: #9dd7c0 !important;
+  border-color: rgba(115, 200, 163, .25) !important;
+  background: rgba(69, 128, 104, .08) !important;
+  font-size: 9px !important;
+  letter-spacing: .08em;
+}
+.mg-feedback-toggle[aria-pressed="false"] { color: #7e8e87 !important; background: transparent !important; }
+
+.mg-field-scene {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 13px;
+  background: var(--field-sky);
+  isolation: isolate;
+}
+.mg-field-scene .mg-local-map { position: relative; z-index: 1; transition: filter .7s ease, transform .35s ease; }
+.is-night .mg-field-scene .mg-local-map { filter: brightness(.68) saturate(.78) contrast(1.06); }
+.is-dawn .mg-field-scene .mg-local-map { filter: sepia(.06) brightness(.86) saturate(.94); }
+.is-dusk .mg-field-scene .mg-local-map { filter: sepia(.08) brightness(.76) saturate(.88); }
+.is-weather-whiteout .mg-field-scene .mg-local-map { filter: brightness(1.08) saturate(.4) contrast(.82); }
+.is-weather-storm .mg-field-scene .mg-local-map { filter: brightness(.72) saturate(.7) contrast(1.12); }
+
+.mg-altitude-haze,
+.mg-weather-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.mg-altitude-haze {
+  background:
+    linear-gradient(to bottom, rgba(213, 231, 224, .1), transparent 34%),
+    radial-gradient(circle at 50% 88%, transparent 36%, rgba(4, 8, 7, .26) 100%);
+  mix-blend-mode: screen;
+  opacity: .45;
+}
+.is-night .mg-altitude-haze { opacity: .16; mix-blend-mode: normal; background: linear-gradient(to bottom, rgba(42, 67, 79, .12), transparent 40%), radial-gradient(circle at 50% 85%, transparent 28%, rgba(0,0,0,.48) 100%); }
+.is-weather-whiteout .mg-altitude-haze { opacity: .88; background: rgba(224, 235, 230, .38); mix-blend-mode: screen; }
+
+.mg-weather-layer { overflow: hidden; opacity: 0; transition: opacity .4s ease; }
+.is-weather-snow .mg-weather-layer,
+.is-weather-storm .mg-weather-layer,
+.is-weather-whiteout .mg-weather-layer { opacity: 1; }
+.mg-weather-layer i {
+  position: absolute;
+  top: -8%;
+  left: calc(var(--flake) * 4.45%);
+  width: 2px;
+  height: 14px;
+  border-radius: 99px;
+  background: rgba(235, 244, 239, .72);
+  transform: rotate(22deg);
+  animation: field-snow-fall calc(2.55s + var(--flake) * .035s) linear infinite;
+  animation-delay: calc(var(--flake) * -.17s);
+  opacity: calc(.24 + var(--flake) * .018);
+}
+.is-weather-storm .mg-weather-layer i { height: 22px; transform: rotate(58deg); animation-duration: calc(1.05s + var(--flake) * .018s); }
+.is-weather-whiteout .mg-weather-layer i { width: 3px; height: 26px; opacity: .68; animation-duration: calc(.78s + var(--flake) * .014s); }
+
+.mg-local-cell.is-current.is-fx-move { animation: field-current-step .55s ease; }
+.mg-local-cell.is-current.is-fx-scout { animation: field-current-scout .7s ease; }
+.mg-local-cell.is-current.is-fx-rope { animation: field-current-rope .7s ease; }
+.mg-local-cell.is-current.is-fx-rest { animation: field-current-rest .8s ease; }
+.mg-field-scene:has(.is-fx-incident) { animation: field-incident-shake .3s ease; }
+.is-fx-incident .mg-field-scene { animation: field-incident-shake .35s ease; }
+
+.mg-moment-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 6, 5, .74);
+  backdrop-filter: blur(7px);
+  animation: field-moment-in .2s ease-out;
+}
+.mg-moment-card {
+  width: min(540px, 100%);
+  padding: 20px;
+  border: 1px solid rgba(226, 239, 232, .17);
+  border-left: 4px solid #df704d;
+  border-radius: 14px;
+  color: #edf5f0;
+  background: linear-gradient(145deg, rgba(25, 37, 33, .98), rgba(10, 16, 14, .98));
+  box-shadow: 0 28px 100px rgba(0,0,0,.52);
+}
+.mg-moment-layer.is-success .mg-moment-card { border-left-color: #69c998; }
+.mg-moment-layer.is-warning .mg-moment-card { border-left-color: #e1ad5e; }
+.mg-moment-card > header { display: flex; justify-content: space-between; gap: 16px; color: #8fa198; font-size: 9px; letter-spacing: .12em; }
+.mg-moment-card h3 { margin: 10px 0 8px; font-size: clamp(25px, 4vw, 38px); line-height: 1.05; }
+.mg-moment-card > p { margin: 0; color: #b5c3bc; font-size: 13px; line-height: 1.5; }
+.mg-moment-equipment { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.mg-moment-equipment span { padding: 6px 8px; border: 1px solid rgba(130, 200, 216, .24); border-radius: 7px; color: #a8dce6; background: rgba(130, 200, 216, .06); font-size: 9px; }
+.mg-moment-card blockquote { margin: 15px 0 0; padding: 12px 13px; border-left: 2px solid rgba(232, 120, 78, .55); background: rgba(255,255,255,.025); }
+.mg-moment-card blockquote strong { color: #f0b493; font-size: 10px; letter-spacing: .08em; }
+.mg-moment-card blockquote p { margin: 5px 0 0; color: #e4ece7; font-size: 13px; line-height: 1.45; }
+.mg-moment-card > button { width: 100%; margin-top: 15px; padding: 12px; border: 0; border-radius: 9px; color: #fff; background: #df704d; font-weight: 800; }
+.mg-moment-layer.is-success .mg-moment-card > button { background: #458f6b; }
+
+.mg-message--compact { position: relative; overflow: hidden; }
+.mg-message--compact::after { content: ''; position: absolute; inset: auto 0 0; height: 2px; transform-origin: left; background: #69c998; animation: field-message-line .6s ease; }
+.is-fx-scout .mg-message--compact::after { background: #82c8d8; }
+.is-fx-rope .mg-message--compact::after { background: #edbc68; }
+.is-fx-incident .mg-message--compact::after { background: #df5b4e; }
+
+.mg-expedition-debrief { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mg-expedition-debrief article:last-child { grid-column: 1 / -1; }
+
+@keyframes field-snow-fall {
+  from { transform: translate3d(-18px, -10%, 0) rotate(22deg); }
+  to { transform: translate3d(38px, 760px, 0) rotate(22deg); }
+}
+@keyframes field-current-step {
+  0% { transform: translateY(0); filter: brightness(1.12); }
+  45% { transform: translateY(-3px); filter: brightness(1.35); }
+  100% { transform: translateY(0); filter: brightness(1.12); }
+}
+@keyframes field-current-scout {
+  0%,100% { box-shadow: 0 0 0 0 rgba(130,200,216,0), inset 0 0 0 2px #fff; }
+  50% { box-shadow: 0 0 0 14px rgba(130,200,216,.18), inset 0 0 0 2px #fff; }
+}
+@keyframes field-current-rope {
+  0%,100% { outline-color: #fff; }
+  40% { outline-color: #efc16f; box-shadow: 0 0 18px rgba(239,193,111,.55); }
+}
+@keyframes field-current-rest {
+  0%,100% { filter: brightness(1.12); }
+  50% { filter: brightness(.72) saturate(.65); }
+}
+@keyframes field-incident-shake {
+  0%,100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  55% { transform: translateX(4px); }
+  80% { transform: translateX(-2px); }
+}
+@keyframes field-moment-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes field-message-line {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@media (max-width: 900px) {
+  .mg-field-scene { border-radius: 10px; }
+  .mg-moment-layer { position: fixed; inset: 0; z-index: 80; align-items: end; padding: 10px; }
+  .mg-moment-card { border-radius: 15px 15px 10px 10px; padding: 17px; }
+  .mg-moment-card h3 { font-size: 27px; }
+  .mg-expedition-debrief { grid-template-columns: 1fr; }
+  .mg-expedition-debrief article:last-child { grid-column: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mg-weather-layer i,
+  .mg-local-cell.is-current,
+  .mg-field-scene,
+  .mg-moment-layer,
+  .mg-message--compact::after { animation: none !important; }
+}

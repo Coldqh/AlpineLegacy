@@ -79,6 +79,8 @@ export interface IntegratedExpeditionDebrief {
   strengths: string[];
   risks: string[];
   contributors: string[];
+  equipment: string[];
+  mistakes: string[];
 }
 
 export function integratedExpeditionDebrief(state: IntegratedExpeditionState): IntegratedExpeditionDebrief {
@@ -87,6 +89,8 @@ export function integratedExpeditionDebrief(state: IntegratedExpeditionState): I
   const strengths: string[] = [];
   const risks: string[] = [];
   const contributors: string[] = [];
+  const equipment: string[] = [];
+  const mistakes: string[] = [];
 
   if (state.summitReached && state.phase === 'COMPLETE') strengths.push('Группа достигла вершины и физически завершила спуск.');
   else if (state.phase === 'RETREATED' && !state.forcedRetreat) strengths.push('Отход был принят до полного разрушения состояния группы.');
@@ -94,6 +98,32 @@ export function integratedExpeditionDebrief(state: IntegratedExpeditionState): I
   if (ropes > 0) strengths.push(`Закреплённая линия защитила ${ropes} технических участков и осталась на спуск.`);
   if (state.nightsSlept > 0) strengths.push(`Группа провела ${state.nightsSlept} полноценн${state.nightsSlept === 1 ? 'ую ночь' : 'ых ночи'} на маршруте.`);
   if (!state.casualties.length) strengths.push('Все участники вернулись живыми.');
+
+  const incidentText = state.incidents.map(item => `${item.title} ${item.detail}`.toLowerCase()).join(' ');
+  if (ropes > 0) equipment.push(`Верёвка: защищено ${ropes} участк${ropes === 1 ? 'а' : 'ов'}, остаток ${state.ropeMeters} м, состояние ${Math.round(state.gear.ropeCondition)}%.`);
+  if (incidentText.includes('верёвк') || state.incidents.some(item => item.type === 'FALL' || item.type === 'CREVASSE' || item.type === 'DESCENT')) {
+    equipment.push(`Страховка: ${state.gear.ropeCondition >= 35 ? 'оставалась рабочей' : 'была близка к отказу'} на ключевых технических эпизодах.`);
+  }
+  if (state.gear.rockHardwareCondition < 98 || state.incidents.some(item => item.type === 'ROCKFALL')) {
+    equipment.push(`Скальный комплект: состояние ${Math.round(state.gear.rockHardwareCondition)}%; работал на станциях, гребнях и камнепаде.`);
+  }
+  if (state.gear.iceHardwareCondition < 98 || state.incidents.some(item => item.type === 'CREVASSE' || item.type === 'AVALANCHE')) {
+    equipment.push(`Ледовый комплект: состояние ${Math.round(state.gear.iceHardwareCondition)}%; работал на снегу, льду и трещинах.`);
+  }
+  if (state.nightsSlept > 0 || state.gear.shelterCondition < 99) {
+    equipment.push(`Укрытие: ${state.nightsSlept} ночёв${state.nightsSlept === 1 ? 'ка' : 'ки'}, остаток состояния ${Math.round(state.gear.shelterCondition)}%.`);
+  }
+  if (state.gear.medkitCharges < 3 && state.injuries.length > 0) equipment.push(`Аптечка: использована для ${state.injuries.length} травм, осталось ${state.gear.medkitCharges} применений.`);
+  if (state.rescueDurationMinutes > 0) equipment.push(`Радио: обеспечило вызов спасателей; состояние после операции ${Math.round(state.gear.radioCondition)}%.`);
+
+  if (state.minutesSinceSleep > 900) mistakes.push(`Группа работала без сна ${Math.round(state.minutesSinceSleep / 60)} ч.`);
+  if (state.supplies.waterUnits < 1) mistakes.push('Воды осталось меньше одной единицы — запас был рассчитан впритык.');
+  if (state.supplies.foodUnits < 1) mistakes.push('Еда закончилась или почти закончилась до возвращения.');
+  if (state.gear.ropeCondition < 25) mistakes.push('Верёвка подошла к критическому износу до окончания маршрута.');
+  if (state.gear.rockHardwareCondition < 20 || state.gear.iceHardwareCondition < 20) mistakes.push('Один из технических комплектов был почти выведен из строя.');
+  if (state.incidents.some(item => item.type === 'ALTITUDE')) mistakes.push('Высоту сна набирали слишком быстро для текущей акклиматизации.');
+  if (state.incidents.some(item => item.type === 'EXHAUSTION')) mistakes.push('Темп не был вовремя снижен под состояние слабейшего участника.');
+  if (state.incidents.some(item => item.type === 'FALL' && !item.detail.toLowerCase().includes('верёвк'))) mistakes.push('Технический участок проходили без закреплённой линии.');
 
   const grouped = new Map<string, number>();
   for (const incident of state.incidents) grouped.set(incident.type, (grouped.get(incident.type) ?? 0) + 1);
@@ -138,5 +168,7 @@ export function integratedExpeditionDebrief(state: IntegratedExpeditionState): I
     strengths: [...new Set(strengths)].slice(0, 4),
     risks: [...new Set(risks)].slice(0, 4),
     contributors: [...new Set(contributors)].slice(0, 4),
+    equipment: [...new Set(equipment)].slice(0, 5),
+    mistakes: [...new Set(mistakes)].slice(0, 4),
   };
 }

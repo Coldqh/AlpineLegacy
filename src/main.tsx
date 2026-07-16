@@ -13,6 +13,7 @@ import './styles/strategic-expedition.css';
 import './styles/mountain-grid-expedition.css';
 import './styles/ux-rebuild.css';
 import './styles/visual-023.css';
+import './styles/live-expedition-024.css';
 
 registerOfflineApp();
 

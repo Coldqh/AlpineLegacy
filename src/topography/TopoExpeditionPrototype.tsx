@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { CareerState, QualificationClimb } from '../core/types';
 import { MountainModel, type MountainModelMarker } from '../components/MountainModel';
 import { ensureIntegratedExpedition, persistIntegratedExpedition } from '../core/career';
@@ -61,6 +61,52 @@ const PACE_COPY: Record<IntegratedPace, { title: string; detail: string }> = {
   STEADY: { title: 'Рабочий', detail: 'ровный расход сил' },
   FAST: { title: 'Быстро', detail: 'быстрее · выше риск' },
 };
+
+type FieldFx = 'IDLE' | 'MOVE' | 'SCOUT' | 'ROPE' | 'REST' | 'INCIDENT';
+type FeedbackKind = Exclude<FieldFx, 'IDLE'> | 'SUCCESS' | 'STOP';
+
+function expeditionClock(elapsedMinutes: number) {
+  const total = (6 * 60 + elapsedMinutes) % 1440;
+  const hour = Math.floor(total / 60);
+  const minute = total % 60;
+  const phase = hour < 5 || hour >= 21 ? 'night' : hour < 8 ? 'dawn' : hour >= 18 ? 'dusk' : 'day';
+  return { label: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`, phase } as const;
+}
+
+function eventReaction(state: IntegratedExpeditionState) {
+  const incident = state.incidents.at(-1);
+  if (!incident || state.lastEvent.kind !== 'INCIDENT') return null;
+  const participant = incident.participantId ? state.participants.find(item => item.id === incident.participantId) : null;
+  const leader = state.participants[0];
+  const medic = integratedSpecialist(state, 'MEDICINE');
+  const navigator = integratedSpecialist(state, 'NAVIGATION');
+  const rock = integratedSpecialist(state, 'ROCK');
+  const ice = integratedSpecialist(state, 'ICE');
+  if (incident.type === 'CREVASSE') return { speaker: ice.name, line: 'Стоп. Дальше проверяем каждый метр. Никто не выходит из связки.' };
+  if (incident.type === 'ROCKFALL') return { speaker: rock.name, line: 'Прижались к рельефу. Пока склон не стихнет, никто не двигается.' };
+  if (incident.type === 'ALTITUDE' || incident.type === 'FROSTBITE') return { speaker: medic.name, line: `${participant?.name ?? 'Пострадавший'} остаётся со мной. Состояние проверим до следующего шага.` };
+  if (incident.type === 'NAVIGATION') return { speaker: navigator.name, line: 'Линия ушла в сторону. Возвращаю группу по последнему чистому ориентиру.' };
+  if (incident.type === 'AVALANCHE' || incident.type === 'WEATHER') return { speaker: leader?.name ?? navigator.name, line: 'Пережидаем. В такой видимости скорость ничего не решает.' };
+  if (incident.type === 'FALL' || incident.type === 'DESCENT') return { speaker: rock.name, line: 'Нагрузку держу. Проверьте человека и не трогайте станцию.' };
+  if (incident.type === 'EXHAUSTION') return { speaker: leader?.name ?? medic.name, line: 'Темп вниз. Слабейший сейчас задаёт скорость всей группе.' };
+  if (incident.type === 'CONFLICT') return { speaker: participant?.name ?? leader?.name ?? 'Участник', line: 'Я дальше в таком темпе не пойду. Сначала решаем, что делать с группой.' };
+  if (incident.type === 'RESCUE') return { speaker: leader?.name ?? 'Руководитель', line: 'Сигнал передан. Теперь держим людей в тепле и ждём.' };
+  return { speaker: participant?.name ?? leader?.name ?? 'Группа', line: 'Остановились. Проверяем людей, снаряжение и только потом продолжаем.' };
+}
+
+function eventEquipment(state: IntegratedExpeditionState) {
+  const incident = state.incidents.at(-1);
+  if (!incident) return [] as string[];
+  const detail = incident.detail.toLowerCase();
+  const items: string[] = [];
+  if (detail.includes('верёвк') || ['FALL', 'CREVASSE', 'DESCENT'].includes(incident.type)) items.push(`Верёвка ${Math.round(state.gear.ropeCondition)}%`);
+  if (incident.type === 'ROCKFALL' || detail.includes('станц')) items.push(`Скальный комплект ${Math.round(state.gear.rockHardwareCondition)}%`);
+  if (incident.type === 'CREVASSE' || incident.type === 'AVALANCHE') items.push(`Ледовый комплект ${Math.round(state.gear.iceHardwareCondition)}%`);
+  if (incident.type === 'FROSTBITE' || incident.type === 'RESCUE') items.push(`Укрытие ${Math.round(state.gear.shelterCondition)}%`);
+  if (incident.type === 'ALTITUDE' || incident.type === 'FROSTBITE') items.push(`Аптечка ${state.gear.medkitCharges}`);
+  if (incident.type === 'RESCUE') items.push(`Радио ${Math.round(state.gear.radioCondition)}%`);
+  return [...new Set(items)].slice(0, 3);
+}
 
 function slopeBand(slope: number) {
   if (slope >= 55) return 'стена';
@@ -226,7 +272,7 @@ function MountainViewer({
   );
 }
 
-function LocalMap({ map, path, positionIndex, camps, ropes, legacyRopes, revealed, selectedPoint, started, onCell }: {
+function LocalMap({ map, path, positionIndex, camps, ropes, legacyRopes, revealed, selectedPoint, started, actionFx, onCell }: {
   map: LocalStageMap;
   path: GridPoint[];
   positionIndex: number;
@@ -236,6 +282,7 @@ function LocalMap({ map, path, positionIndex, camps, ropes, legacyRopes, reveale
   revealed: string[];
   selectedPoint: GridPoint;
   started: boolean;
+  actionFx: FieldFx;
   onCell: (point: GridPoint) => void;
 }) {
   const current = path[Math.min(positionIndex, Math.max(0, path.length - 1))] ?? map.start;
@@ -258,6 +305,7 @@ function LocalMap({ map, path, positionIndex, camps, ropes, legacyRopes, reveale
           !cell.passable ? 'is-blocked' : '',
           inPath ? 'is-route' : '',
           isCurrent ? 'is-current' : '',
+          isCurrent && actionFx !== 'IDLE' ? `is-fx-${actionFx.toLowerCase()}` : '',
           isSelected ? 'is-selected' : '',
           isRevealed ? 'is-revealed' : 'is-unknown',
           cell.ropeRequired ? 'rope-required' : cell.ropeRecommended ? 'rope-recommended' : '',
@@ -345,6 +393,26 @@ function ExpeditionTutorial({ step, onStep }: { step: number; onStep: (step: num
   );
 }
 
+function ExpeditionMoment({ state, onClose }: { state: IntegratedExpeditionState; onClose: () => void }) {
+  const reaction = eventReaction(state);
+  const equipment = eventEquipment(state);
+  const incident = state.incidents.at(-1);
+  const title = incident?.title ?? (state.lastEvent.kind === 'STAGE_COMPLETE' ? 'Участок пройден' : state.lastEvent.kind === 'EXPEDITION_COMPLETE' ? 'Экспедиция завершена' : 'Группа остановилась');
+  const detail = incident?.detail ?? state.lastEvent.text;
+  return (
+    <div className={`mg-moment-layer is-${state.lastEvent.severity.toLowerCase()}`} role="dialog" aria-modal="true" aria-label={title}>
+      <section className="mg-moment-card">
+        <header><span>{state.lastEvent.kind === 'INCIDENT' ? 'СОБЫТИЕ НА МАРШРУТЕ' : state.lastEvent.kind === 'STAGE_COMPLETE' ? 'ЭТАП ЗАВЕРШЁН' : 'ЭКСПЕДИЦИЯ'}</span><b>{formatMinutes(state.elapsedMinutes)}</b></header>
+        <h3>{title}</h3>
+        <p>{detail}</p>
+        {equipment.length > 0 && <div className="mg-moment-equipment">{equipment.map(item => <span key={item}>{item}</span>)}</div>}
+        {reaction && <blockquote><strong>{reaction.speaker}</strong><p>«{reaction.line}»</p></blockquote>}
+        <button onClick={onClose}>{state.lastEvent.kind === 'EXPEDITION_COMPLETE' ? 'К итогам' : 'Продолжить'}</button>
+      </section>
+    </div>
+  );
+}
+
 export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegenerate = false }: TopoExpeditionProps) {
   const integratedCareer = useMemo(() => ensureIntegratedExpedition(career), [career]);
   const climb = integratedCareer.activeClimb;
@@ -357,7 +425,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.23.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.24.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -376,6 +444,56 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const [speed, setSpeed] = useState<1 | 2 | 4>(1);
   const [selectedPoint, setSelectedPoint] = useState<GridPoint>({ x: 0, y: 0 });
   const [activeTab, setActiveTab] = useState<ExpeditionTab>(() => topo.started ? 'CLIMB' : 'EXPEDITION');
+  const [fieldFx, setFieldFx] = useState<FieldFx>('IDLE');
+  const [dismissedMomentSerial, setDismissedMomentSerial] = useState<number | null>(null);
+  const [feedbackEnabled, setFeedbackEnabled] = useState(() => typeof window === 'undefined' ? true : window.localStorage.getItem('alpine-legacy:field-feedback') !== 'off');
+  const fxTimerRef = useRef<number | null>(null);
+  const audioRef = useRef<AudioContext | null>(null);
+
+  function triggerFieldFx(kind: FieldFx) {
+    setFieldFx(kind);
+    if (fxTimerRef.current !== null) window.clearTimeout(fxTimerRef.current);
+    fxTimerRef.current = window.setTimeout(() => setFieldFx('IDLE'), kind === 'INCIDENT' ? 1200 : 650);
+  }
+
+  function playFeedback(kind: FeedbackKind) {
+    if (!feedbackEnabled || typeof window === 'undefined') return;
+    const vibration: Partial<Record<FeedbackKind, number | number[]>> = {
+      MOVE: 12, SCOUT: [18, 30, 18], ROPE: [15, 18, 28], REST: 18,
+      INCIDENT: [80, 45, 120], SUCCESS: [24, 28, 24], STOP: [45, 30, 45],
+    };
+    const pattern = vibration[kind];
+    if (pattern && window.navigator.vibrate) window.navigator.vibrate(pattern);
+    try {
+      const AudioCtor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtor) return;
+      const audio = audioRef.current ?? new AudioCtor();
+      audioRef.current = audio;
+      if (audio.state === 'suspended') void audio.resume();
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      const now = audio.currentTime;
+      const frequency: Partial<Record<FeedbackKind, number>> = { MOVE: 145, SCOUT: 520, ROPE: 760, REST: 220, INCIDENT: 78, SUCCESS: 640, STOP: 110 };
+      oscillator.type = kind === 'INCIDENT' || kind === 'STOP' ? 'sawtooth' : kind === 'ROPE' ? 'square' : 'sine';
+      oscillator.frequency.setValueAtTime(frequency[kind] ?? 220, now);
+      if (kind === 'SCOUT' || kind === 'SUCCESS') oscillator.frequency.exponentialRampToValueAtTime((frequency[kind] ?? 400) * 1.35, now + .12);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(kind === 'INCIDENT' ? .045 : .025, now + .015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + (kind === 'INCIDENT' ? .32 : .16));
+      oscillator.connect(gain).connect(audio.destination);
+      oscillator.start(now);
+      oscillator.stop(now + (kind === 'INCIDENT' ? .34 : .18));
+    } catch {
+      // Feedback is optional and must never block the expedition.
+    }
+  }
+
+  function toggleFeedback() {
+    const next = !feedbackEnabled;
+    setFeedbackEnabled(next);
+    if (typeof window !== 'undefined') window.localStorage.setItem('alpine-legacy:field-feedback', next ? 'on' : 'off');
+    if (next) playFeedback('SUCCESS');
+  }
 
   const participantMode = topo.authority !== 'COMMAND';
   const mountainMemory = useMemo(() => buildMountainMemory(integratedCareer, climb.mountainId), [integratedCareer.livingWorld, climb.mountainId]);
@@ -484,9 +602,21 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   function commit(command: IntegratedExpeditionCommand) {
     const nextTopo = reduceIntegratedExpedition(topo!, command, context);
     if (nextTopo !== topo) onPersist(persistIntegratedExpedition(integratedCareer, nextTopo));
-    if (nextTopo.lastEvent.kind !== 'INFO') setPaused(true);
+    const commandFx: FieldFx = command.type === 'STEP' ? 'MOVE' : command.type === 'SCOUT' ? 'SCOUT' : command.type === 'TOGGLE_ROPE' ? 'ROPE' : command.type === 'REST' ? 'REST' : 'IDLE';
+    const important = nextTopo.lastEvent.kind !== 'INFO';
+    triggerFieldFx(nextTopo.lastEvent.kind === 'INCIDENT' ? 'INCIDENT' : commandFx);
+    if (nextTopo.lastEvent.kind === 'INCIDENT') playFeedback('INCIDENT');
+    else if (nextTopo.lastEvent.kind === 'STAGE_COMPLETE' || nextTopo.lastEvent.kind === 'EXPEDITION_COMPLETE') playFeedback('SUCCESS');
+    else if (nextTopo.lastEvent.kind === 'STOP') playFeedback('STOP');
+    else if (commandFx !== 'IDLE' && (commandFx !== 'MOVE' || nextTopo.actionSerial % 3 === 0)) playFeedback(commandFx);
+    if (important) setPaused(true);
     return nextTopo;
   }
+
+  useEffect(() => () => {
+    if (fxTimerRef.current !== null) window.clearTimeout(fxTimerRef.current);
+    void audioRef.current?.close();
+  }, []);
 
   useEffect(() => {
     if (!topo.started || paused || completed || path.length < 2 || topo.positionIndex >= path.length - 1) return;
@@ -543,16 +673,20 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const specialistSummary = specialistNames.length === 1 ? `${specialistNames[0]} · все роли` : specialistNames.join(' · ');
   const outcomeLabel = topo.phase === 'COMPLETE' ? 'Вершина и возвращение' : topo.phase === 'RETREATED' ? 'Экспедиция завершена отходом' : 'Экспедиция провалена';
   const debrief = integratedExpeditionDebrief(topo);
+  const clock = expeditionClock(topo.elapsedMinutes);
+  const showMoment = ['INCIDENT', 'STAGE_COMPLETE', 'EXPEDITION_COMPLETE'].includes(topo.lastEvent.kind) && dismissedMomentSerial !== topo.lastEvent.serial;
+  const weatherMood = weather.visibility <= 28 ? 'whiteout' : weather.windKmh >= 55 ? 'storm' : weather.snowSoftness >= 68 ? 'snow' : 'clear';
 
   return (
-    <main className="mg-app mg-expedition-shell">
+    <main className={`mg-app mg-expedition-shell is-${clock.phase} is-weather-${weatherMood} is-fx-${fieldFx.toLowerCase()}`}>
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.23.0</span>
+          <span>ALPINE LEGACY / 0.24.0</span>
           <h1>{climb.mountainName}</h1>
-          <small>{routeName} · {phaseLabel.toLowerCase()}</small>
+          <small>{routeName} · {phaseLabel.toLowerCase()} · {clock.label}</small>
         </div>
         <div className="mg-header-actions">
+          <button className="mg-feedback-toggle" onClick={toggleFeedback} aria-pressed={feedbackEnabled} title="Звук и вибрация">{feedbackEnabled ? 'FX ON' : 'FX OFF'}</button>
           {allowRegenerate && <button onClick={regenerate} disabled={topo.started}>Новая гора</button>}
           <button onClick={() => onExit(completed)}>{completed ? 'Закрыть' : 'Сохранить и выйти'}</button>
         </div>
@@ -591,7 +725,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                 <p>{stage.subtitle}</p>
               </div>
               <div className={`mg-field-hud is-risk-${selectedRisk.band.toLowerCase()}`} aria-label="Состояние вылазки">
-                <span><small>ВРЕМЯ</small><b>{formatMinutes(topo.elapsedMinutes)}</b></span>
+                <span><small>ВРЕМЯ</small><b>{clock.label}</b></span>
                 <span><small>ВЫСОТА</small><b>{Math.round(currentCell.elevation)} м</b></span>
                 <span><small>ТЕМП.</small><b>{weather.temperatureC}°</b></span>
                 <span><small>ВЕТЕР</small><b>{weather.windKmh}</b></span>
@@ -613,18 +747,26 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
               </div>
             ) : (
               <div className="mg-local-layout">
-                <LocalMap
-                  map={localMap}
-                  path={path}
-                  positionIndex={topo.positionIndex}
-                  camps={infra.camps}
-                  ropes={infra.ropes}
-                  legacyRopes={rememberedInfrastructure.legacyRopes}
-                  revealed={infra.revealed}
-                  selectedPoint={selectedPoint}
-                  started={topo.started}
-                  onCell={handleCell}
-                />
+                <div className="mg-field-scene">
+                  <LocalMap
+                    map={localMap}
+                    path={path}
+                    positionIndex={topo.positionIndex}
+                    camps={infra.camps}
+                    ropes={infra.ropes}
+                    legacyRopes={rememberedInfrastructure.legacyRopes}
+                    revealed={infra.revealed}
+                    selectedPoint={selectedPoint}
+                    started={topo.started}
+                    actionFx={fieldFx}
+                    onCell={handleCell}
+                  />
+                  <div className="mg-weather-layer" aria-hidden="true">
+                    {Array.from({ length: 22 }, (_, index) => <i key={index} style={{ '--flake': index } as CSSProperties} />)}
+                  </div>
+                  <div className="mg-altitude-haze" aria-hidden="true" />
+                  {showMoment && <ExpeditionMoment state={topo} onClose={() => { setDismissedMomentSerial(topo.lastEvent.serial); if (topo.lastEvent.kind === 'EXPEDITION_COMPLETE') setActiveTab('EXPEDITION'); }} />}
+                </div>
                 <aside className="mg-local-aside mg-field-dock">
                   <section className={`mg-selected-cell-card is-risk-${selectedRisk.band.toLowerCase()}`}>
                     <header><div><small>{TERRAIN_COPY[selectedCell.terrain]} · {slopeBand(selectedCell.slope)} · {Math.round(selectedCell.slope)}°</small><strong>{selectedCell.elevation} м</strong></div><b>{RISK_COPY[selectedRisk.band]}</b></header>
@@ -685,7 +827,9 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                 </dl>
                 <div className="mg-expedition-debrief">
                   <article><span>ЧТО СРАБОТАЛО</span>{debrief.strengths.length ? <ul>{debrief.strengths.map(item => <li key={item}>{item}</li>)}</ul> : <p>Сильных решений в отчёте не отмечено.</p>}</article>
+                  <article><span>СНАРЯЖЕНИЕ В ДЕЛЕ</span>{debrief.equipment.length ? <ul>{debrief.equipment.map(item => <li key={item}>{item}</li>)}</ul> : <p>Ключевое снаряжение не использовалось.</p>}</article>
                   <article><span>ГДЕ БЫЛ РИСК</span>{debrief.risks.length ? <ul>{debrief.risks.map(item => <li key={item}>{item}</li>)}</ul> : <p>Крупных причин аварии не зафиксировано.</p>}</article>
+                  <article><span>ОШИБКИ ПЛАНА</span>{debrief.mistakes.length ? <ul>{debrief.mistakes.map(item => <li key={item}>{item}</li>)}</ul> : <p>Подготовка не дала явных провалов.</p>}</article>
                   <article><span>КТО ПОМОГ</span><ul>{debrief.contributors.map(item => <li key={item}>{item}</li>)}</ul></article>
                 </div>
                 <button onClick={() => onExit(true)}>Закрыть экспедицию →</button>
