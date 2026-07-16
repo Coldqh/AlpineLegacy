@@ -14,17 +14,14 @@ import {
   type IntegratedExpeditionState,
   type IntegratedPace,
   type IntegratedRestMode,
-  type IntegratedTool,
 } from '../core/expedition';
 import {
   buildMountainRouteOptions,
   buildMountainStages,
   cellAt,
-  evaluateLocalRoute,
   findLocalGuidedRoute,
   generateLocalStageMap,
   generateMountainGrid,
-  isAdjacent,
   isSamePoint,
   localCellAt,
   type EntrySide,
@@ -37,7 +34,6 @@ import {
   type StageDefinition,
 } from './mountainGridEngine';
 
-type Tool = 'ROUTE' | 'ROPE' | 'CAMP' | 'SCOUT';
 type ExpeditionTab = 'CLIMB' | 'MOUNTAIN' | 'EXPEDITION' | 'JOURNAL';
 
 type Props = {
@@ -53,21 +49,6 @@ const SIDE_COPY: Record<EntrySide, string> = {
 
 const TERRAIN_COPY: Record<MountainTerrain, string> = {
   VALLEY: 'Долина', SCREE: 'Осыпь', GLACIER: 'Ледник', SNOW: 'Снег', ROCK: 'Скалы', RIDGE: 'Гребень', SUMMIT: 'Вершина',
-};
-
-const HAZARD_COPY = {
-  NONE: 'опасность не замечена',
-  CREVASSE: 'трещина',
-  AVALANCHE: 'лавинный склон',
-  ROCKFALL: 'камнепадный жёлоб',
-  CORNICE: 'карниз',
-} as const;
-
-const TOOL_HELP: Record<Tool, { title: string; text: string }> = {
-  ROUTE: { title: 'Маршрут', text: 'Добавляет соседние клетки в линию. Крутые красные клетки без верёвки могут отбросить группу назад.' },
-  SCOUT: { title: 'Разведка', text: 'Тратит 12–20 минут и раскрывает скрытые угрозы, устойчивость снега и качество креплений рядом с группой.' },
-  ROPE: { title: 'Верёвка', text: 'Расходует 20 м. Убирает откат на обязательной технической клетке, снижает усталость и остаётся на спуск.' },
-  CAMP: { title: 'Лагерь', text: 'Ставится только на зелёной площадке под группой. Открывает бивак и полноценный сон, остаётся на обратном пути.' },
 };
 
 const RISK_COPY = { LOW: 'низкий', MEDIUM: 'средний', HIGH: 'высокий', EXTREME: 'предельный' } as const;
@@ -93,12 +74,20 @@ const TERRAIN_CLASS: Record<MountainTerrain, string> = {
 function pointKey(point: GridPoint) { return `${point.x}:${point.y}`; }
 function formatMinutes(minutes: number) { return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`; }
 
-function projectCell(cell: MountainCell, grid: ReturnType<typeof generateMountainGrid>, yaw: number, pitch: number, zoom: number) {
-  const cx = (grid.width - 1) / 2;
-  const cy = (grid.height - 1) / 2;
-  const x = (cell.x - cx) / cx;
-  const z = (cell.y - cy) / cy;
-  const normalizedHeight = (cell.elevation - grid.baseElevation) / Math.max(1, grid.relief);
+function projectMountainPoint(
+  xCell: number,
+  yCell: number,
+  elevation: number,
+  grid: ReturnType<typeof generateMountainGrid>,
+  yaw: number,
+  pitch: number,
+  zoom: number,
+) {
+  const cx = Math.max(1, (grid.width - 1) / 2);
+  const cy = Math.max(1, (grid.height - 1) / 2);
+  const x = (xCell - cx) / cx;
+  const z = (yCell - cy) / cy;
+  const normalizedHeight = (elevation - grid.baseElevation) / Math.max(1, grid.relief);
   const footprintScale = Math.max(0.72, Math.min(1.34, grid.physicalDiameterKm / 9));
   const verticalScale = Math.max(0.62, Math.min(1.58, grid.relief / 2950));
   const fit = Math.max(0.72, Math.min(1, 1 / Math.max(0.96, footprintScale * 0.92, verticalScale * 0.74)));
@@ -107,14 +96,20 @@ function projectCell(cell: MountainCell, grid: ReturnType<typeof generateMountai
   const rx = x * Math.cos(yawRad) - z * Math.sin(yawRad);
   const rz = x * Math.sin(yawRad) + z * Math.cos(yawRad);
   const ry = normalizedHeight * 1.42 * verticalScale;
-  const py = ry * Math.cos(pitchRad) - rz * Math.sin(pitchRad);
-  const depth = ry * Math.sin(pitchRad) + rz * Math.cos(pitchRad);
+  const heightVisibility = Math.max(.32, Math.cos(pitchRad));
+  const py = ry * heightVisibility - rz * Math.sin(pitchRad);
+  const depth = rz * Math.cos(pitchRad) + ry * Math.sin(pitchRad);
   return {
     x: 500 + rx * 316 * footprintScale * fit * zoom,
-    y: 418 - py * 252 * fit * zoom,
+    y: 410 - py * 252 * fit * zoom,
     depth,
   };
 }
+
+function projectCell(cell: MountainCell, grid: ReturnType<typeof generateMountainGrid>, yaw: number, pitch: number, zoom: number) {
+  return projectMountainPoint(cell.x, cell.y, cell.elevation, grid, yaw, pitch, zoom);
+}
+
 
 function terrainBase(terrain: MountainTerrain) {
   if (terrain === 'VALLEY') return [76, 91, 76];
@@ -164,25 +159,50 @@ function MountainViewer({
   const dragRef = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
   const stride = grid.width <= 35 ? 1 : 2;
   const mesh = useMemo(() => {
-    const polygons: Array<{ key: string; points: string; fill: string; depth: number }> = [];
-    for (let y = 0; y < grid.height - stride; y += stride) {
-      for (let x = 0; x < grid.width - stride; x += stride) {
-        const cells = [
-          cellAt(grid, { x, y }),
-          cellAt(grid, { x: x + stride, y }),
-          cellAt(grid, { x: x + stride, y: y + stride }),
-          cellAt(grid, { x, y: y + stride }),
-        ];
+    const polygons: Array<{ key: string; points: string; fill: string; depth: number; stroke?: string }> = [];
+    const addPolygon = (key: string, projected: Array<{ x: number; y: number; depth: number }>, fill: string, stroke?: string) => {
+      polygons.push({
+        key,
+        points: projected.map(point => `${point.x},${point.y}`).join(' '),
+        fill,
+        stroke,
+        depth: projected.reduce((sum, point) => sum + point.depth, 0) / projected.length,
+      });
+    };
+    for (let y = 0; y < grid.height - 1; y += stride) {
+      const y2 = Math.min(grid.height - 1, y + stride);
+      for (let x = 0; x < grid.width - 1; x += stride) {
+        const x2 = Math.min(grid.width - 1, x + stride);
+        const cells = [cellAt(grid, { x, y }), cellAt(grid, { x: x2, y }), cellAt(grid, { x: x2, y: y2 }), cellAt(grid, { x, y: y2 })];
         if (cells.some(cell => !cell)) continue;
-        const projected = cells.map(cell => projectCell(cell!, grid, yaw, pitch, zoom));
-        polygons.push({
-          key: `${x}:${y}`,
-          points: projected.map(point => `${point.x},${point.y}`).join(' '),
-          fill: terrainFill(cells[0]!),
-          depth: projected.reduce((sum, point) => sum + point.depth, 0) / projected.length,
-        });
+        addPolygon(`surface:${x}:${y}`, cells.map(cell => projectCell(cell!, grid, yaw, pitch, zoom)), terrainFill(cells[0]!), 'rgba(16,22,21,.2)');
       }
     }
+
+    const baseElevation = grid.baseElevation - Math.max(120, grid.relief * .11);
+    const skirt = (key: string, a: MountainCell, b: MountainCell, fill: string) => addPolygon(key, [
+      projectCell(a, grid, yaw, pitch, zoom),
+      projectCell(b, grid, yaw, pitch, zoom),
+      projectMountainPoint(b.x, b.y, baseElevation, grid, yaw, pitch, zoom),
+      projectMountainPoint(a.x, a.y, baseElevation, grid, yaw, pitch, zoom),
+    ], fill, 'rgba(9,14,13,.34)');
+
+    for (let x = 0; x < grid.width - 1; x += stride) {
+      const x2 = Math.min(grid.width - 1, x + stride);
+      skirt(`skirt:n:${x}`, cellAt(grid, { x, y: 0 })!, cellAt(grid, { x: x2, y: 0 })!, '#38433e');
+      skirt(`skirt:s:${x}`, cellAt(grid, { x: x2, y: grid.height - 1 })!, cellAt(grid, { x, y: grid.height - 1 })!, '#222b28');
+    }
+    for (let y = 0; y < grid.height - 1; y += stride) {
+      const y2 = Math.min(grid.height - 1, y + stride);
+      skirt(`skirt:w:${y}`, cellAt(grid, { x: 0, y: y2 })!, cellAt(grid, { x: 0, y })!, '#303a36');
+      skirt(`skirt:e:${y}`, cellAt(grid, { x: grid.width - 1, y })!, cellAt(grid, { x: grid.width - 1, y: y2 })!, '#1f2825');
+    }
+    addPolygon('base:bottom', [
+      projectMountainPoint(0, 0, baseElevation, grid, yaw, pitch, zoom),
+      projectMountainPoint(grid.width - 1, 0, baseElevation, grid, yaw, pitch, zoom),
+      projectMountainPoint(grid.width - 1, grid.height - 1, baseElevation, grid, yaw, pitch, zoom),
+      projectMountainPoint(0, grid.height - 1, baseElevation, grid, yaw, pitch, zoom),
+    ], '#18201e', 'rgba(8,12,11,.5)');
     return polygons.sort((a, b) => a.depth - b.depth);
   }, [grid, yaw, pitch, zoom, stride]);
 
@@ -213,7 +233,7 @@ function MountainViewer({
           const dx = event.clientX - dragRef.current.x;
           const dy = event.clientY - dragRef.current.y;
           setYaw(dragRef.current.yaw + dx * 0.35);
-          setPitch(Math.max(-14, Math.min(80, dragRef.current.pitch - dy * 0.28)));
+          setPitch(Math.max(8, Math.min(72, dragRef.current.pitch - dy * 0.28)));
         }}
         onPointerUp={() => { dragRef.current = null; }}
         onPointerCancel={() => { dragRef.current = null; }}
@@ -227,7 +247,7 @@ function MountainViewer({
             <filter id="mg-shadow"><feDropShadow dx="0" dy="10" stdDeviation="10" floodOpacity=".28" /></filter>
             <linearGradient id="mg-route-glow" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#fff" stopOpacity=".8"/><stop offset="1" stopColor="#fff" stopOpacity="0"/></linearGradient>
           </defs>
-          <g filter="url(#mg-shadow)">{mesh.map(poly => <polygon key={poly.key} points={poly.points} fill={poly.fill} stroke="rgba(16,22,21,.2)" strokeWidth=".58" />)}</g>
+          <g filter="url(#mg-shadow)">{mesh.map(poly => <polygon key={poly.key} points={poly.points} fill={poly.fill} stroke={poly.stroke ?? "rgba(16,22,21,.2)"} strokeWidth=".58" />)}</g>
           {route.length > 1 && <polyline points={routePath} fill="none" stroke="rgba(8,12,11,.62)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />}
           {route.length > 1 && <polyline points={routePath} fill="none" stroke={routeStroke(selectedRoute)} strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />}
           {stagePoints.map(({ stage, projected }) => (
@@ -250,19 +270,18 @@ function MountainViewer({
       <div className="mg-camera-buttons">
         <button onClick={() => setYaw(value => value - 20)}>←</button>
         <button onClick={() => setYaw(value => value + 20)}>→</button>
-        <button onClick={() => setPitch(value => Math.min(80, value + 10))}>Сверху</button>
-        <button onClick={() => setPitch(value => Math.max(-14, value - 10))}>Снизу</button>
+        <button onClick={() => setPitch(72)}>Сверху</button>
+        <button onClick={() => setPitch(18)}>Сбоку</button>
         <button onClick={() => { setYaw(-35); setPitch(38); setZoom(grid.relief >= 6000 ? 0.82 : grid.relief >= 4300 ? 0.9 : 1); }}>Сброс</button>
       </div>
     </section>
   );
 }
 
-function LocalMap({ map, path, positionIndex, tool, camps, ropes, revealed, selectedPoint, started, onCell }: {
+function LocalMap({ map, path, positionIndex, camps, ropes, revealed, selectedPoint, started, onCell }: {
   map: LocalStageMap;
   path: GridPoint[];
   positionIndex: number;
-  tool: Tool;
   camps: string[];
   ropes: string[];
   revealed: string[];
@@ -334,7 +353,7 @@ function LocalMap({ map, path, positionIndex, tool, camps, ropes, revealed, sele
         </svg>
       )}
       <div className="mg-map-north">N</div>
-      <div className="mg-tool-hint">{started ? TOOL_HELP[tool].text : 'Сначала зафиксируй сторону захода и маршрут, затем начни экспедицию.'}</div>
+      <div className="mg-tool-hint">{started ? 'Нажми на клетку, чтобы проверить её. Разведка раскрывает квадрат 9×9 вокруг группы.' : 'Начни экспедицию после проверки людей и снаряжения.'}</div>
       <div className="mg-map-legend"><span><b className="legend-rope-required">R</b> верёвка обязательна</span><span><b className="legend-rope-recommended">r</b> полезна</span><span><b className="legend-camp" /> лагерь</span><span><b className="legend-unknown">?</b> не разведано</span></div>
     </div>
   );
@@ -342,6 +361,35 @@ function LocalMap({ map, path, positionIndex, tool, camps, ropes, revealed, sele
 
 function localProfileFor(option?: MountainRouteOption): LocalRouteProfile {
   return option?.localProfile ?? 'SAFE';
+}
+
+const EXPEDITION_TUTORIAL = [
+  { title: 'Карта и группа', text: 'Линия движения строится заранее. Нажимай на клетки, чтобы смотреть высоту, склон и риск. Порядок группы фиксирован на всю вылазку.' },
+  { title: 'Разведка', text: 'Одна разведка раскрывает квадрат 9×9 вокруг текущей позиции. Сильный навигатор делает это быстрее и лучше замечает скрытые угрозы.' },
+  { title: 'Верёвка', text: 'Выбери соседний техничный участок и закрепи верёвку. Она снижает риск на крутом льду, скалах, трещинах и остаётся для спуска.' },
+  { title: 'Силы всей группы', text: 'Каждый переход расходует силы у всех участников. Потери зависят от выносливости, груза, высоты, погоды и темпа.' },
+  { title: 'Отдых и сон', text: 'Короткие привалы поддерживают темп. Бивак спасает в плохой ситуации. Полный сон длится около восьми часов и автоматически ставит лагерь на подходящей клетке.' },
+  { title: 'Высота и возвращение', text: 'Выше 3000 м старайся не поднимать высоту сна больше чем на 500 м за ночь. После вершины экспедиция не закончена — группу нужно вернуть к старту.' },
+] as const;
+
+function ExpeditionTutorial({ step, onStep }: { step: number; onStep: (step: number) => void }) {
+  if (step >= EXPEDITION_TUTORIAL.length) return null;
+  const item = EXPEDITION_TUTORIAL[Math.max(0, step)]!;
+  return (
+    <div className="mg-tutorial-backdrop" role="dialog" aria-modal="true" aria-label="Обучение вылазке">
+      <section className="mg-tutorial-card">
+        <span>ОБУЧЕНИЕ ВЫЛАЗКЕ · {step + 1}/{EXPEDITION_TUTORIAL.length}</span>
+        <h3>{item.title}</h3>
+        <p>{item.text}</p>
+        <div className="mg-tutorial-progress">{EXPEDITION_TUTORIAL.map((_, index) => <i key={index} className={index <= step ? 'is-active' : ''} />)}</div>
+        <div className="mg-tutorial-actions">
+          <button onClick={() => onStep(Math.max(0, step - 1))} disabled={step === 0}>Назад</button>
+          <button onClick={() => onStep(EXPEDITION_TUTORIAL.length)}>Пропустить</button>
+          <button onClick={() => onStep(step + 1)}>{step === EXPEDITION_TUTORIAL.length - 1 ? 'Понятно' : 'Далее'}</button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegenerate = false }: Props) {
@@ -356,7 +404,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.9.6</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.10.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -373,7 +421,6 @@ type ActiveTopoProps = Omit<Props, 'career'> & {
 function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit, allowRegenerate = false }: ActiveTopoProps) {
   const [paused, setPaused] = useState(true);
   const [speed, setSpeed] = useState<1 | 2 | 4>(1);
-  const [tool, setTool] = useState<IntegratedTool>('ROUTE');
   const [selectedPoint, setSelectedPoint] = useState<GridPoint>({ x: 0, y: 0 });
   const [activeTab, setActiveTab] = useState<ExpeditionTab>(() => topo.started ? 'CLIMB' : 'EXPEDITION');
 
@@ -420,14 +467,10 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const currentCell = localCellAt(localMap, currentPoint)!;
   const selectedCell = localCellAt(localMap, selectedPoint) ?? currentCell;
   const selectedId = pointKey(selectedCell);
-  const selectedKnown = infra.revealed.includes(selectedId) || isSamePoint(selectedCell, currentCell) || isSamePoint(selectedCell, localMap.start);
   const selectedProtected = infra.ropes.includes(selectedId);
   const selectedRisk = integratedStepPreview(topo, localMap, currentPoint, selectedCell, weather, selectedProtected);
-  const routeReady = path.length > 1 && isSamePoint(path[path.length - 1]!, localMap.goal);
-  const routeMetrics = useMemo(
-    () => evaluateLocalRoute(localMap, path, weather, new Set(infra.ropes)),
-    [localMap, path, weather, infra.ropes],
-  );
+  const selectedDistance = Math.max(Math.abs(selectedCell.x - currentPoint.x), Math.abs(selectedCell.y - currentPoint.y));
+  const canSecureSelected = selectedDistance <= 1 && (selectedCell.ropeRequired || selectedCell.ropeRecommended || selectedCell.hazard !== 'NONE');
   const context: IntegratedExpeditionContext = { stageId: stage.id, stageTitle: stage.title, stageCount: stages.length, localMap, weather };
 
   useEffect(() => {
@@ -437,7 +480,6 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     }
     setSelectedPoint(path[Math.min(topo.positionIndex, Math.max(0, path.length - 1))] ?? localMap.start);
     setPaused(true);
-    setTool('ROUTE');
   }, [stage.id, descending]);
 
 
@@ -468,37 +510,25 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   }
 
   function handleCell(point: GridPoint) {
-    setSelectedPoint(point);
-    if (!topo!.started || !paused || completed) return;
     const cell = localCellAt(localMap, point);
     if (!cell?.passable) return;
-    const distanceFromGroup = Math.max(Math.abs(point.x - currentPoint.x), Math.abs(point.y - currentPoint.y));
-
-    if (tool === 'SCOUT') {
-      commit({ type: 'SCOUT', point, radius: topo!.authority === 'SPECIALIST' ? 2 : 1, minutes: topo!.authority === 'SPECIALIST' ? 12 : 20 });
-      return;
-    }
-    if (tool === 'CAMP') {
-      if (!isSamePoint(point, currentPoint)) return;
-      commit({ type: 'MAKE_CAMP', point });
-      return;
-    }
-    if (tool === 'ROPE') {
-      if (distanceFromGroup > 1) return;
-      if (!cell.ropeRequired && !cell.ropeRecommended && cell.hazard === 'NONE') return;
-      commit({ type: 'TOGGLE_ROPE', point });
-      return;
-    }
-    if (participantMode) return;
-    const existingIndex = path.findIndex(item => isSamePoint(item, point));
-    if (existingIndex >= topo!.positionIndex) {
-      commit({ type: 'SET_STAGE_PATH', stageId: stage.id, path: path.slice(0, existingIndex + 1) });
-      return;
-    }
-    const last = path[path.length - 1]!;
-    if (!isAdjacent(last, point)) return;
-    commit({ type: 'SET_STAGE_PATH', stageId: stage.id, path: [...path, point] });
+    setSelectedPoint(point);
   }
+
+  function scoutArea() {
+    if (!topo.started || !paused || completed) return;
+    const minutes = Math.max(8, 20 - navigator.skills.NAVIGATION);
+    commit({ type: 'SCOUT', point: currentPoint, radius: 4, minutes });
+  }
+
+  function secureSelectedPoint() {
+    if (!topo.started || !paused || completed) return;
+    const distance = Math.max(Math.abs(selectedCell.x - currentPoint.x), Math.abs(selectedCell.y - currentPoint.y));
+    if (distance > 1) return;
+    if (!selectedCell.ropeRequired && !selectedCell.ropeRecommended && selectedCell.hazard === 'NONE') return;
+    commit({ type: 'TOGGLE_ROPE', point: selectedCell });
+  }
+
 
   function toggleMove() {
     if (completed) return;
@@ -515,13 +545,15 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const navigator = integratedSpecialist(topo, 'NAVIGATION');
   const technician = integratedSpecialist(topo, selectedCell.terrain === 'GLACIER' ? 'ICE' : 'ROCK');
   const medic = integratedSpecialist(topo, 'MEDICINE');
+  const specialistNames = [...new Set([navigator.name, technician.name, medic.name])];
+  const specialistSummary = specialistNames.length === 1 ? `${specialistNames[0]} · все роли` : specialistNames.join(' · ');
   const outcomeLabel = topo.phase === 'COMPLETE' ? 'Вершина и возвращение' : topo.phase === 'RETREATED' ? 'Экспедиция завершена отходом' : 'Экспедиция провалена';
 
   return (
     <main className="mg-app mg-expedition-shell">
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.9.6</span>
+          <span>ALPINE LEGACY / 0.10.0</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()}</small>
         </div>
@@ -552,20 +584,26 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
         ))}
       </nav>
 
+      {topo.started && !completed && <ExpeditionTutorial step={topo.tutorialStep} onStep={step => commit({ type: 'SET_TUTORIAL_STEP', step })} />}
+
       <section className="mg-tab-panel">
         {activeTab === 'CLIMB' && (
           <section className="mg-stage-card mg-climb-tab" role="tabpanel">
             <div className="mg-stage-topline">
-              <div>
+              <div className="mg-stage-heading">
                 <span>{phaseLabel} · ЭТАП {stageIndex + 1} / {stages.length}</span>
                 <h2>{stage.title}</h2>
                 <p>{stage.subtitle} · сложность {stage.difficulty}/5</p>
               </div>
-              <div className="mg-stage-weather">
-                <span>{weather.temperatureC}°C</span>
-                <span>ветер {weather.windKmh}</span>
-                <span>видимость {weather.visibility}%</span>
-                <span>снег {weather.snowSoftness}</span>
+              <div className="mg-stage-weather mg-status-strip" aria-label="Состояние вылазки">
+                <span><small>ТЕМП.</small><b>{weather.temperatureC}°</b></span>
+                <span><small>ВЕТЕР</small><b>{weather.windKmh}</b></span>
+                <span><small>ВИДИМ.</small><b>{weather.visibility}%</b></span>
+                <span><small>ВЫСОТА</small><b>{Math.round(currentCell.elevation)} м</b></span>
+                <span><small>ГРУППА</small><b>{teamAverageCondition}%</b></span>
+                <span><small>СИЛЫ</small><b>{teamAverageEnergy}%</b></span>
+                <span><small>В ПУТИ</small><b>{formatMinutes(topo.elapsedMinutes)}</b></span>
+                <span className={`is-risk-${selectedRisk.band.toLowerCase()}`}><small>ТОЧКА</small><b>{Math.round(selectedCell.elevation)} м · {RISK_COPY[selectedRisk.band]}</b></span>
               </div>
             </div>
 
@@ -587,7 +625,6 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                   map={localMap}
                   path={path}
                   positionIndex={topo.positionIndex}
-                  tool={tool as Tool}
                   camps={infra.camps}
                   ropes={infra.ropes}
                   revealed={infra.revealed}
@@ -596,34 +633,15 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                   onCell={handleCell}
                 />
                 <aside className="mg-local-aside">
-                  <div className="mg-climb-status">
-                    <article>
-                      <span>ГРУППА</span>
-                      <strong>{currentCell.elevation} м</strong>
-                      <small>{TERRAIN_COPY[currentCell.terrain]} · {currentCell.slope}° · {HAZARD_COPY[currentCell.hazard]}</small>
-                    </article>
-                    <article className={selectedCell.ropeRequired ? 'is-critical' : ''}>
-                      <span>ВЫБРАННАЯ ТОЧКА</span>
-                      <strong>{RISK_COPY[selectedRisk.band]}</strong>
-                      <small>{selectedKnown ? `${selectedCell.elevation} м · ${slopeBand(selectedCell.slope)} · навык ${selectedRisk.skill}/10` : 'Угроза не разведана'}</small>
-                    </article>
+                  <div className="mg-compact-actions" role="group" aria-label="Полевые действия">
+                    <button onClick={scoutArea} disabled={!paused || completed}>
+                      <strong>Разведка 9×9</strong><small>{Math.max(8, 20 - navigator.skills.NAVIGATION)} мин · {navigator.name}</small>
+                    </button>
+                    <button onClick={secureSelectedPoint} disabled={!paused || completed || !canSecureSelected} className={selectedProtected ? 'is-active' : ''}>
+                      <strong>{selectedProtected ? 'Снять верёвку' : 'Закрепить верёвку'}</strong><small>{canSecureSelected ? `${selectedCell.elevation} м · ${technician.name}` : 'выбери соседний техничный участок'}</small>
+                    </button>
                   </div>
 
-                  <div className="mg-climb-metrics">
-                    <div><span>ВРЕМЯ</span><strong>{formatMinutes(routeMetrics.minutes)}</strong></div>
-                    <div><span>СИЛЫ</span><strong>{routeMetrics.energy}</strong></div>
-                    <div className={routeMetrics.unprotectedRopeCells ? 'is-warning' : ''}><span>БЕЗ СТРАХОВКИ</span><strong>{routeMetrics.unprotectedRopeCells}</strong></div>
-                    <div><span>ВЕРЁВКА</span><strong>{topo.ropeMeters} м</strong></div>
-                  </div>
-
-                  <div className="mg-tools" role="group" aria-label="Инструмент на карте">
-                    {(['ROUTE', 'SCOUT', 'ROPE', 'CAMP'] as IntegratedTool[]).map(id => (
-                      <button key={id} className={tool === id ? 'is-active' : ''} onClick={() => setTool(id)} disabled={!paused || completed}>
-                        <strong>{id === 'ROUTE' ? 'Маршрут' : id === 'SCOUT' ? 'Разведка' : id === 'ROPE' ? 'Верёвка' : 'Лагерь'}</strong>
-                        <small>{id === 'SCOUT' ? '12–20 мин' : id === 'ROPE' ? '20 м' : id === 'CAMP' ? '1 комплект' : 'линия'}</small>
-                      </button>
-                    ))}
-                  </div>
 
                   <div className={`mg-message ${topo.lastEvent.severity === 'DANGER' ? 'is-danger' : ''}`}>
                     <span>{paused ? 'ПАУЗА' : `ДВИЖЕНИЕ ×${speed}`}</span>
@@ -638,9 +656,10 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                   <details className="mg-secondary-actions" open={topo.forcedRetreat || undefined}>
                     <summary>Отдых и аварийные действия</summary>
                     <div className="mg-rest-controls">
-                      <button onClick={() => commit({ type: 'REST', mode: 'BREAK' as IntegratedRestMode })} disabled={!paused}>Привал <small>30 мин · +9 сил</small></button>
-                      <button onClick={() => commit({ type: 'REST', mode: 'BIVOUAC' as IntegratedRestMode })} disabled={!paused}>Бивак <small>3 ч · топливо 1</small></button>
-                      <button onClick={() => commit({ type: 'REST', mode: 'SLEEP' as IntegratedRestMode })} disabled={!paused}>Сон <small>8 ч · топливо 2</small></button>
+                      <button onClick={() => commit({ type: 'REST', mode: 'BREAK' as IntegratedRestMode })} disabled={!paused}>Короткий привал <small>20 мин</small></button>
+                      <button onClick={() => commit({ type: 'REST', mode: 'BIVOUAC' as IntegratedRestMode })} disabled={!paused}>Бивак <small>5 ч · слабое восстановление</small></button>
+                      <button onClick={() => commit({ type: 'REST', mode: 'SLEEP' as IntegratedRestMode })} disabled={!paused}>Сон <small>8 ч · лагерь автоматически</small></button>
+                      <p>С последнего сна: {formatMinutes(topo.minutesSinceSleep)}. Выше 3000 м безопасный набор высоты сна — около 500 м за ночь.</p>
                       {topo.phase === 'ASCENT' && <button className="is-warning" onClick={() => commit({ type: 'BEGIN_RETREAT' })} disabled={!paused}>Начать отход</button>}
                       {topo.forcedRetreat && <button className="is-warning" onClick={() => commit({ type: 'REQUEST_RESCUE' })} disabled={!paused}>Вызвать спасателей</button>}
                     </div>
@@ -677,7 +696,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                 <div><span>ГОТОВНОСТЬ</span><h3>Команда собрана</h3><p>Навигатор ведёт разведку, техник отвечает за страховку, медик работает с травмами. Ты управляешь линией, темпом, отдыхом и отходом.</p></div>
                 <dl>
                   <div><dt>Команда</dt><dd>{topo.participants.length}</dd></div>
-                  <div><dt>Специалисты</dt><dd>{navigator.name} · {technician.name} · {medic.name}</dd></div>
+                  <div><dt>Специалисты</dt><dd>{specialistSummary}</dd></div>
                   <div><dt>Верёвка / лагеря</dt><dd>{topo.ropeMeters} м / {topo.campKits}</dd></div>
                   <div><dt>Груз</dt><dd>{topo.packWeightKg.toFixed(1)} кг/чел.</dd></div>
                   <div><dt>Акклиматизация</dt><dd>{topo.acclimatizationDays} дн.</dd></div>
@@ -715,8 +734,18 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                   </section>
 
                   <section className="mg-side-card mg-team-card">
-                    <div className="mg-panel-head"><div><span>ЛЮДИ</span><strong>{topo.participants.length} участников</strong></div><small>порядок группы</small></div>
-                    <div className="mg-team-list">{topo.participants.map((member, index) => <article key={member.id} className={member.status === 'INCAPACITATED' || member.status === 'DEAD' ? 'is-critical' : ''}><div><strong>{member.name}</strong><span>{member.role} · {member.specialty}</span><small>Силы {Math.round(member.energy)} · состояние {Math.round(member.condition)} · груз {member.loadKg.toFixed(1)}/{member.carryCapacityKg.toFixed(1)} кг</small><small>Мораль {Math.round(member.morale)} · доверие {Math.round(member.trust)}{member.injury ? ` · ${member.injury}` : ''}</small></div><div><button onClick={() => commit({ type: 'REORDER', index, delta: -1 })} disabled={!paused || index === 0}>↑</button><button onClick={() => commit({ type: 'REORDER', index, delta: 1 })} disabled={!paused || index === topo.participants.length - 1}>↓</button></div></article>)}</div>
+                    <div className="mg-panel-head"><div><span>ЛЮДИ</span><strong>{topo.participants.length} участников</strong></div><small>порядок зафиксирован перед выходом</small></div>
+                    <div className="mg-team-list">{topo.participants.map(member => (
+                      <article key={member.id} className={member.status === 'INCAPACITATED' || member.status === 'DEAD' ? 'is-critical' : ''}>
+                        <div>
+                          <strong>{member.name}</strong>
+                          <span>{member.role} · {member.specialty}</span>
+                          <small>Силы {Math.round(member.energy)} · состояние {Math.round(member.condition)} · груз {member.loadKg.toFixed(1)}/{member.carryCapacityKg.toFixed(1)} кг</small>
+                          <small>Выносливость {member.skills.ENDURANCE} · скалы {member.skills.ROCK} · лёд {member.skills.ICE} · навигация {member.skills.NAVIGATION} · медицина {member.skills.MEDICINE}</small>
+                          <small>Мораль {Math.round(member.morale)} · доверие {Math.round(member.trust)}{member.injury ? ` · ${member.injury}` : ''}</small>
+                        </div>
+                      </article>
+                    ))}</div>
                   </section>
                 </div>
               </>

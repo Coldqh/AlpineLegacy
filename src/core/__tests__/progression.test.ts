@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyTraining, createCareer, expeditionReadiness } from '../career';
+import { applyTraining, createCareer, expeditionReadiness, skillXpThreshold } from '../career';
 import { generateWorld } from '../generator';
 import { syncCareerProgression } from '../progression';
 import type { ExpeditionReport } from '../types';
@@ -33,7 +33,7 @@ function report(year: number, index: number): ExpeditionReport {
 describe('career progression 0.6', () => {
   it('creates a season, tier and milestone track', () => {
     const career = careerFixture();
-    expect(career.schemaVersion).toBe(16);
+    expect(career.schemaVersion).toBe(17);
     expect(career.progression.seasonNumber).toBe(1);
     expect(career.progression.tier).toBe('NOVICE');
     expect(career.progression.milestones).toHaveLength(6);
@@ -59,6 +59,18 @@ describe('career progression 0.6', () => {
     expect(next.progression.seasonNumber).toBe(2);
     expect(next.progression.seasonHistory).toHaveLength(1);
     expect(next.progression.seasonHistory[0]?.year).toBe(career.year);
+  });
+
+
+  it('keeps skill growth long-term instead of granting a level every few actions', () => {
+    expect(skillXpThreshold(1)).toBeGreaterThanOrEqual(100);
+    expect(skillXpThreshold(5)).toBeGreaterThan(skillXpThreshold(1));
+    expect(skillXpThreshold(9)).toBeGreaterThan(skillXpThreshold(5));
+    const career = careerFixture();
+    const trained = applyTraining(career, 'CONDITIONING');
+    expect(trained.hero.skills.ENDURANCE).toBe(career.hero.skills.ENDURANCE);
+    expect(trained.hero.skillXp.ENDURANCE).toBeGreaterThan(career.hero.skillXp.ENDURANCE);
+    expect(trained.hero.skillXp.ENDURANCE).toBeLessThan(skillXpThreshold(career.hero.skills.ENDURANCE));
   });
 
   it('limits expeditions by career tier', () => {

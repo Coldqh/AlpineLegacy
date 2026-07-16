@@ -240,7 +240,7 @@ describe('integrated expedition career loop', () => {
     const rested = reduceIntegratedExpedition(injured, { type: 'REST', mode: 'BIVOUAC' }, context);
     const treated = rested.participants.find(participant => participant.id === patient.id)!;
 
-    expect(scouted.message).toContain('разведал');
+    expect(scouted.message).toContain('проверил');
     expect(scouted.elapsedMinutes).toBeLessThan(25);
     expect(rested.gear.medkitCharges).toBe(injured.gear.medkitCharges - 1);
     expect(treated.condition).toBeGreaterThan(52);
@@ -277,11 +277,72 @@ describe('integrated expedition career loop', () => {
     } as unknown as IntegratedExpeditionState;
     const migrated = normalizeIntegratedExpeditionState(legacy);
 
-    expect(migrated.version).toBe(2);
+    expect(migrated.version).toBe(3);
     expect(migrated.pace).toBe('STEADY');
     expect(migrated.participants.every(participant => participant.carryCapacityKg > 0)).toBe(true);
     expect(migrated.eventLog.length).toBeGreaterThan(0);
     expect(migrated.routeChoice).toBe(topo.routeChoice);
+  });
+
+  it('reveals the full 9 by 9 square around the group', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-SCOUT-9X9');
+    const { topo, context } = initializedTopo(career);
+    const started = reduceIntegratedExpedition(topo, { type: 'START' }, context);
+    const current = context.localMap.start;
+    const scouted = reduceIntegratedExpedition(started, { type: 'SCOUT', point: { x: 0, y: 0 }, radius: 1, minutes: 99 }, context);
+    const expected = context.localMap.cells.filter(cell => Math.max(Math.abs(cell.x - current.x), Math.abs(cell.y - current.y)) <= 4).length;
+
+    expect(scouted.infrastructure[context.stageId]?.revealed).toHaveLength(expected);
+    expect(scouted.message).toContain('9×9');
+    expect(scouted.elapsedMinutes).toBeLessThan(22);
+  });
+
+  it('drains energy from every active participant while preserving group order', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-WHOLE-GROUP');
+    const { topo, context, path } = initializedTopo(career);
+    const nextPoint = path[1]!;
+    const safeMap = {
+      ...context.localMap,
+      cells: context.localMap.cells.map(cell => cell.x === nextPoint.x && cell.y === nextPoint.y
+        ? { ...cell, hazard: 'NONE' as const, stability: 100, ropeRequired: false, ropeRecommended: false, rollbackCells: 0 }
+        : cell),
+    };
+    const safeContext = { ...context, localMap: safeMap };
+    const started = reduceIntegratedExpedition({
+      ...topo,
+      participants: topo.participants.map(participant => ({ ...participant, energy: 100, fatigue: 10 })),
+      infrastructure: { [context.stageId]: { camps: [], ropes: [], revealed: [nextPoint.x + ':' + nextPoint.y] } },
+    }, { type: 'START' }, safeContext);
+    const order = started.participants.map(participant => participant.id);
+    const stepped = reduceIntegratedExpedition(started, { type: 'STEP' }, safeContext);
+    const reordered = reduceIntegratedExpedition(stepped, { type: 'REORDER', index: 0, delta: 1 }, safeContext);
+
+    for (const participant of stepped.participants.filter(item => item.status === 'ACTIVE' || item.status === 'INJURED')) {
+      expect(participant.energy).toBeLessThan(100);
+    }
+    expect(reordered.participants.map(participant => participant.id)).toEqual(order);
+  });
+
+  it('builds a camp automatically for an eight hour sleep', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-SLEEP');
+    const { topo, context } = initializedTopo(career);
+    const campCell = context.localMap.cells.find(cell => cell.campPossible && cell.passable)!;
+    const sleeping: IntegratedExpeditionState = {
+      ...topo,
+      started: true,
+      currentElevation: campCell.elevation,
+      minutesSinceSleep: 760,
+      paths: { ...topo.paths, [context.stageId]: [campCell] },
+      positionIndex: 0,
+      supplies: { ...topo.supplies, fuelUnits: Math.max(3, topo.supplies.fuelUnits) },
+      campKits: Math.max(1, topo.campKits),
+    };
+    const rested = reduceIntegratedExpedition(sleeping, { type: 'REST', mode: 'SLEEP' }, context);
+
+    expect(rested.infrastructure[context.stageId]?.camps).toContain(`${campCell.x}:${campCell.y}`);
+    expect(rested.minutesSinceSleep).toBe(0);
+    expect(rested.nightsSlept).toBe(1);
+    expect(rested.elapsedMinutes).toBeGreaterThanOrEqual(480);
   });
 
 });

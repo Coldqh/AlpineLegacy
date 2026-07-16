@@ -3969,3 +3969,17 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
 .exp-height-scale > footer b { color: var(--ink); }
 .simulation-action-layout--context { grid-template-columns: 1fr; }
 .simulation-action-layout--context .simulation-actions { grid-template-columns: repeat(3,minmax(0,1fr)); }
+
+.skill-row__xp { position: relative; height: 14px; margin-top: 4px; overflow: hidden; border: 1px solid var(--line); background: color-mix(in srgb, var(--paper) 88%, var(--ink) 12%); }
+.skill-row__xp > i { position: absolute; inset: 0 auto 0 0; width: var(--skill-xp); background: color-mix(in srgb, var(--ink) 72%, transparent); }
+.skill-row__xp > small { position: relative; z-index: 1; display: block; padding: 1px 4px; color: var(--muted); font-size: 8px; line-height: 10px; letter-spacing: .04em; text-align: right; }
+
+.club-mentor-list { display: grid; gap: 7px; margin-top: 12px; }
+.club-mentor-list article { padding: 8px 0 0; border-top: 1px solid var(--line); }
+.club-mentor-list strong, .club-mentor-list small { display: block; }
+.club-mentor-list small { margin-top: 2px; color: var(--muted); }
+.career-flow-guide__mobile-nav { display: none; }
+
+/* Career tutorial switches to a dedicated card on phone layouts. */
+.career-flow-guide__mobile { display: none; }
+.career-flow-guide__desktop { display: contents; }

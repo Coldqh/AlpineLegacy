@@ -42,6 +42,19 @@ function jitter(value: number, amount: number, next: () => number) {
   return clamp(Math.round(value + (next() * 2 - 1) * amount));
 }
 
+function legacySkills(member: Pick<TeamMember, 'specialty' | 'skill' | 'endurance'>): TeamMember['skills'] {
+  const base = {
+    ENDURANCE: Math.max(1, Math.min(10, Math.round(member.endurance))),
+    ROCK: 2,
+    ICE: 2,
+    NAVIGATION: 2,
+    MEDICINE: 2,
+    LEADERSHIP: 2,
+  };
+  base[member.specialty] = Math.max(base[member.specialty], Math.max(1, Math.min(10, Math.round(member.skill))));
+  return base;
+}
+
 export function enrichTeamMember(member: Partial<TeamMember> & Pick<TeamMember, 'id' | 'name' | 'age' | 'role' | 'specialty' | 'skill' | 'endurance' | 'trust' | 'condition' | 'temperament' | 'note'>, seed: string, index: number, year: number, seasonDay: number): TeamMember {
   const rng = createRng(`${seed}:person:${member.id}:${index}`);
   const base = personalityBase(member.temperament);
@@ -72,8 +85,15 @@ export function enrichTeamMember(member: Partial<TeamMember> & Pick<TeamMember, 
     respectDelta: 0,
     resentmentDelta: 0,
   };
+  const skills = member.skills ?? legacySkills(member);
+  const isMentor = member.isMentor ?? (member.id === 'mentor' || (member.role === 'LEADER' && member.skill >= 7));
   return {
     ...member,
+    skills,
+    isMentor,
+    mentorLevel: member.mentorLevel ?? (isMentor ? 'INSTRUCTOR' : null),
+    routePreference: member.routePreference ?? (member.temperament === 'Осторожный' ? 'EASY' : member.temperament === 'Амбициозный' ? 'HARD' : 'BALANCED'),
+    activityRate: member.activityRate ?? (isMentor ? 72 : 48),
     required: member.required,
     morale: member.morale ?? rng.int(68, 91),
     status: member.status ?? 'ACTIVE',

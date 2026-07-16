@@ -92,6 +92,7 @@ describe('physical expedition simulation', () => {
       const option = event.options[0]!;
       career = resolveParticipantAction(career, option.id).career;
     }
+    career = { ...career, activeClimb: { ...career.activeClimb!, authorityMode: 'COMMAND' } };
     career = resolveExpeditionFieldAction(career, 'TURN_BACK').career;
     expect(career.activeClimb?.phase).toBe('DESCENT');
     expect(career.activeClimb?.simulation?.direction).toBe('DESCENT');

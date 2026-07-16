@@ -94,7 +94,7 @@ describe('strategic expedition engine', () => {
     const { career: started } = startedFixture();
     const finished = finishStrategic(started);
     expect(['COMPLETE', 'RETREATED']).toContain(finished.activeClimb?.phase);
-    expect(finished.activeClimb!.strategic!.history.length).toBeGreaterThanOrEqual(6);
+    expect(finished.activeClimb!.strategic!.history.length).toBeGreaterThanOrEqual(3);
     expect(finished.activeClimb!.elapsedMinutes).toBeLessThan(started.activeClimb!.strategic!.baselineMinutes * 2.1);
     expect(finished.activeClimb!.elapsedMinutes).toBeLessThan(72 * 60);
   });

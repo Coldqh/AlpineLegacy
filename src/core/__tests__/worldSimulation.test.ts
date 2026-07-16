@@ -25,6 +25,27 @@ describe('living world simulation', () => {
     expect(advanced.livingWorld.news.length).toBeGreaterThan(career.livingWorld.news.length);
   });
 
+
+  it('sends mentors onto routes that fit their own difficulty preference', () => {
+    const world = generateWorld({ ...config, seed: 'MENTOR-ROUTES' });
+    const career = createCareer(world, draft);
+    const advanced = applyTraining(career, 'CONDITIONING');
+    const mentorExpeditions = advanced.livingWorld.expeditions.filter(expedition => {
+      const leader = advanced.livingWorld.athletes.find(athlete => athlete.id === expedition.leaderAthleteId);
+      return leader?.isMentor;
+    });
+    const organizationsWithMentors = new Set(advanced.livingWorld.athletes.filter(athlete => athlete.isMentor).map(athlete => athlete.clubId));
+    expect(new Set(mentorExpeditions.map(expedition => expedition.clubId)).size).toBe(organizationsWithMentors.size);
+    expect(mentorExpeditions.every(expedition => Boolean(expedition.routeId))).toBe(true);
+    const allScores = career.routes.map(route => route.objectiveRisk * .45 + route.technicality * .4 + Math.max(0, route.summitElevation - route.startElevation) / 180).sort((a, b) => a - b);
+    for (const expedition of mentorExpeditions) {
+      const leader = advanced.livingWorld.athletes.find(athlete => athlete.id === expedition.leaderAthleteId)!;
+      const rank = allScores.filter(score => score <= expedition.difficultyScore).length / allScores.length;
+      if (leader.routePreference === 'EASY') expect(rank).toBeLessThanOrEqual(.55);
+      if (leader.routePreference === 'HARD') expect(rank).toBeGreaterThanOrEqual(.45);
+    }
+  });
+
   it('is deterministic for the same seed, career state and action', () => {
     const world = generateWorld(config);
     const career = createCareer(world, draft);
@@ -40,7 +61,7 @@ describe('living world simulation', () => {
     const career = createCareer(world, draft);
     const legacy = { ...career, schemaVersion: 6, routes: career.routes.map(({ mountainCharacterId, ...route }) => route) } as any;
     const migrated = migrateCareerV6(legacy, world);
-    expect(migrated.schemaVersion).toBe(16);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.routes.every(route => route.mountainCharacterId)).toBe(true);
   });
 
@@ -50,7 +71,7 @@ describe('living world simulation', () => {
     const career = selectMountain(createCareer(world, draft), target.id);
     const legacy = { ...career, schemaVersion: 5 } as any;
     const migrated = migrateCareerV5(legacy, world);
-    expect(migrated.schemaVersion).toBe(16);
+    expect(migrated.schemaVersion).toBe(17);
     expect(getSelectedRoute(migrated).mountainId).toBe(target.id);
   });
 
@@ -60,7 +81,7 @@ describe('living world simulation', () => {
     const legacy = { ...career, schemaVersion: 4 } as any;
     delete legacy.livingWorld;
     const migrated = migrateCareerV4(legacy, world);
-    expect(migrated.schemaVersion).toBe(16);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.teamRoster.map(item => item.id)).toEqual(career.teamRoster.map(item => item.id));
     expect(migrated.livingWorld.athletes.length).toBeGreaterThan(30);
   });
@@ -69,7 +90,7 @@ describe('living world simulation', () => {
     const career = createCareer(world, draft);
     const legacy = { ...career, schemaVersion: 7, activeClimb: null } as any;
     const migrated = migrateCareerV7(legacy, world);
-    expect(migrated.schemaVersion).toBe(16);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.routes.some(route => route.isSignature && route.descentSegments?.length)).toBe(true);
   });
 
@@ -81,7 +102,7 @@ describe('living world simulation', () => {
     delete legacy.difficulty;
     delete legacy.onboarding;
     const migrated = migrateCareerV8(legacy, world);
-    expect(migrated.schemaVersion).toBe(16);
+    expect(migrated.schemaVersion).toBe(17);
     expect(migrated.rootSeed).toBe(config.seed);
     expect(migrated.difficulty).toBe(config.difficulty);
     expect(migrated.onboarding.completed).toBe(false);

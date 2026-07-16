@@ -260,6 +260,7 @@ export interface OrganizationDefinition {
   specialty: string;
   acceptsNovices: boolean;
   memberNpcIds: NpcId[];
+  mentorNpcIds: NpcId[];
 }
 
 export interface NpcDefinition {
@@ -272,6 +273,11 @@ export interface NpcDefinition {
   specialty: SkillId;
   skill: number;
   endurance: number;
+  skills: SkillSet;
+  isMentor: boolean;
+  mentorLevel: MentorLevel | null;
+  routePreference: MentorRoutePreference;
+  activityRate: number;
   temperament: string;
   note: string;
   personality: PersonalityProfile;
@@ -329,7 +335,7 @@ export interface ExpeditionOffer {
 }
 
 export interface WorldContentRegistry {
-  version: 1;
+  version: 2;
   primaryRegionId: RegionId;
   regions: EntityTable<RegionData>;
   mountains: EntityTable<MountainData>;
@@ -348,7 +354,7 @@ export interface WorldRuntimeRegistry {
 }
 
 export interface WorldEcosystem {
-  schemaVersion: 1;
+  schemaVersion: 2;
   contentFingerprint: string;
   content: WorldContentRegistry;
   runtime: WorldRuntimeRegistry;
@@ -367,6 +373,8 @@ export interface WorldState {
 
 export type SkillSet = Record<SkillId, number>;
 export type SkillXp = Record<SkillId, number>;
+export type MentorRoutePreference = 'EASY' | 'BALANCED' | 'HARD';
+export type MentorLevel = 'INSTRUCTOR' | 'SENIOR' | 'HEAD';
 
 export interface OriginDefinition {
   id: OriginId;
@@ -390,6 +398,7 @@ export interface ClubData {
   doctrine: string;
   mentorName: string;
   mentorTitle: string;
+  mentors: Array<{ id: string; name: string; title: string; specialty: SkillId; routePreference: MentorRoutePreference }>;
 }
 
 export interface CareerHero {
@@ -535,6 +544,11 @@ export interface TeamMember {
   specialty: SkillId;
   skill: number;
   endurance: number;
+  skills: SkillSet;
+  isMentor: boolean;
+  mentorLevel: MentorLevel | null;
+  routePreference: MentorRoutePreference;
+  activityRate: number;
   trust: number;
   condition: number;
   temperament: string;
@@ -990,6 +1004,10 @@ export interface WorldAthlete {
   specialty: SkillId;
   skill: number;
   endurance: number;
+  skills: SkillSet;
+  isMentor: boolean;
+  routePreference: MentorRoutePreference;
+  activityRate: number;
   altitude: number;
   caution: number;
   ambition: number;
@@ -1058,6 +1076,9 @@ export interface WorldExpedition {
   seasonDay: number;
   mountainId: string;
   mountainName: string;
+  routeId: string | null;
+  routeName: string;
+  difficultyScore: number;
   leaderAthleteId: string;
   memberAthleteIds: string[];
   clubId: string;
@@ -1070,7 +1091,7 @@ export interface WorldExpedition {
 }
 
 export interface LivingWorldState {
-  version: 1;
+  version: 2;
   lastSimulatedYear: number;
   lastSimulatedDay: number;
   tick: number;
@@ -1085,6 +1106,8 @@ export interface LivingWorldState {
 export interface OnboardingState {
   dismissed: boolean;
   completed: boolean;
+  careerStep: number;
+  expeditionStep: number;
 }
 
 export interface PlaytestReportData {
@@ -1172,7 +1195,7 @@ export interface CareerMembership {
 }
 
 export interface CareerState {
-  schemaVersion: 16;
+  schemaVersion: 17;
   id: string;
   worldId: string;
   rootSeed: string;

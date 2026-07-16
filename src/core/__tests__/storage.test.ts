@@ -36,12 +36,49 @@ describe('crash-safe expedition saves', () => {
     const { world, career } = fixture();
     saveCareer(career);
     saveCareer({ ...career, seasonDay: career.seasonDay + 2 });
-    localStorage.setItem('alpine-legacy:career:v16', '{broken');
+    localStorage.setItem('alpine-legacy:career:v17', '{broken');
     const recovered = loadCareer(world);
     expect(recovered).toBeTruthy();
     expect(recovered?.seasonDay).toBe(career.seasonDay);
     expect(careerRecoveryStatus().lastRecovery).toBeTruthy();
   });
+
+  it('migrates a v16 save and rebuilds NPC skills and mentor data', () => {
+    const { world, career } = fixture();
+    const legacy = JSON.parse(JSON.stringify({ ...career, schemaVersion: 16 }));
+    for (const member of legacy.teamRoster) {
+      delete member.skills;
+      delete member.isMentor;
+      delete member.mentorLevel;
+      delete member.routePreference;
+      delete member.activityRate;
+    }
+    legacy.livingWorld.version = 1;
+    for (const athlete of legacy.livingWorld.athletes) {
+      delete athlete.skills;
+      delete athlete.isMentor;
+      delete athlete.mentorLevel;
+      delete athlete.routePreference;
+      delete athlete.activityRate;
+    }
+    for (const expedition of legacy.livingWorld.expeditions) {
+      delete expedition.routeId;
+      delete expedition.routeName;
+      delete expedition.difficultyScore;
+    }
+
+    localStorage.setItem('alpine-legacy:career:v16', JSON.stringify(legacy));
+    const restored = loadCareer(world);
+
+    expect(restored?.schemaVersion).toBe(17);
+    expect(restored?.teamRoster.map(member => member.id)).toEqual(career.teamRoster.map(member => member.id));
+    expect(restored?.teamRoster.every(member => member.skills && member.activityRate > 0)).toBe(true);
+    expect(restored?.livingWorld.version).toBe(2);
+    expect(restored?.livingWorld.athletes.every(athlete => athlete.skills && athlete.activityRate > 0)).toBe(true);
+    expect(restored?.livingWorld.athletes.filter(athlete => athlete.isMentor).length).toBeGreaterThanOrEqual(15);
+    expect(localStorage.getItem('alpine-legacy:career:v17')).toBeTruthy();
+  });
+
 });
 
 

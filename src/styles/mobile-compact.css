@@ -545,3 +545,95 @@
   .m-sim-action-grid--context { grid-template-columns: 1fr 1fr; }
   .m-sim-action-grid--context .m-sim-action { min-height: 78px; }
 }
+
+/* Alpine Legacy 0.10.0 — compact sequential career tutorial. */
+@media (max-width: 1024px) {
+  html[data-device='phone'] .career-flow-guide {
+    display: block !important;
+    grid-template-columns: none !important;
+    max-width: none;
+    padding: 6px 7px 0 !important;
+  }
+  html[data-device='phone'] .career-flow-guide__desktop { display: none !important; }
+  html[data-device='phone'] .career-flow-guide__mobile {
+    position: relative;
+    display: block !important;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--m-strong-line);
+    background: var(--m-surface);
+  }
+  html[data-device='phone'] .career-flow-guide__mobile-main {
+    width: 100%;
+    min-height: 0;
+    padding: 9px 38px 8px 10px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    display: block;
+    text-align: left;
+  }
+  html[data-device='phone'] .career-flow-guide__mobile-main > span {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--m-accent);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: .12em;
+  }
+  html[data-device='phone'] .career-flow-guide__mobile-main strong {
+    display: block;
+    font: 500 19px/1.05 var(--serif);
+  }
+  html[data-device='phone'] .career-flow-guide__mobile-main small {
+    display: -webkit-box;
+    margin-top: 5px;
+    overflow: hidden;
+    color: var(--m-muted);
+    font-size: 10px;
+    line-height: 1.32;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+  html[data-device='phone'] .career-flow-guide__mobile-progress {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 3px;
+    padding: 0 10px 7px;
+  }
+  html[data-device='phone'] .career-flow-guide__mobile-progress i { height: 2px; background: var(--m-line); }
+  html[data-device='phone'] .career-flow-guide__mobile-progress i.is-done { background: var(--m-good); }
+  html[data-device='phone'] .career-flow-guide__mobile-progress i.is-current { background: var(--m-accent); }
+  html[data-device='phone'] .career-flow-guide__mobile-nav {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    border-top: 1px solid var(--m-line);
+  }
+  html[data-device='phone'] .career-flow-guide__mobile-nav button {
+    min-height: 29px;
+    border: 0;
+    border-right: 1px solid var(--m-line);
+    background: transparent;
+    color: var(--m-text);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .04em;
+  }
+  html[data-device='phone'] .career-flow-guide__mobile-nav button:last-child { border-right: 0; }
+  html[data-device='phone'] .career-flow-guide__mobile-nav button:disabled { opacity: .28; }
+  html[data-device='phone'] .career-flow-guide__mobile-dismiss {
+    position: absolute;
+    z-index: 2;
+    top: 3px;
+    right: 3px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--m-muted);
+    font-size: 18px;
+    line-height: 28px;
+  }
+}

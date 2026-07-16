@@ -1,14 +1,15 @@
-import { SKILL_LABELS } from '../core/career';
-import type { SkillId, SkillSet } from '../core/types';
+import { SKILL_LABELS, skillXpThreshold } from '../core/career';
+import type { SkillId, SkillSet, SkillXp } from '../core/types';
 
 type Props = {
   skills: SkillSet;
   compact?: boolean;
+  xp?: SkillXp;
 };
 
 const orderedSkills: SkillId[] = ['ENDURANCE', 'ROCK', 'ICE', 'NAVIGATION', 'MEDICINE', 'LEADERSHIP'];
 
-export function SkillBars({ skills, compact = false }: Props) {
+export function SkillBars({ skills, compact = false, xp }: Props) {
   return (
     <div className={`skill-bars ${compact ? 'skill-bars--compact' : ''}`}>
       {orderedSkills.map((skill) => (
@@ -22,6 +23,12 @@ export function SkillBars({ skills, compact = false }: Props) {
               <i key={index} className={index < skills[skill] ? 'is-filled' : ''} />
             ))}
           </div>
+          {xp && skills[skill] < 10 && (
+            <div className="skill-row__xp">
+              <i style={{ '--skill-xp': `${Math.min(100, Math.round(xp[skill] / skillXpThreshold(skills[skill]) * 100))}%` } as React.CSSProperties} />
+              <small>{xp[skill]} / {skillXpThreshold(skills[skill])} опыта</small>
+            </div>
+          )}
         </div>
       ))}
     </div>

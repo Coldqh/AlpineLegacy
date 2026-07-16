@@ -59,14 +59,14 @@ export function CareerHubScreen({ world, career, onBack, onTrain, onStartClimb, 
               <div><p className="eyebrow">PERSONAL CAPABILITY</p><h2>Навыки</h2></div>
               <span>MAX 10</span>
             </div>
-            <SkillBars skills={career.hero.skills} />
+            <SkillBars skills={career.hero.skills} xp={career.hero.skillXp} />
             <div className="club-card">
               <div className="club-card__number">AL<br />{String(career.club.foundedYear).slice(-2)}</div>
               <div>
                 <p className="eyebrow">YOUR CLUB</p>
                 <h3>{career.club.name}</h3>
                 <p>{career.club.specialty}. Уровень клуба: {career.club.standing}/100.</p>
-                <small>{career.club.mentorName} · {career.club.mentorTitle}</small>
+                <small>{career.club.mentors.map(mentor => mentor.name).join(' · ') || `${career.club.mentorName} · ${career.club.mentorTitle}`}</small>
               </div>
             </div>
           </section>

@@ -3,7 +3,7 @@ import { defaultDescentSegments, generateRoutesForWorld, getQualificationTarget 
 export { getQualificationTarget } from './routeFactory';
 import { getEntryOrganizations, getOrganization, offersForMembership, organizationToClub, rosterForOrganization } from './ecosystem';
 import { buildExpeditionReport, createClimbTeamStates, enrichRoster, finalizeRosterAfterClimb, memory, teamAverage } from './people';
-import { advanceLivingWorld, createLivingWorld, registerHeroExpedition } from './worldSimulation';
+import { advanceLivingWorld, createLivingWorld, hydrateLivingWorld, registerHeroExpedition } from './worldSimulation';
 import { createCareerProgression, currentSeasonExpeditionCount, expeditionLimitForTier, hydrateCareerProgression, normalizeCareerProgression, rollCareerSeason, syncCareerProgression } from './progression';
 import { createParticipantExpeditionState, evaluateParticipant, getCurrentParticipantNode, getCurrentParticipantScene, leaderPace, resolveParticipantSkill } from './expeditionEngine';
 import { beginSimulationDescent, beginSimulationRetreat, createExpeditionSimulation, hydrateExpeditionSimulation, resolveExpeditionEventChoice, resolveExpeditionFieldAction as resolveSimulationFieldAction } from './simulationEngine';
@@ -120,7 +120,7 @@ export const TRAINING_ACTIONS: Record<TrainingId, {
     fatigue: 13,
     form: 8,
     skill: 'ENDURANCE',
-    xp: 18,
+    xp: 12,
   },
   ROCK_PRACTICE: {
     title: 'Скальная школа',
@@ -131,7 +131,7 @@ export const TRAINING_ACTIONS: Record<TrainingId, {
     fatigue: 9,
     form: 4,
     skill: 'ROCK',
-    xp: 20,
+    xp: 14,
   },
   ICE_PRACTICE: {
     title: 'Ледовый выезд',
@@ -142,7 +142,7 @@ export const TRAINING_ACTIONS: Record<TrainingId, {
     fatigue: 11,
     form: 4,
     skill: 'ICE',
-    xp: 20,
+    xp: 14,
   },
   MAP_ROOM: {
     title: 'Карта и погода',
@@ -153,7 +153,7 @@ export const TRAINING_ACTIONS: Record<TrainingId, {
     fatigue: 2,
     form: 0,
     skill: 'NAVIGATION',
-    xp: 17,
+    xp: 11,
   },
   FIRST_AID: {
     title: 'Горная медицина',
@@ -164,7 +164,7 @@ export const TRAINING_ACTIONS: Record<TrainingId, {
     fatigue: 3,
     form: 0,
     skill: 'MEDICINE',
-    xp: 17,
+    xp: 11,
   },
   CLUB_DUTY: {
     title: 'Работа в клубе',
@@ -175,7 +175,7 @@ export const TRAINING_ACTIONS: Record<TrainingId, {
     fatigue: 5,
     form: 1,
     skill: 'LEADERSHIP',
-    xp: 15,
+    xp: 10,
   },
   RECOVERY: {
     title: 'Восстановление',
@@ -231,6 +231,7 @@ function makeClub(world: WorldState): ClubData {
     ]),
     mentorName: `${rng.pick(mentorFirst)} ${rng.pick(mentorLast)}`,
     mentorTitle: rng.pick(['старший инструктор', 'руководитель учебных сборов', 'ветеран высотных экспедиций']),
+    mentors: [],
   };
 }
 
@@ -318,19 +319,24 @@ function defaultPlan(routes: ExpeditionRoute[], _team: TeamMember[], windows: We
   };
 }
 
+export function skillXpThreshold(level: number) {
+  if (level >= 10) return 1;
+  return 70 + level * 35 + Math.max(0, level - 5) * 25;
+}
+
 function addXp(skills: SkillSet, xpState: Record<SkillId, number>, skill: SkillId, amount: number) {
   const nextSkills = { ...skills };
   const nextXp = { ...xpState };
   let pool = nextXp[skill] + amount;
   let level = nextSkills[skill];
-  let threshold = 22 + level * 9;
+  let threshold = skillXpThreshold(level);
   while (pool >= threshold && level < 10) {
     pool -= threshold;
     level += 1;
-    threshold = 22 + level * 9;
+    threshold = skillXpThreshold(level);
   }
   nextSkills[skill] = level;
-  nextXp[skill] = pool;
+  nextXp[skill] = level >= 10 ? 0 : pool;
   return { skills: nextSkills, skillXp: nextXp };
 }
 
@@ -418,6 +424,7 @@ function independentClub(world: WorldState): ClubData {
     doctrine: 'Ты отвечаешь только за свои решения и сам оплачиваешь каждую ошибку.',
     mentorName: 'Нет постоянного руководителя',
     mentorTitle: 'самостоятельная карьера',
+    mentors: [],
   };
 }
 
@@ -442,7 +449,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
   const routes = ecosystemRoutes.length ? ecosystemRoutes : generateRoutesForWorld(world);
   const organization = getOrganization(world, membership.organizationId);
   const club = membership.mode === 'INDEPENDENT' ? independentClub(world) : organizationToClub(organization, world);
-  const teamRoster = career.teamRoster?.length ? career.teamRoster : rosterForOrganization(world, membership.organizationId);
+  const teamRoster = enrichRoster(career.teamRoster?.length ? career.teamRoster : rosterForOrganization(world, membership.organizationId), world.config.seed, career.year ?? world.config.startYear, career.seasonDay ?? 1);
   const activeClimbBase = career.activeClimb ? {
     ...career.activeClimb,
     expeditionOfferId: career.activeClimb.expeditionOfferId ?? career.selectedOfferId ?? career.expeditionPlan?.offerId ?? null,
@@ -472,7 +479,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
   const activeClimb = normalizedActiveClimb && activeRoute ? { ...normalizedActiveClimb, simulation: normalizedActiveClimb.simulation ? hydrateExpeditionSimulation(normalizedActiveClimb, activeRoute) : null, strategic: hydrateStrategicExpedition(normalizedActiveClimb, activeRoute) } : normalizedActiveClimb;
   return hydrateCareerProgression({
     ...career,
-    schemaVersion: 16,
+    schemaVersion: 17,
     club,
     routes,
     teamRoster,
@@ -487,6 +494,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
       playerRole: career.expeditionPlan?.playerRole ?? (membership.mode === 'INDEPENDENT' ? 'LEADER' : 'SUPPORT'),
       authorityMode: career.expeditionPlan?.authorityMode ?? (membership.permissions.canIssueOrders ? 'COMMAND' : 'PARTICIPANT'),
     },
+    livingWorld: hydrateLivingWorld(world, teamRoster, club, career.livingWorld),
     activeClimb,
   } as CareerState);
 }
@@ -500,7 +508,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = rosterForOrganization(world, membership.organizationId);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 16,
+    schemaVersion: 17,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,
@@ -538,7 +546,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     expeditionPlan: { ...defaultPlan(routes, teamRoster, weatherWindows), playerRole: membership.mode === 'INDEPENDENT' ? 'LEADER' : 'SUPPORT', authorityMode: membership.mode === 'INDEPENDENT' ? 'COMMAND' : 'PARTICIPANT' },
     reports: [],
     reputationProfile: { leadership: 8, reliability: 12, care: 10, ambition: 14 },
-    onboarding: { dismissed: false, completed: false },
+    onboarding: { dismissed: false, completed: false, careerStep: 0, expeditionStep: 0 },
     livingWorld: createLivingWorld(world, teamRoster, club),
     progression: null as unknown as CareerState['progression'],
     membership,
@@ -603,7 +611,7 @@ export function migrateCareerV2(career: any, world: WorldState): CareerState {
     schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
-    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
+    onboarding: { dismissed: false, completed: Boolean(career.reports?.length), careerStep: 0, expeditionStep: 0, ...(career.onboarding ?? {}) },
     routes,
     teamRoster,
     weatherWindows,
@@ -623,7 +631,7 @@ export function migrateCareerV3(career: any, world: WorldState): CareerState {
     schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
-    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
+    onboarding: { dismissed: false, completed: Boolean(career.reports?.length), careerStep: 0, expeditionStep: 0, ...(career.onboarding ?? {}) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     teamRoster,
@@ -642,7 +650,7 @@ export function migrateCareerV4(career: any, world: WorldState): CareerState {
     schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
-    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
+    onboarding: { dismissed: false, completed: Boolean(career.reports?.length), careerStep: 0, expeditionStep: 0, ...(career.onboarding ?? {}) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
@@ -658,7 +666,7 @@ export function migrateCareerV5(career: any, world: WorldState): CareerState {
     schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
-    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
+    onboarding: { dismissed: false, completed: Boolean(career.reports?.length), careerStep: 0, expeditionStep: 0, ...(career.onboarding ?? {}) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
@@ -672,7 +680,7 @@ export function migrateCareerV6(career: any, world: WorldState): CareerState {
     schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
-    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
+    onboarding: { dismissed: false, completed: Boolean(career.reports?.length), careerStep: 0, expeditionStep: 0, ...(career.onboarding ?? {}) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
@@ -686,7 +694,7 @@ export function migrateCareerV7(career: any, world: WorldState): CareerState {
     schemaVersion: 10,
     rootSeed: world.config.seed,
     difficulty: world.config.difficulty,
-    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
+    onboarding: { dismissed: false, completed: Boolean(career.reports?.length), careerStep: 0, expeditionStep: 0, ...(career.onboarding ?? {}) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
@@ -700,7 +708,7 @@ export function migrateCareerV8(career: any, world: WorldState): CareerState {
     schemaVersion: 10,
     rootSeed: career.rootSeed ?? world.config.seed,
     difficulty: career.difficulty ?? world.config.difficulty,
-    onboarding: career.onboarding ?? { dismissed: false, completed: Boolean(career.reports?.length) },
+    onboarding: { dismissed: false, completed: Boolean(career.reports?.length), careerStep: 0, expeditionStep: 0, ...(career.onboarding ?? {}) },
     routes,
     expeditionPlan: { ...career.expeditionPlan, routeId: migrateLegacyRouteId(career, routes) },
     activeClimb: migrateActiveClimbV8(career.activeClimb, routes),
@@ -715,6 +723,10 @@ export function dismissOnboarding(career: CareerState): CareerState {
   return { ...career, onboarding: { ...career.onboarding, dismissed: true } };
 }
 
+export function setCareerTutorialStep(career: CareerState, step: number): CareerState {
+  return { ...career, onboarding: { ...career.onboarding, careerStep: clamp(Math.round(step), 0, 4) } };
+}
+
 export function careerReadiness(career: CareerState) {
   const { hero } = career;
   const skillCore = (hero.skills.ENDURANCE + hero.skills.ROCK + hero.skills.ICE + hero.skills.NAVIGATION) / 4;
@@ -726,8 +738,12 @@ export function applyTraining(career: CareerState, trainingId: TrainingId): Care
   const timeline = advanceDays(career, action.days);
   let skills = { ...career.hero.skills };
   let skillXp = { ...career.hero.skillXp };
+  const mentor = action.skill
+    ? career.club.mentors.find(item => item.specialty === action.skill) ?? career.club.mentors[0]
+    : undefined;
+  const mentorBonus = action.skill && mentor ? 2 : 0;
   if (action.skill && action.xp) {
-    const progressed = addXp(skills, skillXp, action.skill, action.xp);
+    const progressed = addXp(skills, skillXp, action.skill, action.xp + mentorBonus);
     skills = progressed.skills;
     skillXp = progressed.skillXp;
   }
@@ -749,7 +765,7 @@ export function applyTraining(career: CareerState, trainingId: TrainingId): Care
       skillXp,
     },
   };
-  next.log = [...career.log, careerLog(next, 'TRAINING', action.title, `${action.days} дней работы. ${cost < 0 ? `Заработано ${Math.abs(cost)} кр.` : `Расходы ${cost} кр.`}`)];
+  next.log = [...career.log, careerLog(next, 'TRAINING', action.title, `${action.days} дней работы${mentor ? ` под руководством ${mentor.name}` : ''}. ${cost < 0 ? `Заработано ${Math.abs(cost)} кр.` : `Расходы ${cost} кр.`}`)];
   const advanced = advanceLivingWorld(next, action.days);
   return timeline.year > career.year ? rollCareerSeason(career, advanced) : syncCareerProgression(advanced);
 }
@@ -1010,17 +1026,22 @@ function integratedSkillsFromHero(skills: SkillSet): IntegratedSkills {
 }
 
 function integratedSkillsFromMember(member: TeamMember): IntegratedSkills {
-  const technicalBase = clamp(member.skill - 2, 1, 8);
-  const skills: IntegratedSkills = {
-    ENDURANCE: clamp(member.endurance, 1, 10),
-    ROCK: technicalBase,
-    ICE: technicalBase,
-    NAVIGATION: clamp(Math.round((member.skill + member.endurance) / 2) - 1, 1, 9),
-    MEDICINE: member.role === 'MEDIC' ? member.skill : clamp(member.skill - 3, 1, 7),
-    LEADERSHIP: member.role === 'LEADER' ? member.skill : clamp(Math.round(member.trust / 18), 1, 7),
+  const profile = member.skills ?? {
+    ENDURANCE: member.endurance,
+    ROCK: member.specialty === 'ROCK' ? member.skill : Math.max(1, member.skill - 2),
+    ICE: member.specialty === 'ICE' ? member.skill : Math.max(1, member.skill - 2),
+    NAVIGATION: member.specialty === 'NAVIGATION' ? member.skill : Math.max(1, member.skill - 2),
+    MEDICINE: member.specialty === 'MEDICINE' ? member.skill : Math.max(1, member.skill - 3),
+    LEADERSHIP: member.specialty === 'LEADERSHIP' ? member.skill : Math.max(1, Math.round(member.trust / 18)),
   };
-  skills[member.specialty] = clamp(member.skill, 1, 10);
-  return skills;
+  return {
+    ENDURANCE: clamp(profile.ENDURANCE, 1, 10),
+    ROCK: clamp(profile.ROCK, 1, 10),
+    ICE: clamp(profile.ICE, 1, 10),
+    NAVIGATION: clamp(profile.NAVIGATION, 1, 10),
+    MEDICINE: clamp(profile.MEDICINE, 1, 10),
+    LEADERSHIP: clamp(profile.LEADERSHIP, 1, 10),
+  };
 }
 
 function integratedParticipants(career: CareerState, team: TeamMember[], startEnergy: number): IntegratedParticipantState[] {
@@ -1500,9 +1521,18 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
   const successful = climb.summitReached && !climb.retreating;
   let skills = { ...career.hero.skills };
   let skillXp = { ...career.hero.skillXp };
+  const route = career.routes.find(item => item.id === climb.routeId) ?? getSelectedRoute(career);
+  const difficultyXp = clamp(Math.round(7 + route.technicality / 18 + route.objectiveRisk / 30), 8, 18);
+  const rockUse = route.segments.filter(segment => segment.terrain === 'ROCK' || segment.terrain === 'RIDGE').length;
+  const iceUse = route.segments.filter(segment => segment.terrain === 'ICE' || segment.terrain === 'GLACIER' || segment.terrain === 'SNOW').length;
   const xpTable: [SkillId, number][] = successful
-    ? [['ENDURANCE', 20], ['ROCK', 18], ['ICE', 16], ['NAVIGATION', 15], ['LEADERSHIP', 8]]
-    : [['ENDURANCE', 10], ['NAVIGATION', 8], ['LEADERSHIP', 4]];
+    ? [
+      ['ENDURANCE', difficultyXp],
+      [rockUse >= iceUse ? 'ROCK' : 'ICE', Math.max(6, difficultyXp - 2)],
+      ['NAVIGATION', Math.max(5, difficultyXp - 4)],
+      ['LEADERSHIP', career.expeditionPlan.authorityMode === 'COMMAND' ? Math.max(5, difficultyXp - 5) : 3],
+    ]
+    : [['ENDURANCE', 5], ['NAVIGATION', 4], ['LEADERSHIP', climb.retreating ? 3 : 1]];
   for (const [skill, xp] of xpTable) {
     const progressed = addXp(skills, skillXp, skill, xp);
     skills = progressed.skills;

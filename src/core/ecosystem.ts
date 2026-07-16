@@ -21,6 +21,8 @@ import type {
   RegionData,
   RelationshipProfile,
   SkillId,
+  SkillSet,
+  MentorRoutePreference,
   TeamMember,
   TeamRole,
   WorldEcosystem,
@@ -117,14 +119,31 @@ function createOrganizations(world: Pick<WorldState, 'id' | 'config' | 'worldAge
       specialty: specialties[index % specialties.length]!,
       acceptsNovices: index !== 3,
       memberNpcIds: [],
+      mentorNpcIds: [],
     };
   });
+}
+
+function npcSkillProfile(rng: ReturnType<typeof createRng>, specialty: SkillId, isMentor: boolean, mentorIndex: number): SkillSet {
+  const base = isMentor ? 5 + mentorIndex : 3;
+  const skills: SkillSet = {
+    ENDURANCE: clamp(base + rng.int(-1, 2), 1, 10),
+    ROCK: clamp(base + rng.int(-2, 2), 1, 10),
+    ICE: clamp(base + rng.int(-2, 2), 1, 10),
+    NAVIGATION: clamp(base + rng.int(-2, 2), 1, 10),
+    MEDICINE: clamp(base - 2 + rng.int(-1, 2), 1, 10),
+    LEADERSHIP: clamp(base - 1 + rng.int(-1, 2), 1, 10),
+  };
+  skills[specialty] = clamp((isMentor ? 8 + mentorIndex : 5) + rng.int(-1, 1), 1, 10);
+  if (isMentor) skills.LEADERSHIP = clamp(7 + mentorIndex + rng.int(-1, 1), 1, 10);
+  return skills;
 }
 
 function createNpcs(world: Pick<WorldState, 'config' | 'region'>, organizations: OrganizationDefinition[]): NpcDefinition[] {
   const names = new Set<string>();
   const result: NpcDefinition[] = [];
-  const perOrganization = 12;
+  const perOrganization = 20;
+  const mentorPreferences: MentorRoutePreference[] = ['EASY', 'BALANCED', 'HARD'];
   for (const [organizationIndex, organization] of organizations.entries()) {
     for (let localIndex = 0; localIndex < perOrganization; localIndex += 1) {
       const index = organizationIndex * perOrganization + localIndex;
@@ -132,26 +151,41 @@ function createNpcs(world: Pick<WorldState, 'config' | 'region'>, organizations:
       let name = '';
       while (!name || names.has(name)) name = `${rng.pick(firstNames)} ${rng.pick(lastNames)}`;
       names.add(name);
-      const role = localIndex === 0 ? 'LEADER' : roleOrder[(localIndex + organizationIndex) % roleOrder.length]!;
-      const specialty = role === 'LEADER' ? 'LEADERSHIP' : skillOrder[(localIndex + organizationIndex) % skillOrder.length]!;
+      const isMentor = localIndex < 3;
+      const mentorIndex = Math.min(2, localIndex);
+      const role = isMentor ? 'LEADER' : roleOrder[(localIndex + organizationIndex) % roleOrder.length]!;
+      const specialty = isMentor
+        ? skillOrder[(organizationIndex * 2 + localIndex) % skillOrder.length]!
+        : skillOrder[(localIndex + organizationIndex) % skillOrder.length]!;
+      const skills = npcSkillProfile(rng, specialty, isMentor, mentorIndex);
       const temperament = rng.pick(temperaments);
       const id = `npc-${organization.id}-${localIndex + 1}`;
+      const routePreference = isMentor ? mentorPreferences[mentorIndex]! : rng.pick(mentorPreferences);
+      const mentorLevel = !isMentor ? null : localIndex === 0 ? 'HEAD' as const : localIndex === 1 ? 'SENIOR' as const : 'INSTRUCTOR' as const;
       result.push({
         id,
         regionId: world.region.id,
         organizationId: organization.id,
         name,
-        birthYear: world.config.startYear - rng.int(role === 'LEADER' ? 36 : 20, role === 'LEADER' ? 58 : 44),
+        birthYear: world.config.startYear - rng.int(isMentor ? 34 : 20, isMentor ? 58 : 44),
         role,
         specialty,
-        skill: rng.int(role === 'LEADER' ? 7 : 4, role === 'LEADER' ? 9 : 8),
-        endurance: rng.int(4, 9),
+        skill: skills[specialty],
+        endurance: skills.ENDURANCE,
+        skills,
+        isMentor,
+        mentorLevel,
+        routePreference,
+        activityRate: isMentor ? clamp(62 + mentorIndex * 10 + rng.int(-8, 8), 45, 96) : clamp(35 + rng.int(-10, 18), 18, 74),
         temperament,
-        note: role === 'LEADER' ? organization.doctrine : `${organization.specialty}. ${rng.pick(['Надёжен в плохую погоду.', 'Не любит медленный темп.', 'Силен в технической работе.', 'Хорошо держит высоту.', 'Ставит безопасность выше результата.'])}`,
+        note: isMentor
+          ? `${organization.doctrine} Предпочитает ${routePreference === 'EASY' ? 'учебные и надёжные' : routePreference === 'HARD' ? 'сложные технические' : 'сбалансированные'} маршруты.`
+          : `${organization.specialty}. ${rng.pick(['Надёжен в плохую погоду.', 'Не любит медленный темп.', 'Силен в технической работе.', 'Хорошо держит высоту.', 'Ставит безопасность выше результата.'])}`,
         personality: personality(rng, temperament),
         personalGoal: rng.pick(goals),
       });
       organization.memberNpcIds.push(id);
+      if (isMentor) organization.mentorNpcIds.push(id);
     }
   }
   return result;
@@ -194,31 +228,49 @@ export function rankAtLeast(actual: ExpeditionRank, required: ExpeditionRank) {
   return rankOrder.indexOf(actual) >= rankOrder.indexOf(required);
 }
 
+function routeScore(route: ExpeditionRoute) {
+  return route.objectiveRisk * .45 + route.technicality * .4 + Math.max(0, route.summitElevation - route.startElevation) / 180;
+}
+
+function routeForPreference(routes: ExpeditionRoute[], preference: MentorRoutePreference, offset: number) {
+  const sorted = [...routes].sort((a, b) => routeScore(a) - routeScore(b));
+  if (!sorted.length) throw new Error('No routes available for expedition offers');
+  const range = preference === 'EASY'
+    ? sorted.slice(0, Math.max(1, Math.ceil(sorted.length * .4)))
+    : preference === 'HARD'
+      ? sorted.slice(Math.max(0, Math.floor(sorted.length * .58)))
+      : sorted.slice(Math.floor(sorted.length * .24), Math.max(Math.floor(sorted.length * .24) + 1, Math.ceil(sorted.length * .76)));
+  return range[offset % range.length] ?? sorted[offset % sorted.length]!;
+}
+
 function createOffers(world: Pick<WorldState, 'config'>, routes: ExpeditionRoute[], organizations: OrganizationDefinition[], npcs: NpcDefinition[]): ExpeditionOffer[] {
-  const sortedRoutes = [...routes].sort((a, b) => (a.objectiveRisk + a.technicality) - (b.objectiveRisk + b.technicality));
+  const sortedRoutes = [...routes].sort((a, b) => routeScore(a) - routeScore(b));
   const byOrganization = new Map(organizations.map(org => [org.id, npcs.filter(npc => npc.organizationId === org.id)]));
   const offers: ExpeditionOffer[] = [];
   organizations.forEach((organization, organizationIndex) => {
     const members = byOrganization.get(organization.id) ?? [];
-    const leader = members.find(npc => npc.role === 'LEADER') ?? members[0] ?? null;
-    for (let offerIndex = 0; offerIndex < 2; offerIndex += 1) {
-      const route = sortedRoutes[(organizationIndex * 2 + offerIndex) % Math.max(1, Math.min(sortedRoutes.length, 12))]!;
-      const crew = members.filter(npc => npc.id !== leader?.id).slice(offerIndex * 3, offerIndex * 3 + Math.max(2, route.recommendedTeamSize - 1));
+    const mentors = organization.mentorNpcIds.map(id => members.find(npc => npc.id === id)).filter((npc): npc is NpcDefinition => Boolean(npc));
+    mentors.forEach((leader, mentorIndex) => {
+      const route = routeForPreference(routes, leader.routePreference, organizationIndex * 3 + mentorIndex);
+      const compatible = members
+        .filter(npc => npc.id !== leader.id && !npc.isMentor)
+        .sort((a, b) => b.skills[route.style === 'GLACIER' ? 'ICE' : route.style === 'ROCK' ? 'ROCK' : 'ENDURANCE'] - a.skills[route.style === 'GLACIER' ? 'ICE' : route.style === 'ROCK' ? 'ROCK' : 'ENDURANCE']);
+      const crew = compatible.slice(mentorIndex * 4, mentorIndex * 4 + Math.max(2, route.recommendedTeamSize - 1));
       offers.push({
-        id: `offer-${organization.id}-${offerIndex + 1}`,
+        id: `offer-${organization.id}-mentor-${mentorIndex + 1}`,
         organizationId: organization.id,
         routeId: route.id,
-        leaderNpcId: leader?.id ?? null,
+        leaderNpcId: leader.id,
         memberNpcIds: crew.map(npc => npc.id),
-        playerRole: offerIndex === 0 ? 'SUPPORT' : 'NAVIGATOR',
-        requiredRank: offerIndex === 0 ? 'NOVICE' : 'MEMBER',
+        playerRole: mentorIndex === 0 ? 'SUPPORT' : mentorIndex === 1 ? 'NAVIGATOR' : 'ROPE_LEAD',
+        requiredRank: mentorIndex === 0 ? 'NOVICE' : mentorIndex === 1 ? 'MEMBER' : 'SPECIALIST',
         authority: 'PARTICIPANT',
         solo: false,
         status: 'OPEN',
         opensOnDay: 1,
-        expiresOnDay: 60 + organizationIndex * 7,
+        expiresOnDay: 180,
       });
-    }
+    });
   });
   const soloRoute = sortedRoutes.find(route => route.recommendedTeamSize <= 3) ?? sortedRoutes[0]!;
   offers.push({
@@ -261,10 +313,10 @@ export function createWorldEcosystem(world: Pick<WorldState, 'id' | 'config' | '
   };
   const offers = createOffers(world, routes, organizations, npcs);
   const ecosystem: WorldEcosystem = {
-    schemaVersion: 1,
-    contentFingerprint: fingerprint(world.id, [1, mountains.length, routes.length, organizations.length, npcs.length]),
+    schemaVersion: 2,
+    contentFingerprint: fingerprint(world.id, [2, mountains.length, routes.length, organizations.length, npcs.length]),
     content: {
-      version: 1,
+      version: 2,
       primaryRegionId: region.id,
       regions: entityTable([region]),
       mountains: entityTable(mountains),
@@ -306,9 +358,27 @@ export function hydrateWorldEcosystem(world: WorldState): WorldState {
     : [];
   const refreshRoutes = !storedRoutes.length || storedRoutes.some(route => (route.contentVersion ?? 0) < 3 || route.startElevation < 0 || route.startElevation > 1000);
   const generatedRoutes = refreshRoutes ? generateRoutesForWorld(world) : storedRoutes;
-  let ecosystem = world.ecosystem?.schemaVersion === 1 ? world.ecosystem : createWorldEcosystem(world, generatedRoutes);
+  const savedEcosystem = world.ecosystem;
+  let ecosystem = savedEcosystem?.schemaVersion === 2
+    ? savedEcosystem
+    : (() => {
+        const fresh = createWorldEcosystem(world, generatedRoutes);
+        if (!savedEcosystem?.runtime) return fresh;
+        const mergeTable = <T extends { id: string }>(freshTable: EntityTable<T>, savedTable?: EntityTable<T>) => entityTable(
+          freshTable.allIds.map(id => savedTable?.byId[id] ? { ...freshTable.byId[id]!, ...savedTable.byId[id]! } : freshTable.byId[id]!),
+        );
+        return {
+          ...fresh,
+          runtime: {
+            ...fresh.runtime,
+            mountains: mergeTable(fresh.runtime.mountains, savedEcosystem.runtime.mountains),
+            organizations: mergeTable(fresh.runtime.organizations, savedEcosystem.runtime.organizations),
+            npcs: mergeTable(fresh.runtime.npcs, savedEcosystem.runtime.npcs),
+          },
+        };
+      })();
 
-  if (refreshRoutes && ecosystem?.schemaVersion === 1) {
+  if (refreshRoutes && ecosystem?.schemaVersion === 2) {
     const routesByMountain = new Map<string, string[]>();
     for (const route of generatedRoutes) {
       const ids = routesByMountain.get(route.mountainId) ?? [];
@@ -389,7 +459,17 @@ export function getOrganization(world: WorldState, organizationId: string | null
 export function organizationToClub(organization: OrganizationDefinition | null, world: WorldState): ClubData {
   const fallback = getEntryOrganizations(world)[0]!;
   const source = organization ?? fallback;
-  const mentor = source.memberNpcIds.map(id => world.ecosystem.content.npcs.byId[id]).find(npc => npc?.role === 'LEADER');
+  const mentorDefinitions = (source.mentorNpcIds?.length ? source.mentorNpcIds : source.memberNpcIds)
+    .map(id => world.ecosystem.content.npcs.byId[id])
+    .filter((npc): npc is NpcDefinition => Boolean(npc?.isMentor || npc?.role === 'LEADER'))
+    .slice(0, 3);
+  const titleFor = (npc: NpcDefinition) => npc.mentorLevel === 'HEAD'
+    ? (source.kind === 'GUIDE_BUREAU' ? 'главный проводник' : 'руководитель школы')
+    : npc.mentorLevel === 'SENIOR'
+      ? 'старший наставник'
+      : 'инструктор';
+  const mentors = mentorDefinitions.map(npc => ({ id: npc.id, name: npc.name, title: titleFor(npc), specialty: npc.specialty, routePreference: npc.routePreference }));
+  const mentor = mentors[0];
   return {
     id: source.id,
     name: source.name,
@@ -399,7 +479,8 @@ export function organizationToClub(organization: OrganizationDefinition | null, 
     specialty: source.specialty,
     doctrine: source.doctrine,
     mentorName: mentor?.name ?? 'Старший инструктор',
-    mentorTitle: source.kind === 'EXPEDITION_COMPANY' ? 'руководитель экспедиций' : source.kind === 'GUIDE_BUREAU' ? 'старший проводник' : 'старший инструктор',
+    mentorTitle: mentor?.title ?? 'старший инструктор',
+    mentors,
   };
 }
 
@@ -407,6 +488,15 @@ export function materializeNpc(world: WorldState, npcId: string): TeamMember | n
   const definition = world.ecosystem.content.npcs.byId[npcId];
   const state = world.ecosystem.runtime.npcs.byId[npcId];
   if (!definition || !state) return null;
+  const fallbackSkills: SkillSet = {
+    ENDURANCE: definition.endurance,
+    ROCK: Math.max(1, definition.skill - 2),
+    ICE: Math.max(1, definition.skill - 2),
+    NAVIGATION: Math.max(1, definition.skill - 2),
+    MEDICINE: Math.max(1, definition.skill - 3),
+    LEADERSHIP: definition.role === 'LEADER' ? definition.skill : Math.max(1, definition.skill - 3),
+  };
+  fallbackSkills[definition.specialty] = definition.skill;
   return {
     id: definition.id,
     name: definition.name,
@@ -415,6 +505,11 @@ export function materializeNpc(world: WorldState, npcId: string): TeamMember | n
     specialty: definition.specialty,
     skill: definition.skill,
     endurance: definition.endurance,
+    skills: { ...fallbackSkills, ...(definition.skills ?? {}) },
+    isMentor: definition.isMentor ?? definition.role === 'LEADER',
+    mentorLevel: definition.mentorLevel ?? (definition.role === 'LEADER' ? 'INSTRUCTOR' : null),
+    routePreference: definition.routePreference ?? 'BALANCED',
+    activityRate: definition.activityRate ?? 50,
     trust: state.relationship.trust,
     condition: state.condition,
     temperament: definition.temperament,

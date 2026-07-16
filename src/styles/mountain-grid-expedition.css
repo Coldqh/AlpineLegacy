@@ -992,3 +992,142 @@ button:disabled { cursor: not-allowed; opacity: .42; }
   .mg-preflight,
   .mg-expedition-summary { border-radius: 10px; }
 }
+
+/* 0.10.0 — compact expedition HUD, fixed 3D volume and guided first climb */
+.mg-climb-tab .mg-stage-topline {
+  display: grid;
+  grid-template-columns: minmax(210px, .72fr) minmax(0, 1.28fr);
+  gap: 12px;
+  align-items: center;
+}
+.mg-stage-heading { min-width: 0; }
+.mg-status-strip {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(62px, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+.mg-status-strip > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid #3a4541;
+  border-radius: 7px;
+  background: #131b19;
+}
+.mg-status-strip small { color: #87938d; font-size: 7px; letter-spacing: .11em; }
+.mg-status-strip b { overflow: hidden; color: #edf0eb; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.mg-status-strip .is-risk-high,
+.mg-status-strip .is-risk-extreme { border-color: #a6533e; background: #281b18; }
+.mg-status-strip .is-risk-medium { border-color: #7d6a42; }
+.mg-climb-tab .mg-local-layout { grid-template-columns: minmax(0, 1fr) 270px; }
+.mg-local-aside { justify-content: flex-start; }
+.mg-compact-actions { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.mg-compact-actions button {
+  display: grid;
+  gap: 2px;
+  min-height: 44px;
+  padding: 8px 9px;
+  border: 1px solid #46514d;
+  border-radius: 8px;
+  color: #e9ede8;
+  background: #19221f;
+  text-align: left;
+  cursor: pointer;
+}
+.mg-compact-actions button:hover:not(:disabled) { border-color: #d66545; }
+.mg-compact-actions button.is-active { border-color: #66a28b; background: #1b3028; }
+.mg-compact-actions button:disabled { opacity: .42; cursor: default; }
+.mg-compact-actions strong { font-size: 11px; }
+.mg-compact-actions small { overflow: hidden; color: #98a59f; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.mg-selected-compact {
+  display: grid;
+  gap: 3px;
+  padding: 8px 9px;
+  border-left: 3px solid #596862;
+  background: #121917;
+}
+.mg-selected-compact span { color: #8f9b95; font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.mg-selected-compact strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.mg-selected-compact small { color: #98a49e; font-size: 8px; }
+.mg-team-list article { display: block; }
+.mg-team-list article > div:last-child { display: none; }
+.mg-team-list article > div:first-child small:nth-of-type(2) { color: #c1cac5; }
+.mg-tutorial-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(4, 8, 7, .74);
+  backdrop-filter: blur(7px);
+}
+.mg-tutorial-card {
+  width: min(520px, 100%);
+  padding: 22px;
+  border: 1px solid #59645f;
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(78, 124, 105, .13), transparent 45%), #161e1c;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .45);
+}
+.mg-tutorial-card > span { color: #9aa59f; font-size: 8px; letter-spacing: .17em; }
+.mg-tutorial-card h3 { margin: 8px 0 7px; font-size: 24px; }
+.mg-tutorial-card p { margin: 0; color: #b7c0bb; font-size: 12px; line-height: 1.55; }
+.mg-tutorial-progress { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin: 18px 0 14px; }
+.mg-tutorial-progress i { height: 3px; background: #37413d; }
+.mg-tutorial-progress i.is-active { background: #d66545; }
+.mg-tutorial-actions { display: grid; grid-template-columns: auto 1fr auto; gap: 7px; }
+.mg-tutorial-actions button { padding: 9px 12px; border: 1px solid #47514d; border-radius: 7px; color: #dbe0dc; background: transparent; cursor: pointer; }
+.mg-tutorial-actions button:last-child { border-color: #d66545; background: #d66545; color: #fff; }
+.mg-tutorial-actions button:disabled { opacity: .35; }
+.mg-3d-canvas { overflow: hidden; }
+.mg-3d-canvas svg { touch-action: none; }
+
+@media (max-width: 980px) {
+  .mg-climb-tab .mg-stage-topline { grid-template-columns: 1fr; }
+  .mg-status-strip { grid-template-columns: repeat(8, minmax(68px, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .mg-climb-tab .mg-stage-topline { display: block; padding: 7px; }
+  .mg-climb-tab .mg-stage-heading h2 { margin: 2px 0 1px; font-size: 14px; }
+  .mg-climb-tab .mg-stage-heading p { font-size: 8px; }
+  .mg-climb-tab .mg-stage-heading > span { font-size: 7px; }
+  .mg-climb-tab .mg-status-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 3px;
+    margin-top: 6px;
+    padding: 0;
+  }
+  .mg-climb-tab .mg-status-strip > span { padding: 4px 5px; }
+  .mg-climb-tab .mg-status-strip small { font-size: 6px; }
+  .mg-climb-tab .mg-status-strip b { font-size: 9px; }
+  .mg-climb-tab .mg-local-aside { gap: 5px; padding: 6px; }
+  .mg-compact-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .mg-compact-actions button { min-height: 38px; padding: 6px 7px; }
+  .mg-compact-actions strong { font-size: 9px; }
+  .mg-compact-actions small { font-size: 7px; }
+  .mg-selected-compact { padding: 6px 7px; }
+  .mg-selected-compact strong { font-size: 9px; }
+  .mg-selected-compact small { display: none; }
+  .mg-climb-tab .mg-message { padding: 6px 7px; }
+  .mg-climb-tab .mg-message span { font-size: 7px; }
+  .mg-climb-tab .mg-message p { font-size: 9px; line-height: 1.35; }
+  .mg-climb-tab .mg-time-controls { grid-template-columns: minmax(0, 1fr) repeat(3, 34px); gap: 4px; }
+  .mg-climb-tab .mg-time-controls button { min-height: 34px; padding: 5px 3px; font-size: 8px; }
+  .mg-secondary-actions summary { padding: 7px; font-size: 8px; }
+  .mg-rest-controls { padding: 6px; }
+  .mg-rest-controls button { min-height: 34px; padding: 6px 7px; font-size: 9px; }
+  .mg-rest-controls button small { font-size: 7px; }
+  .mg-rest-controls p { font-size: 7px; }
+  .mg-tutorial-card { padding: 17px; }
+  .mg-tutorial-card h3 { font-size: 20px; }
+  .mg-tutorial-card p { font-size: 11px; }
+  .mg-tutorial-actions { grid-template-columns: 1fr 1fr; }
+  .mg-tutorial-actions button:nth-child(2) { grid-row: 2; grid-column: 1 / -1; }
+  .mg-mountain-tab .mg-3d-canvas { height: min(58vh, 440px); }
+  .mg-camera-buttons button { min-height: 35px; padding: 6px; font-size: 8px; }
+}

@@ -13,6 +13,7 @@ export type IntegratedExpeditionCommand =
   | { type: 'SET_ENTRY'; side: EntrySide; routeChoice: string }
   | { type: 'SET_ROUTE'; routeChoice: string }
   | { type: 'SET_PACE'; pace: IntegratedPace }
+  | { type: 'SET_TUTORIAL_STEP'; step: number }
   | { type: 'REGENERATE' }
   | { type: 'ENSURE_STAGE_PATH'; stageId: string; path: GridPoint[]; currentElevation: number; replace?: boolean }
   | { type: 'SET_STAGE_PATH'; stageId: string; path: GridPoint[] }

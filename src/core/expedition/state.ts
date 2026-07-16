@@ -4,7 +4,7 @@ export type IntegratedDifficulty = 'EXPLORER' | 'CLIMBER' | 'EXPEDITION';
 export type IntegratedAuthority = 'PARTICIPANT' | 'SPECIALIST' | 'COMMAND';
 export type IntegratedPhase = 'ASCENT' | 'DESCENT' | 'COMPLETE' | 'RETREATED' | 'FAILED';
 export type IntegratedRestMode = 'BREAK' | 'BIVOUAC' | 'SLEEP';
-export type IntegratedTool = 'ROUTE' | 'ROPE' | 'CAMP' | 'SCOUT';
+export type IntegratedTool = 'ROPE' | 'SCOUT';
 export type IntegratedPace = 'CAUTIOUS' | 'STEADY' | 'FAST';
 export type IntegratedParticipantStatus = 'ACTIVE' | 'INJURED' | 'INCAPACITATED' | 'DEAD';
 export type IntegratedSkillId = 'ENDURANCE' | 'ROCK' | 'ICE' | 'NAVIGATION' | 'MEDICINE' | 'LEADERSHIP';
@@ -64,7 +64,7 @@ export interface IntegratedIncidentRecord {
   id: string;
   actionSerial: number;
   stageId: string;
-  type: 'FALL' | 'FROSTBITE' | 'ALTITUDE' | 'EXHAUSTION' | 'GEAR_LOSS' | 'SUPPLY_CRISIS' | 'RESCUE' | 'CONFLICT';
+  type: 'FALL' | 'FROSTBITE' | 'ALTITUDE' | 'EXHAUSTION' | 'GEAR_LOSS' | 'SUPPLY_CRISIS' | 'RESCUE' | 'CONFLICT' | 'NEAR_MISS' | 'NAVIGATION' | 'WEATHER';
   participantId: string | null;
   title: string;
   detail: string;
@@ -80,7 +80,7 @@ export interface IntegratedExpeditionEvent {
 }
 
 export interface IntegratedExpeditionState {
-  version: 2;
+  version: 3;
   seed: string;
   difficulty: IntegratedDifficulty;
   authority: IntegratedAuthority;
@@ -96,6 +96,11 @@ export interface IntegratedExpeditionState {
   positionIndex: number;
   elapsedMinutes: number;
   actionSerial: number;
+  minutesSinceSleep: number;
+  lastSleepElevation: number;
+  nightsSlept: number;
+  climbingDays: number;
+  tutorialStep: number;
   infrastructure: Record<string, IntegratedStageInfrastructure>;
   ropeMeters: number;
   campKits: number;
@@ -202,7 +207,7 @@ export function createIntegratedExpeditionState(input: CreateIntegratedExpeditio
     shelterCondition: input.gear?.shelterCondition ?? (input.hasBivy ? 100 : 0),
   };
   return {
-    version: 2,
+    version: 3,
     seed: input.seed,
     difficulty: input.difficulty,
     authority: input.authority,
@@ -218,6 +223,11 @@ export function createIntegratedExpeditionState(input: CreateIntegratedExpeditio
     positionIndex: 0,
     elapsedMinutes: 0,
     actionSerial: 0,
+    minutesSinceSleep: 0,
+    lastSleepElevation: input.startElevation,
+    nightsSlept: 0,
+    climbingDays: 0,
+    tutorialStep: 0,
     infrastructure: {},
     ropeMeters: Math.max(0, Math.round(input.ropeMeters)),
     campKits: Math.max(0, Math.round(input.campKits)),
@@ -257,9 +267,14 @@ export function normalizeIntegratedExpeditionState(state: IntegratedExpeditionSt
     eventLog?: IntegratedExpeditionEvent[];
     rescueCost?: number;
     rescueDurationMinutes?: number;
+    minutesSinceSleep?: number;
+    lastSleepElevation?: number;
+    nightsSlept?: number;
+    climbingDays?: number;
+    tutorialStep?: number;
     participants: Array<IntegratedParticipantState & { loadKg?: number; carryCapacityKg?: number }>;
   };
-  const complete = raw.version === 2
+  const complete = raw.version === 3
     && raw.pace
     && raw.gear
     && Array.isArray(raw.eventLog)
@@ -270,7 +285,12 @@ export function normalizeIntegratedExpeditionState(state: IntegratedExpeditionSt
   const lastEvent = raw.lastEvent ?? { serial: 0, kind: 'INFO', severity: 'CALM', text: raw.message ?? 'Экспедиция восстановлена.' };
   return {
     ...raw,
-    version: 2,
+    version: 3,
+    minutesSinceSleep: raw.minutesSinceSleep ?? raw.elapsedMinutes % 1440,
+    lastSleepElevation: raw.lastSleepElevation ?? raw.startElevation,
+    nightsSlept: raw.nightsSlept ?? 0,
+    climbingDays: raw.climbingDays ?? Math.floor(raw.elapsedMinutes / 1440),
+    tutorialStep: raw.tutorialStep ?? 0,
     pace: raw.pace ?? 'STEADY',
     participants,
     gear: {

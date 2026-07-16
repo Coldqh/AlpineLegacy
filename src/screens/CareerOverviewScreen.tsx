@@ -63,12 +63,12 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
       <div className="overview-columns overview-columns--clear">
         <section className="workspace-panel">
           <div className="panel-heading"><div><p className="eyebrow">ЛИЧНЫЕ ВОЗМОЖНОСТИ</p><h2>Навыки</h2></div><span>МАКС. 10</span></div>
-          <SkillBars skills={career.hero.skills} />
+          <SkillBars skills={career.hero.skills} xp={career.hero.skillXp} />
         </section>
         <section className="workspace-panel club-brief">
           <div className="panel-heading"><div><p className="eyebrow">КЛУБ</p><h2>{career.club.name}</h2></div><span>{career.club.standing}/100</span></div>
           <p>{career.club.specialty}. {career.club.doctrine}</p>
-          <strong>{career.club.mentorName}</strong><small>{career.club.mentorTitle}</small>
+          <div className="club-mentor-list">{career.club.mentors.map(mentor => <article key={mentor.id}><strong>{mentor.name}</strong><small>{mentor.title} · {mentor.routePreference === 'EASY' ? 'учебные маршруты' : mentor.routePreference === 'HARD' ? 'сложные маршруты' : 'смешанные маршруты'}</small></article>)}</div>
         </section>
       </div>
 

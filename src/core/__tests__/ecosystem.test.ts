@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { acceptExpeditionOffer, availableExpeditionOffers, createCareer, issueClimbOrder, startPlannedClimb } from '../career';
-import { entityTable, getEntryOrganizations, validateWorldEcosystem } from '../ecosystem';
+import { entityTable, getEntryOrganizations, tableValues, validateWorldEcosystem } from '../ecosystem';
 import { generateWorld } from '../generator';
 
 const config = { seed: 'FOUNDATION-061', eraId: 'EXPEDITION' as const, startYear: 1968, difficulty: 'CLIMBER' as const };
@@ -87,4 +87,16 @@ describe('normalized world ecosystem', () => {
     expect(runtime).not.toHaveProperty('name');
     expect(runtime.id).toBe(definition.id);
   });
+  it('creates three distinct mentors for every organization', () => {
+    const world = generateWorld({ seed: 'MENTOR-SCHOOLS', eraId: 'EXPEDITION', startYear: 1968, difficulty: 'CLIMBER' });
+    const organizations = tableValues(world.ecosystem.content.organizations);
+    for (const organization of organizations) {
+      expect(organization.mentorNpcIds).toHaveLength(3);
+      const mentors = organization.mentorNpcIds.map(id => world.ecosystem.content.npcs.byId[id]!);
+      expect(mentors.every(mentor => mentor.isMentor)).toBe(true);
+      expect(new Set(mentors.map(mentor => mentor.routePreference))).toEqual(new Set(['EASY', 'BALANCED', 'HARD']));
+      expect(mentors.every(mentor => Object.values(mentor.skills).every(value => value >= 1 && value <= 10))).toBe(true);
+    }
+  });
+
 });

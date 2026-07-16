@@ -19,7 +19,7 @@ import {
   applyToExpeditionOffer,
   applyEquipmentPreset,
   availableExpeditionOffers,
-  dismissOnboarding,
+  dismissOnboarding, setCareerTutorialStep,
   closeClimb,
   expeditionReadiness,
   selectMountain,
@@ -195,6 +195,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   if (mobile) {
     return (
       <MobileCareerShell world={world} career={career} activeTab={tab} onTab={navigate} locked={expeditionLocked} onExit={onExit} onAtlas={onAtlas}>
+        {!expeditionLocked && <CareerFlowGuide career={career} activeTab={tab} onTab={navigate} onStep={step => onPersist(setCareerTutorialStep(career, step))} onDismiss={() => onPersist(dismissOnboarding(career))} />}
         {mobilePrep && <nav className="m-subnav" aria-label="Подготовка"><button className={tab === 'TEAM' ? 'is-active' : ''} onClick={() => navigate('TEAM')}>Люди</button><button className={tab === 'EQUIPMENT' ? 'is-active' : ''} onClick={() => navigate('EQUIPMENT')}>Груз</button><button className={tab === 'EXPEDITION' ? 'is-active' : ''} onClick={() => navigate('EXPEDITION')}>Выход</button></nav>}
         {mobileWorld && <nav className="m-subnav m-subnav--world" aria-label="Живой мир"><button className={tab === 'WORLD' ? 'is-active' : ''} onClick={() => navigate('WORLD')}>Обзор</button><button className={tab === 'NEWS' ? 'is-active' : ''} onClick={() => navigate('NEWS')}>Новости</button><button className={tab === 'RIVALS' ? 'is-active' : ''} onClick={() => navigate('RIVALS')}>Люди</button><button className={tab === 'RECORDS' ? 'is-active' : ''} onClick={() => navigate('RECORDS')}>Рекорды</button></nav>}
         {renderMobileTab()}
@@ -205,7 +206,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   return (
     <CareerShell world={world} career={career} activeTab={tab} onTab={navigate} locked={expeditionLocked} onExit={onExit} onAtlas={onAtlas}>
       <WorkspaceSubnav activeTab={tab} onTab={navigate} />
-      {!expeditionLocked && <CareerFlowGuide career={career} activeTab={tab} onTab={navigate} onDismiss={() => onPersist(dismissOnboarding(career))} />}
+      {!expeditionLocked && <CareerFlowGuide career={career} activeTab={tab} onTab={navigate} onStep={step => onPersist(setCareerTutorialStep(career, step))} onDismiss={() => onPersist(dismissOnboarding(career))} />}
       {renderTab()}
     </CareerShell>
   );
