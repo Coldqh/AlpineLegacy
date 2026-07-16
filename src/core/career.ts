@@ -1,4 +1,5 @@
 import { createRng } from './rng';
+import { analyzeRouteEquipment, equipmentPresetForRoute, equipmentReadinessScore, normalizeRopeGear, ropeMetersFromGear } from './gearPlanning';
 import { buildMountainDynamics, routeIsClosed } from './mountainDynamics';
 import { buildSchoolExpeditionBoard, daysUntilSchoolDeparture, schoolExpeditionPhase, schoolOfferCanAccept } from './schoolExpeditions';
 import {
@@ -522,13 +523,15 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     unlockedRegionIds: career.unlockedRegionIds ?? [world.ecosystem.content.primaryRegionId],
     travelHistory: career.travelHistory ?? [],
     resolvedSchoolOfferIds: career.resolvedSchoolOfferIds ?? [],
-    expeditionPlan: {
+    expeditionPlan: normalizeRopeGear({
+      ...defaultPlan(routes, teamRoster, career.weatherWindows?.length ? career.weatherWindows : makeWeatherWindows(world)),
       ...career.expeditionPlan,
+      gear: { ...defaultPlan(routes, teamRoster, career.weatherWindows?.length ? career.weatherWindows : makeWeatherWindows(world)).gear, ...(career.expeditionPlan?.gear ?? {}) },
       offerId: career.expeditionPlan?.offerId ?? null,
       leaderNpcId: career.expeditionPlan?.leaderNpcId ?? null,
       playerRole: career.expeditionPlan?.playerRole ?? (membership.mode === 'INDEPENDENT' ? 'LEADER' : 'SUPPORT'),
       authorityMode: career.expeditionPlan?.authorityMode ?? (membership.permissions.canIssueOrders ? 'COMMAND' : 'PARTICIPANT'),
-    },
+    }),
     livingWorld: hydrateLivingWorld(world, teamRoster, club, career.livingWorld),
     activeClimb,
   } as CareerState;
@@ -605,6 +608,11 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     travelHistory: [],
     resolvedSchoolOfferIds: [],
   };
+
+  career.expeditionPlan = normalizeRopeGear({
+    ...career.expeditionPlan,
+    ...equipmentPresetForRoute(routes[0]!, career.expeditionPlan, 1, 'MINIMUM'),
+  });
 
   const opening = membership.mode === 'INDEPENDENT'
     ? 'Начата независимая карьера. Постоянной команды и гарантированных мест в экспедициях нет.'
@@ -923,7 +931,10 @@ export function travelToRegion(world: WorldState, career: CareerState, regionId:
 }
 
 export function updateExpeditionPlan(career: CareerState, patch: Partial<ExpeditionPlan>): CareerState {
-  return { ...career, expeditionPlan: { ...career.expeditionPlan, ...patch } };
+  const nextGear = patch.gear ? { ...career.expeditionPlan.gear, ...patch.gear } : { ...career.expeditionPlan.gear };
+  if (patch.ropeMeters !== undefined && !patch.gear) nextGear.rope = Math.max(0, Math.min(4, Math.ceil(patch.ropeMeters / 50)));
+  const plan = normalizeRopeGear({ ...career.expeditionPlan, ...patch, gear: nextGear });
+  return { ...career, expeditionPlan: plan };
 }
 
 export function schoolExpeditionBoard(world: WorldState, career: CareerState, allSchools = false): ExpeditionOffer[] {
@@ -1000,7 +1011,7 @@ function acceptOfferState(world: WorldState, career: CareerState, offerId: strin
   const acceptedApplication: ExpeditionApplication = existingApplication?.status === 'ACCEPTED' ? existingApplication : {
     id: `application-${offer.id}-${career.year}-${career.seasonDay}-${career.applications.length + 1}`, offerId: offer.id, status: 'ACCEPTED', score: 100, reason: 'Место подтверждено.', appliedYear: career.year, appliedDay: career.seasonDay,
   };
-  return {
+  const acceptedCareer: CareerState = {
     ...career,
     applications: existingApplication?.status === 'ACCEPTED' ? career.applications : [...career.applications, acceptedApplication],
     selectedOfferId: offer.id,
@@ -1010,6 +1021,7 @@ function acceptOfferState(world: WorldState, career: CareerState, offerId: strin
     expeditionPlan: { ...career.expeditionPlan, routeId: route.id, offerId: offer.id, leaderNpcId: offer.leaderNpcId, playerRole: offer.playerRole, authorityMode: offer.authority, teamMemberIds: participantIds },
     log: [...career.log, careerLog(career, 'EXPEDITION', scheduled ? 'Место в плане школы подтверждено' : 'Принято место в экспедиции', `${route.mountainName} · ${route.name}. ${scheduled && offer.departureDay ? `Выход запланирован на день ${offer.departureDay}.` : `Роль: ${offer.playerRole}.`}`)],
   };
+  return applyEquipmentPreset(acceptedCareer, 'RECOMMENDED');
 }
 
 function acceptScheduledExpeditionOffer(world: WorldState, career: CareerState, offerId: string): CareerState {
@@ -1133,21 +1145,8 @@ export function setGearQuantity(career: CareerState, gearId: string, quantity: n
 
 export function applyEquipmentPreset(career: CareerState, preset: 'MINIMUM' | 'RECOMMENDED'): CareerState {
   const route = getSelectedRoute(career);
-  const gear: Record<string, number> = {};
-  for (const item of GEAR_CATALOG) gear[item.id] = route.requiredGearIds.includes(item.id) ? 1 : 0;
-  if (preset === 'RECOMMENDED') {
-    gear.rope = Math.max(1, gear.rope ?? 0);
-    gear.stove = Math.max(1, gear.stove ?? 0);
-    gear.medkit = Math.max(1, gear.medkit ?? 0);
-    gear.bivy = Math.max(1, gear.bivy ?? 0);
-    if (route.estimatedHours >= 16) gear.tent = Math.max(1, gear.tent ?? 0);
-  }
-  return updateExpeditionPlan(career, {
-    gear,
-    foodDays: preset === 'RECOMMENDED' ? Math.max(3, Math.ceil(route.estimatedHours / 24) + 2) : 2,
-    fuelUnits: preset === 'RECOMMENDED' ? 3 : 2,
-    ropeMeters: route.technicality >= 58 ? 70 : 50,
-  });
+  const teamSize = selectedTeam(career).length + 1;
+  return updateExpeditionPlan(career, equipmentPresetForRoute(route, career.expeditionPlan, teamSize, preset));
 }
 
 export function getSelectedRoute(career: CareerState) {
@@ -1164,7 +1163,7 @@ export function selectedTeam(career: CareerState) {
 
 export function expeditionWeight(career: CareerState) {
   const gearWeight = GEAR_CATALOG.reduce((sum, item) => sum + item.weightKg * (career.expeditionPlan.gear[item.id] ?? 0), 0);
-  const consumables = career.expeditionPlan.foodDays * 1.45 + career.expeditionPlan.fuelUnits * .38 + career.expeditionPlan.ropeMeters * .035;
+  const consumables = career.expeditionPlan.foodDays * 1.45 + career.expeditionPlan.fuelUnits * .38;
   const teamCount = Math.max(1, selectedTeam(career).length + 1);
   return Math.round((gearWeight + consumables) / teamCount * 10) / 10;
 }
@@ -1177,7 +1176,7 @@ export function expeditionCost(career: CareerState) {
   const permit = route.expeditionScale === 'GIANT' ? 65 : route.expeditionScale === 'MAJOR' ? 35 : 15;
   const insurance = Math.round(teamSize * Math.max(3, route.objectiveRisk / 14));
   const participantPay = career.membership.mode === 'INDEPENDENT' ? Math.round(Math.max(0, teamSize - 1) * (8 + route.technicality * .1)) : 0;
-  const raw = Math.round(gearCost * .18 + career.expeditionPlan.foodDays * 9 + career.expeditionPlan.fuelUnits * 5 + transport + permit + insurance + participantPay);
+  const raw = Math.round(gearCost * .15 + career.expeditionPlan.foodDays * 9 + career.expeditionPlan.fuelUnits * 5 + transport + permit + insurance + participantPay);
   return seasonCostSupport(career, route.id, raw);
 }
 
@@ -1196,8 +1195,9 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   const teamScore = soloPlan
     ? clamp(Math.round(heroBase * .62 + career.hero.skills.LEADERSHIP * 4), 0, 100)
     : clamp(Math.round(team.reduce((sum, member) => sum + member.skill * 7 + member.endurance * 4 + member.trust * .22, 0) / Math.max(1, team.length) + cohesionBonus), 0, 100);
+  const equipmentAnalysis = analyzeRouteEquipment(route, career.expeditionPlan, team.length + 1);
   const missingGear = route.requiredGearIds.filter(id => (career.expeditionPlan.gear[id] ?? 0) <= 0);
-  const equipment = clamp(100 - missingGear.length * 23 - Math.max(0, expeditionWeight(career) - 16) * 3, 0, 100);
+  const equipment = Math.min(equipmentReadinessScore(equipmentAnalysis, expeditionWeight(career)), clamp(100 - missingGear.length * 23, 0, 100));
   const dynamics = buildMountainDynamics(career, route.mountainId, route.id);
   const weatherScore = clamp(Math.round(weather.stability + dynamics.stabilityDelta - (weather.windKmh + dynamics.windDelta) * .25 - weather.snowfallCm * .7 + weather.durationHours * .4), 0, 100);
   const acclimatization = clamp(career.expeditionPlan.acclimatizationDays * 13 + career.hero.skills.ENDURANCE * 4, 0, 100);
@@ -1214,16 +1214,18 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   if (!career.selectedOfferId && !career.membership.permissions.canOrganize && !career.membership.permissions.canStartSolo) blockers.push('Сначала получи место в чужой экспедиции.');
   if (dynamics.status === 'CLOSED') blockers.push(`Маршрут временно закрыт: ${dynamics.closureReason ?? dynamics.seasonSummary}`);
   if (missingGear.length) blockers.push(`Не хватает обязательного снаряжения: ${missingGear.map(id => GEAR_CATALOG.find(item => item.id === id)?.name ?? id).join(', ')}`);
+  if (equipmentAnalysis.plannedRopeMeters < equipmentAnalysis.minimumRopeMeters) blockers.push(`Верёвки меньше минимума: ${equipmentAnalysis.plannedRopeMeters}/${equipmentAnalysis.minimumRopeMeters} м.`);
+  if (career.expeditionPlan.foodDays < equipmentAnalysis.minimumFoodDays) blockers.push(`Еды меньше минимума: ${career.expeditionPlan.foodDays}/${equipmentAnalysis.minimumFoodDays} дн.`);
+  if (career.expeditionPlan.fuelUnits < equipmentAnalysis.minimumFuelUnits) blockers.push(`Топлива меньше минимума: ${career.expeditionPlan.fuelUnits}/${equipmentAnalysis.minimumFuelUnits}.`);
+  if (equipmentAnalysis.expectedNights > 0 && (career.expeditionPlan.gear.tent ?? 0) <= 0 && (career.expeditionPlan.gear.bivy ?? 0) <= 0) blockers.push('На маршруте ожидается ночёвка, но нет ни палатки, ни аварийного бивака.');
   if (!soloPlan && !scheduledSchoolPlan && team.length + 1 < route.recommendedTeamSize) blockers.push('Группа меньше рекомендованного состава.');
   if (soloPlan && route.objectiveRisk > 62) blockers.push('Этот маршрут слишком опасен для одиночного выхода.');
-  if (career.expeditionPlan.foodDays < 2) blockers.push('Недостаточный запас еды.');
-  if (career.expeditionPlan.fuelUnits < 2) blockers.push('Недостаточный запас топлива.');
   if (career.recoveryDays > 0) blockers.push(`Герой восстанавливается ещё ${career.recoveryDays} дн.`);
   if (career.hero.fatigue > 72) blockers.push('Герой слишком утомлён для выхода.');
   if (career.expeditionPlan.acclimatizationDays < 2) blockers.push('Акклиматизация сорвана.');
   const plannedCost = expeditionCost(career);
   if (plannedCost > career.hero.money) blockers.push('Не хватает средств на подготовку.');
-  if (seasonPlan.spentCredits + plannedCost > seasonPlan.reserveCredits) blockers.push('Сезонный бюджет исчерпан. Измени бюджет или выбери более дешёвую цель.');
+  if (!scheduledSchoolPlan && seasonPlan.spentCredits + plannedCost > seasonPlan.reserveCredits) blockers.push('Сезонный бюджет исчерпан. Измени бюджет или выбери более дешёвую цель.');
   if (seasonPlan.riskPolicy === 'CAUTIOUS' && route.objectiveRisk > 82) blockers.push('Маршрут выше допустимого риска сезона. Измени риск-политику или цель.');
   const progression = normalizeCareerProgression(career);
   if (currentSeasonExpeditionCount(career) >= expeditionLimitForTier(progression.tier)) blockers.push('Лимит экспедиций сезона исчерпан.');
@@ -1242,7 +1244,7 @@ export function preparationInsights(career: CareerState): PreparationInsight[] {
     TECHNICAL: { tone: readiness.routeFit >= 62 ? 'GOOD' : 'DANGER', title: 'Эта гора проверяет технику', detail: `Соответствие маршруту ${readiness.routeFit}/100. Слабые скальные или ледовые навыки резко увеличат задержки на ключевых участках.` },
     ENDURANCE: { tone: career.expeditionPlan.foodDays >= 3 && weight <= 17 ? 'GOOD' : 'WARNING', title: 'Эта гора забирает время и запасы', detail: `Запас еды: ${career.expeditionPlan.foodDays} дн., груз: ${weight.toFixed(1)} кг/чел. Длинный день без лагеря быстро съест резерв.` },
     ALTITUDE: { tone: career.expeditionPlan.acclimatizationDays >= 4 ? 'GOOD' : 'DANGER', title: 'Эта гора проверяет высоту', detail: `Акклиматизация: ${career.expeditionPlan.acclimatizationDays} дн. Ниже 4 дней расход сил выше даже на простом рельефе.` },
-    DESCENT: { tone: (career.expeditionPlan.gear.bivy ?? 0) > 0 && career.expeditionPlan.ropeMeters >= 60 ? 'GOOD' : 'WARNING', title: 'Главная опасность начнётся после вершины', detail: 'Запас верёвки и аварийное укрытие снижают цену медленного спуска. Не планируй выход на нулевом остатке сил.' },
+    DESCENT: { tone: (career.expeditionPlan.gear.bivy ?? 0) > 0 && ropeMetersFromGear(career.expeditionPlan.gear) >= 50 ? 'GOOD' : 'WARNING', title: 'Главная опасность начнётся после вершины', detail: 'Запас верёвки и аварийное укрытие снижают цену медленного спуска. Не планируй выход на нулевом остатке сил.' },
   };
   insights.push(characterInsight[route.mountainCharacterId]);
 
@@ -1342,7 +1344,7 @@ function createCareerIntegratedExpedition(
   team: TeamMember[],
   supplies: QualificationClimb['supplies'],
   startEnergy: number,
-  ropeMeters = career.expeditionPlan.ropeMeters,
+  ropeMeters = ropeMetersFromGear(career.expeditionPlan.gear),
 ) {
   const gear = career.expeditionPlan.gear;
   const entrySide = route.id.endsWith('east-glacier') ? 'EAST' : route.id.endsWith('north-line') ? 'NORTH' : 'SOUTH';
@@ -1353,12 +1355,14 @@ function createCareerIntegratedExpedition(
     entrySide,
     routeChoice: 'AUTO',
     ropeMeters,
-    campKits: Math.max(0, (gear.tent ?? 0) + (gear.bivy ?? 0)),
+    campKits: Math.max(0, gear.tent ?? 0),
     participants: integratedParticipants(career, team, startEnergy),
     supplies,
     gear: {
-      ropeCondition: (gear.rope ?? 0) > 0 ? 100 : 72,
-      hardwareCondition: (gear['rock-kit'] ?? 0) > 0 && (gear['ice-kit'] ?? 0) > 0 ? 100 : (gear['rock-kit'] ?? 0) > 0 || (gear['ice-kit'] ?? 0) > 0 ? 76 : 42,
+      ropeCondition: (gear.rope ?? 0) > 0 ? 100 : 0,
+      hardwareCondition: Math.min((gear['rock-kit'] ?? 0) > 0 ? 100 : 20, (gear['ice-kit'] ?? 0) > 0 ? 100 : 20),
+      rockHardwareCondition: (gear['rock-kit'] ?? 0) > 0 ? 100 : 20,
+      iceHardwareCondition: (gear['ice-kit'] ?? 0) > 0 ? 100 : 20,
       shelterCondition: (gear.tent ?? 0) + (gear.bivy ?? 0) > 0 ? 100 : 0,
       stoveCondition: (gear.stove ?? 0) > 0 ? 100 : 0,
       radioCondition: (gear.radio ?? 0) > 0 ? 100 : 0,
@@ -1458,9 +1462,7 @@ export function startPlannedClimb(career: CareerState): CareerState {
     segmentChoices: {},
     routeChoices: [],
     fixedRopeSegmentIds: [],
-    ropeMetersRemaining: career.expeditionPlan.authorityMode === 'PARTICIPANT'
-      ? Math.max(career.expeditionPlan.ropeMeters, route.expeditionScale === 'GIANT' ? 180 : route.expeditionScale === 'MAJOR' ? 120 : 80)
-      : career.expeditionPlan.ropeMeters,
+    ropeMetersRemaining: ropeMetersFromGear(career.expeditionPlan.gear),
     caches: [],
     log: [`05:10 — ${career.expeditionPlan.authorityMode === 'COMMAND' ? 'группа' : 'экспедиция под руководством другого альпиниста'} вышла на ${route.name}. Твоя роль: ${career.expeditionPlan.playerRole}. Высота старта ${route.startElevation} м. Окно: ${window.label}.`],
     injuries: [],

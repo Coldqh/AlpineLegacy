@@ -11,6 +11,7 @@ import {
   selectedTeam,
 } from '../core/career';
 import type { CareerState, ExpeditionOffer, ExpeditionPlan, MountainData, WorldState } from '../core/types';
+import { analyzeRouteEquipment, ROPE_BUNDLE_METERS } from '../core/gearPlanning';
 
 type Props = {
   world: WorldState;
@@ -36,17 +37,6 @@ const roleLabel = {
   NAVIGATOR: 'Навигатор',
   SUPPORT: 'Участник',
 } as const;
-
-const gearPurpose: Record<string, { opens: string; effect: string }> = {
-  rope: { opens: 'Страховка техничных клеток и защищённый спуск', effect: 'Снижает риск срыва и расход сил на защищённом участке' },
-  'rock-kit': { opens: 'Скальные станции, гребни и разрушенную породу', effect: 'Снижает технический риск на камне' },
-  'ice-kit': { opens: 'Лёд, трещины и жёсткие снежные склоны', effect: 'Снижает риск на леднике и ускоряет работу связки' },
-  tent: { opens: 'Полный сон и устойчивый высотный лагерь', effect: 'Восстанавливает больше сил и защищает от холода' },
-  bivy: { opens: 'Аварийную ночёвку без полноценного лагеря', effect: 'Не даёт группе быстро замёрзнуть при вынужденной остановке' },
-  stove: { opens: 'Топку снега и длительное восстановление', effect: 'Поддерживает воду, тепло и полноценный сон' },
-  medkit: { opens: 'Лечение травм прямо на маршруте', effect: 'Снижает тяжесть последствий и шанс вынужденного отхода' },
-  radio: { opens: 'Связь со школой и спасателями', effect: 'Сокращает время эвакуации и стоимость тяжёлой ошибки' },
-};
 
 function mountainScore(mountain: MountainData) {
   return mountain.elevation * .01 + mountain.technicality * .72 + mountain.altitudeSeverity * .55 + mountain.remoteness * .32;
@@ -93,9 +83,10 @@ export function PreparationHubScreen({
   const assignedOffer = selectedOffer && !selectedOffer.solo;
   const requiredTeam = Math.max(1, route.recommendedTeamSize);
   const teamCount = team.length + 1;
+  const equipment = analyzeRouteEquipment(route, career.expeditionPlan, teamCount);
   const ropeBundles = career.expeditionPlan.gear.rope ?? 0;
-  const effectiveRope = Math.max(career.expeditionPlan.ropeMeters, ropeBundles * 50);
-  const expectedNights = Math.max(0, Math.ceil(route.estimatedHours / 12) - 1);
+  const effectiveRope = equipment.plannedRopeMeters;
+  const expectedNights = equipment.expectedNights;
 
   return (
     <section className="prep-hub workspace-page">
@@ -108,7 +99,7 @@ export function PreparationHubScreen({
             <span><small>ГРУППА</small><strong>{teamCount}/{requiredTeam}</strong></span>
             <span><small>ВЕС</small><strong>{weight.toFixed(1)} кг</strong></span>
             <span><small>НОЧЁВКИ</small><strong>{expectedNights}</strong></span>
-            <span><small>ВЕРЁВКА</small><strong>{effectiveRope} м</strong></span>
+            <span><small>ВЕРЁВКА</small><strong>{effectiveRope} / {equipment.recommendedRopeMeters} м</strong></span>
           </div>
         </div>
         <div className="prep-hub__mountain">
@@ -162,19 +153,39 @@ export function PreparationHubScreen({
           </details>
 
           <details className="prep-step" open>
-            <summary><span>03</span><div><strong>Снаряжение и запасы</strong><small>{weight.toFixed(1)} кг · {cost} кр. · {effectiveRope} м верёвки</small></div><b>{Math.round(readiness.equipment)}%</b></summary>
+            <summary><span>03</span><div><strong>Снаряжение и запасы</strong><small>{weight.toFixed(1)} кг · {cost} кр. · {effectiveRope} м из бухт</small></div><b>{Math.round(readiness.equipment)}%</b></summary>
             <div className="prep-step__body">
-              <div className="prep-presets"><button onClick={() => onPreset('MINIMUM')}>Минимум</button><button className="is-primary" onClick={() => onPreset('RECOMMENDED')}>Рекомендуемый комплект</button></div>
+              <div className="prep-presets"><button onClick={() => onPreset('MINIMUM')}>Минимум маршрута</button><button className="is-primary" onClick={() => onPreset('RECOMMENDED')}>Рекомендуемый комплект</button></div>
+              <section className="prep-equipment-forecast">
+                <div><small>ТЕХНИЧЕСКИЕ УЧАСТКИ</small><strong>{equipment.technicalProtectionSites}</strong><span>{equipment.rockSections} скальных · {equipment.iceSections} ледовых</span></div>
+                <div><small>ВЕРЁВКА</small><strong>{effectiveRope} м</strong><span>минимум {equipment.minimumRopeMeters} · рекомендуется {equipment.recommendedRopeMeters} · полная защита {equipment.fullProtectionRopeMeters}</span></div>
+                <div><small>НОЧЁВКИ</small><strong>{expectedNights}</strong><span>палаток рекомендуется {equipment.recommendedTentUnits} · бивак {equipment.recommendedBivyUnits ? 'нужен в резерве' : 'не обязателен'}</span></div>
+                <div><small>ЗАПАСЫ</small><strong>{equipment.recommendedFoodDays} дн.</strong><span>топливо минимум {equipment.minimumFuelUnits} · рекомендуется {equipment.recommendedFuelUnits}</span></div>
+              </section>
               <div className="prep-gear-grid">{GEAR_CATALOG.map(item => {
                 const quantity = career.expeditionPlan.gear[item.id] ?? 0;
-                const required = route.requiredGearIds.includes(item.id);
-                const purpose = gearPurpose[item.id];
-                return <article key={item.id} className={`${quantity ? 'is-packed' : ''} ${required && !quantity ? 'is-missing' : ''}`}><header><div><small>{required ? 'НУЖНО МАРШРУТУ' : item.category}</small><strong>{item.name}</strong></div><span>{item.weightKg} кг</span></header><p>{purpose?.opens ?? item.description}</p><em>{purpose?.effect ?? item.description}</em><footer><button onClick={() => onSetGearQuantity(item.id, quantity - 1)}>−</button><b>{quantity}</b><button onClick={() => onSetGearQuantity(item.id, quantity + 1)}>+</button></footer></article>;
+                const need = equipment.needs[item.id];
+                const required = route.requiredGearIds.includes(item.id) || (need?.minimum ?? 0) > 0;
+                const recommended = need?.recommended ?? 0;
+                const tone = need?.tone.toLowerCase() ?? 'neutral';
+                return <article key={item.id} className={`${quantity ? 'is-packed' : ''} ${required && !quantity ? 'is-missing' : ''} is-${tone}`}>
+                  <header><div><small>{required ? 'НУЖНО МАРШРУТУ' : recommended ? 'РЕКОМЕНДУЕТСЯ' : 'НЕ ОБЯЗАТЕЛЬНО'}</small><strong>{item.name}</strong></div><span>{item.id === 'rope' ? `${ROPE_BUNDLE_METERS} м · ` : ''}{item.weightKg} кг</span></header>
+                  <dl className="prep-gear-impact">
+                    <div><dt>Открывает</dt><dd>{need?.opens ?? item.description}</dd></div>
+                    <div><dt>Даёт</dt><dd>{need?.effect ?? item.description}</dd></div>
+                    <div><dt>Без него</dt><dd>{need?.without ?? 'Только лишний резерв и вес.'}</dd></div>
+                  </dl>
+                  <div className="prep-gear-need"><span>Минимум <b>{need?.minimum ?? 0}</b></span><span>Рекомендуется <b>{recommended}</b></span><span>Взято <b>{quantity}</b></span></div>
+                  <footer><button onClick={() => onSetGearQuantity(item.id, quantity - 1)}>−</button><b>{quantity}</b><button onClick={() => onSetGearQuantity(item.id, quantity + 1)}>+</button></footer>
+                </article>;
               })}</div>
-              <div className="prep-supply-grid">
-                <label><span>Еда <b>{career.expeditionPlan.foodDays} дн.</b></span><input type="range" min="1" max="10" value={career.expeditionPlan.foodDays} onChange={event => onSetPlan({ foodDays: Number(event.target.value) })} /></label>
-                <label><span>Топливо <b>{career.expeditionPlan.fuelUnits}</b></span><input type="range" min="0" max="10" value={career.expeditionPlan.fuelUnits} onChange={event => onSetPlan({ fuelUnits: Number(event.target.value) })} /></label>
-                <label><span>Рабочая верёвка <b>{career.expeditionPlan.ropeMeters} м</b></span><input type="range" min="0" max="120" step="10" value={career.expeditionPlan.ropeMeters} onChange={event => onSetPlan({ ropeMeters: Number(event.target.value) })} /></label>
+              <div className="prep-supply-grid prep-supply-grid--two">
+                <label className={career.expeditionPlan.foodDays < equipment.minimumFoodDays ? 'is-danger' : career.expeditionPlan.foodDays < equipment.recommendedFoodDays ? 'is-warning' : 'is-good'}><span>Еда <b>{career.expeditionPlan.foodDays} дн.</b></span><small>минимум {equipment.minimumFoodDays} · рекомендуется {equipment.recommendedFoodDays}</small><input type="range" min="1" max="10" value={career.expeditionPlan.foodDays} onChange={event => onSetPlan({ foodDays: Number(event.target.value) })} /></label>
+                <label className={career.expeditionPlan.fuelUnits < equipment.minimumFuelUnits ? 'is-danger' : career.expeditionPlan.fuelUnits < equipment.recommendedFuelUnits ? 'is-warning' : 'is-good'}><span>Топливо <b>{career.expeditionPlan.fuelUnits}</b></span><small>минимум {equipment.minimumFuelUnits} · рекомендуется {equipment.recommendedFuelUnits}</small><input type="range" min="0" max="10" value={career.expeditionPlan.fuelUnits} onChange={event => onSetPlan({ fuelUnits: Number(event.target.value) })} /></label>
+              </div>
+              <div className={`prep-rope-explanation ${effectiveRope < equipment.minimumRopeMeters ? 'is-danger' : effectiveRope < equipment.recommendedRopeMeters ? 'is-warning' : 'is-good'}`}>
+                <div><small>РАБОЧАЯ ВЕРЁВКА СЧИТАЕТСЯ ИЗ БУХТ</small><strong>{ropeBundles} × {ROPE_BUNDLE_METERS} м = {effectiveRope} м</strong></div>
+                <p>Закрепление клетки расходует 20 м. Снятая линия возвращается в запас, потерянная или повреждённая — нет. Отдельного ползунка больше нет.</p>
               </div>
             </div>
           </details>
@@ -200,7 +211,7 @@ export function PreparationHubScreen({
             <div><dt>Группа</dt><dd>{teamCount} чел.</dd></div>
             <div><dt>Вес</dt><dd>{weight.toFixed(1)} кг</dd></div>
             <div><dt>Ночёвки</dt><dd>{expectedNights}</dd></div>
-            <div><dt>Верёвка</dt><dd>{effectiveRope} м</dd></div>
+            <div><dt>Верёвка</dt><dd>{effectiveRope} м / рек. {equipment.recommendedRopeMeters}</dd></div>
             <div><dt>Стоимость</dt><dd>{cost} кр.</dd></div>
           </dl>
           {readiness.blockers.length > 0 && <ul className="prep-blockers">{readiness.blockers.map(item => <li key={item}>{item}</li>)}</ul>}

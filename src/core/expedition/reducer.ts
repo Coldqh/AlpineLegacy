@@ -195,6 +195,7 @@ function applyMovementFatigue(
   energyCosts: Record<string, number>,
   minutes: number,
   weatherTemperatureC: number,
+  terrain: string,
 ): IntegratedExpeditionState {
   const tuning = integratedDifficultyTuning(state.difficulty);
   const noFood = state.supplies.foodUnits <= 0;
@@ -227,11 +228,18 @@ function applyMovementFatigue(
     ...state,
     participants,
     casualties,
-    gear: {
-      ...state.gear,
-      hardwareCondition: clamp(state.gear.hardwareCondition - Math.max(0, (averageCost - 2.5) / 24)),
-      ropeCondition: clamp(state.gear.ropeCondition - (state.phase === 'DESCENT' ? .18 : .1)),
-    },
+    gear: (() => {
+      const wear = Math.max(0, (averageCost - 2.5) / 24);
+      const rockHardwareCondition = terrain === 'ROCK' || terrain === 'RIDGE' ? clamp(state.gear.rockHardwareCondition - wear) : state.gear.rockHardwareCondition;
+      const iceHardwareCondition = terrain === 'GLACIER' || terrain === 'SNOW' ? clamp(state.gear.iceHardwareCondition - wear) : state.gear.iceHardwareCondition;
+      return {
+        ...state.gear,
+        rockHardwareCondition,
+        iceHardwareCondition,
+        hardwareCondition: Math.min(rockHardwareCondition, iceHardwareCondition),
+        ropeCondition: clamp(state.gear.ropeCondition - (state.phase === 'DESCENT' ? .18 : .1)),
+      };
+    })(),
   });
 }
 
@@ -242,7 +250,8 @@ function hazardBlockReason(state: IntegratedExpeditionState, context: Integrated
   if (cell.hazard === 'ROCKFALL' && context.weather.temperatureC >= (state.difficulty === 'EXPEDITION' ? -2 : 0)) return 'Прогрев усилил камнепад. Нужен обход или ожидание холода.';
   if (cell.hazard === 'CORNICE') return 'Карниз нельзя пересекать. Перестрой линию ниже гребня.';
   if ((cell.ropeRequired || protectedByRope) && state.gear.ropeCondition < 18) return 'Рабочая верёвка критически изношена. Технический участок закрыт.';
-  if ((cell.terrain === 'ROCK' || cell.terrain === 'GLACIER' || cell.terrain === 'RIDGE') && state.gear.hardwareCondition < 14) return 'Кошки, крючья и карабины больше не держат рабочую нагрузку.';
+  if ((cell.terrain === 'ROCK' || cell.terrain === 'RIDGE') && state.gear.rockHardwareCondition < 14) return 'Скальный комплект больше не держит рабочую нагрузку.';
+  if ((cell.terrain === 'GLACIER' || cell.terrain === 'SNOW') && state.gear.iceHardwareCondition < 14) return 'Кошки и ледобуры больше не держат рабочую нагрузку.';
   return null;
 }
 
@@ -340,7 +349,7 @@ function resolveIncident(
     next = applyTime(next, Math.max(10, 28 - rockLead.skills.ROCK * 2), .55);
     next = {
       ...next,
-      gear: { ...next.gear, hardwareCondition: clamp(next.gear.hardwareCondition - (hit ? 5 : 2)) },
+      gear: { ...next.gear, rockHardwareCondition: clamp(next.gear.rockHardwareCondition - (hit ? 5 : 2)), hardwareCondition: Math.min(clamp(next.gear.rockHardwareCondition - (hit ? 5 : 2)), next.gear.iceHardwareCondition) },
     };
     if (hit) {
       const injury = `${target.name}: травма от камнепада`;
@@ -383,7 +392,7 @@ function resolveIncident(
       const delay = Math.max(12, 38 - rockLead.skills.ROCK * 2);
       next = applyTime({
         ...next,
-        gear: { ...next.gear, ropeCondition: clamp(next.gear.ropeCondition - 3), hardwareCondition: clamp(next.gear.hardwareCondition - 2) },
+        gear: { ...next.gear, ropeCondition: clamp(next.gear.ropeCondition - 3), rockHardwareCondition: clamp(next.gear.rockHardwareCondition - 2), iceHardwareCondition: clamp(next.gear.iceHardwareCondition - 1), hardwareCondition: Math.min(clamp(next.gear.rockHardwareCondition - 2), clamp(next.gear.iceHardwareCondition - 1)) },
       }, delay, .62);
       return withIncident(next, context, 'DESCENT', rockLead, 'Верёвка закусила на спуске', `${rockLead.name} разгрузил станцию и освободил линию. Потеряно ${delay} мин.; причина — ${character?.descentProblem ?? 'сложный рельеф спуска'}.`, 'WARNING');
     }
@@ -489,7 +498,7 @@ function reduceStep(state: IntegratedExpeditionState, context: IntegratedExpedit
   const rollbackChance = protectedByRope ? 0 : Math.min(.16, Math.max(0, preview.score - 58) / 260);
   const rollback = cell.rollbackCells > 0 && rng.chance(rollbackChance);
   let nextState = applyTime({ ...state, actionSerial: state.actionSerial + 1 }, preview.minutes, 1.08);
-  nextState = applyMovementFatigue(nextState, preview.participantEnergyCosts, preview.minutes, context.weather.temperatureC);
+  nextState = applyMovementFatigue(nextState, preview.participantEnergyCosts, preview.minutes, context.weather.temperatureC, cell.terrain);
 
   if (rollback) {
     const rollbackTo = Math.max(0, state.positionIndex - Math.max(1, cell.rollbackCells));
@@ -713,8 +722,9 @@ function reduceIntegratedExpeditionCore(
       const text = 'Не хватает двадцати метров верёвки.';
       return { ...state, message: text, lastEvent: event(state, 'STOP', 'WARNING', text) };
     }
-    if (state.gear.ropeCondition < 18 || state.gear.hardwareCondition < 18) {
-      const text = 'Страховочное снаряжение критически изношено.';
+    const hardwareCondition = cell.terrain === 'GLACIER' || cell.terrain === 'SNOW' ? state.gear.iceHardwareCondition : state.gear.rockHardwareCondition;
+    if (state.gear.ropeCondition < 18 || hardwareCondition < 18) {
+      const text = `${cell.terrain === 'GLACIER' || cell.terrain === 'SNOW' ? 'Ледовое' : 'Скальное'} страховочное снаряжение критически изношено.`;
       return { ...state, message: text, lastEvent: event(state, 'STOP', 'DANGER', text) };
     }
     if (cell.anchorQuality < 35) {
@@ -730,11 +740,19 @@ function reduceIntegratedExpeditionCore(
       ...next,
       ropeMeters: next.ropeMeters - 20,
       actionSerial: next.actionSerial + 1,
-      gear: {
-        ...next.gear,
-        ropeCondition: clamp(next.gear.ropeCondition - wear),
-        hardwareCondition: clamp(next.gear.hardwareCondition - Math.max(1, wear - 1)),
-      },
+      gear: (() => {
+        const hardwareWear = Math.max(1, wear - 1);
+        const ice = cell.terrain === 'GLACIER' || cell.terrain === 'SNOW';
+        const rockHardwareCondition = ice ? next.gear.rockHardwareCondition : clamp(next.gear.rockHardwareCondition - hardwareWear);
+        const iceHardwareCondition = ice ? clamp(next.gear.iceHardwareCondition - hardwareWear) : next.gear.iceHardwareCondition;
+        return {
+          ...next.gear,
+          ropeCondition: clamp(next.gear.ropeCondition - wear),
+          rockHardwareCondition,
+          iceHardwareCondition,
+          hardwareCondition: Math.min(rockHardwareCondition, iceHardwareCondition),
+        };
+      })(),
     }, minutes, 0.85);
     const text = `${technician.name} закрепил 20 м верёвки на участке ${cell.slope}°.`;
     return { ...next, message: text, lastEvent: event(next, 'INFO', 'SUCCESS', text) };
@@ -841,7 +859,7 @@ function reduceIntegratedExpeditionCore(
     const stranded = state.participants.filter(participant => participant.status === 'INCAPACITATED').map(participant => participant.memberId ?? participant.id);
     const elevationRatio = clamp((state.currentElevation - state.startElevation) / Math.max(1, state.summitElevation - state.startElevation), 0, 1);
     const radioDelay = state.gear.radioCondition > 15 ? Math.round((100 - state.gear.radioCondition) * 1.2) : 180;
-    const duration = Math.round(240 + elevationRatio * 360 + context.weather.windKmh * 1.8 + radioDelay);
+    const duration = Math.round(360 + elevationRatio * 360 + context.weather.windKmh * 1.8 + radioDelay);
     const rescueCost = Math.round(140 + stranded.length * 190 + elevationRatio * 520 + (state.difficulty === 'EXPEDITION' ? 160 : state.difficulty === 'CLIMBER' ? 80 : 0));
     const shelterMitigation = state.gear.shelterCondition > 20 ? .52 : .9;
     const coldLoss = Math.max(0, Math.round((Math.max(0, -context.weather.temperatureC - 8) / 6 + duration / 260) * shelterMitigation));

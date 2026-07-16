@@ -294,7 +294,7 @@ describe('integrated expedition career loop', () => {
     } as unknown as IntegratedExpeditionState;
     const migrated = normalizeIntegratedExpeditionState(legacy);
 
-    expect(migrated.version).toBe(4);
+    expect(migrated.version).toBe(5);
     expect(migrated.pace).toBe('STEADY');
     expect(migrated.participants.every(participant => participant.carryCapacityKg > 0)).toBe(true);
     expect(migrated.eventLog.length).toBeGreaterThan(0);

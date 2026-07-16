@@ -44,6 +44,8 @@ export interface IntegratedSupplies {
 export interface IntegratedGearState {
   ropeCondition: number;
   hardwareCondition: number;
+  rockHardwareCondition: number;
+  iceHardwareCondition: number;
   shelterCondition: number;
   stoveCondition: number;
   radioCondition: number;
@@ -80,7 +82,7 @@ export interface IntegratedExpeditionEvent {
 }
 
 export interface IntegratedExpeditionState {
-  version: 4;
+  version: 5;
   seed: string;
   difficulty: IntegratedDifficulty;
   authority: IntegratedAuthority;
@@ -162,6 +164,8 @@ export const EMPTY_INTEGRATED_INFRASTRUCTURE: IntegratedStageInfrastructure = {
 export const DEFAULT_INTEGRATED_GEAR: IntegratedGearState = {
   ropeCondition: 100,
   hardwareCondition: 100,
+  rockHardwareCondition: 100,
+  iceHardwareCondition: 100,
   shelterCondition: 100,
   stoveCondition: 100,
   radioCondition: 0,
@@ -208,7 +212,7 @@ export function createIntegratedExpeditionState(input: CreateIntegratedExpeditio
     shelterCondition: input.gear?.shelterCondition ?? (input.hasBivy ? 100 : 0),
   };
   return {
-    version: 4,
+    version: 5,
     seed: input.seed,
     difficulty: input.difficulty,
     authority: input.authority,
@@ -277,7 +281,7 @@ export function normalizeIntegratedExpeditionState(state: IntegratedExpeditionSt
     lastIncidentActionSerial?: number;
     participants: Array<IntegratedParticipantState & { loadKg?: number; carryCapacityKg?: number }>;
   };
-  const complete = raw.version === 4
+  const complete = raw.version === 5
     && raw.pace
     && raw.gear
     && Array.isArray(raw.eventLog)
@@ -288,7 +292,7 @@ export function normalizeIntegratedExpeditionState(state: IntegratedExpeditionSt
   const lastEvent = raw.lastEvent ?? { serial: 0, kind: 'INFO', severity: 'CALM', text: raw.message ?? 'Экспедиция восстановлена.' };
   return {
     ...raw,
-    version: 4,
+    version: 5,
     minutesSinceSleep: raw.minutesSinceSleep ?? raw.elapsedMinutes % 1440,
     lastSleepElevation: raw.lastSleepElevation ?? raw.startElevation,
     nightsSlept: raw.nightsSlept ?? 0,
@@ -300,7 +304,9 @@ export function normalizeIntegratedExpeditionState(state: IntegratedExpeditionSt
     gear: {
       ...DEFAULT_INTEGRATED_GEAR,
       ropeCondition: raw.gear?.ropeCondition ?? 100,
-      hardwareCondition: raw.gear?.hardwareCondition ?? 100,
+      hardwareCondition: raw.gear?.hardwareCondition ?? Math.min(raw.gear?.rockHardwareCondition ?? 100, raw.gear?.iceHardwareCondition ?? 100),
+      rockHardwareCondition: raw.gear?.rockHardwareCondition ?? raw.gear?.hardwareCondition ?? 100,
+      iceHardwareCondition: raw.gear?.iceHardwareCondition ?? raw.gear?.hardwareCondition ?? 100,
       shelterCondition: raw.gear?.shelterCondition ?? (raw.hasBivy ? 100 : 0),
       stoveCondition: raw.gear?.stoveCondition ?? (raw.hasStove ? 100 : 0),
       radioCondition: raw.gear?.radioCondition ?? 0,

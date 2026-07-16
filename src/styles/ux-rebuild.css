@@ -357,3 +357,67 @@
   .mg-tab-panel { padding-inline: 4px; }
   .mg-local-map { min-height: 50vh; }
 }
+
+/* 0.22.0 — route-specific equipment planning */
+.prep-equipment-forecast {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 10px;
+}
+.prep-equipment-forecast > div {
+  display: grid;
+  gap: 4px;
+  min-height: 92px;
+  padding: 11px;
+  border: 1px solid var(--ux-line);
+  border-radius: 10px;
+  background: rgba(130,200,216,.045);
+}
+.prep-equipment-forecast small { color: var(--ux-ice); font-size: 8px; letter-spacing: .1em; }
+.prep-equipment-forecast strong { font-size: 21px; }
+.prep-equipment-forecast span { color: var(--ux-muted); font-size: 9px; line-height: 1.35; }
+.prep-gear-grid article.is-warning { border-color: rgba(221,159,69,.55); }
+.prep-gear-grid article.is-danger { border-color: rgba(214,78,70,.72); background: rgba(214,78,70,.045); }
+.prep-gear-grid article.is-good { border-color: rgba(98,183,143,.48); }
+.prep-gear-impact { display: grid; gap: 6px; margin: 10px 0 0; }
+.prep-gear-impact > div { display: grid; grid-template-columns: 68px 1fr; gap: 8px; padding-top: 6px; border-top: 1px solid var(--ux-line); }
+.prep-gear-impact dt { color: var(--ux-ice); font-size: 8px; text-transform: uppercase; letter-spacing: .08em; }
+.prep-gear-impact dd { margin: 0; color: var(--ux-muted); font-size: 9px; line-height: 1.38; }
+.prep-gear-need { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 9px; }
+.prep-gear-need span { padding: 6px; border-radius: 7px; background: rgba(255,255,255,.035); color: var(--ux-muted); font-size: 8px; text-align: center; }
+.prep-gear-need b { display: block; margin-top: 3px; color: var(--ux-text); font-size: 12px; }
+.prep-supply-grid--two { grid-template-columns: repeat(2, 1fr); }
+.prep-supply-grid label > small { color: var(--ux-muted); font-size: 9px; }
+.prep-supply-grid label.is-danger { border-color: rgba(214,78,70,.64); }
+.prep-supply-grid label.is-warning { border-color: rgba(221,159,69,.52); }
+.prep-supply-grid label.is-good { border-color: rgba(98,183,143,.42); }
+.prep-rope-explanation {
+  display: grid;
+  grid-template-columns: minmax(190px, .6fr) 1fr;
+  gap: 14px;
+  align-items: center;
+  margin-top: 9px;
+  padding: 12px;
+  border: 1px solid var(--ux-line);
+  border-radius: 10px;
+  background: rgba(255,255,255,.025);
+}
+.prep-rope-explanation.is-danger { border-color: rgba(214,78,70,.64); }
+.prep-rope-explanation.is-warning { border-color: rgba(221,159,69,.52); }
+.prep-rope-explanation.is-good { border-color: rgba(98,183,143,.42); }
+.prep-rope-explanation small { display: block; color: var(--ux-ice); font-size: 8px; letter-spacing: .1em; }
+.prep-rope-explanation strong { display: block; margin-top: 5px; font-size: 17px; }
+.prep-rope-explanation p { margin: 0; color: var(--ux-muted); font-size: 10px; line-height: 1.45; }
+
+@media (max-width: 900px) {
+  .prep-equipment-forecast { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .prep-equipment-forecast { grid-template-columns: 1fr 1fr; }
+  .prep-equipment-forecast > div { min-height: 84px; padding: 9px; }
+  .prep-gear-impact > div { grid-template-columns: 58px 1fr; }
+  .prep-rope-explanation { grid-template-columns: 1fr; gap: 7px; }
+  .prep-supply-grid--two { grid-template-columns: 1fr; }
+}

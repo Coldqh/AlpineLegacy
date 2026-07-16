@@ -288,7 +288,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.21.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.22.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -476,7 +476,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     <main className="mg-app mg-expedition-shell">
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.21.0</span>
+          <span>ALPINE LEGACY / 0.22.0</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()}</small>
         </div>
@@ -602,7 +602,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                   <div><dt>Общее время</dt><dd>{formatMinutes(topo.elapsedMinutes)}</dd></div>
                   <div><dt>Травмы / потери</dt><dd>{topo.injuries.length} / {topo.casualties.length}</dd></div>
                   <div><dt>Спасение</dt><dd>{topo.rescueCost > 0 ? `${topo.rescueCost} кр. · ${formatMinutes(topo.rescueDurationMinutes)}` : 'не потребовалось'}</dd></div>
-                  <div><dt>Снаряжение</dt><dd>верёвка {Math.round(topo.gear.ropeCondition)}% · железо {Math.round(topo.gear.hardwareCondition)}%</dd></div>
+                  <div><dt>Снаряжение</dt><dd>верёвка {Math.round(topo.gear.ropeCondition)}% · скалы {Math.round(topo.gear.rockHardwareCondition)}% · лёд {Math.round(topo.gear.iceHardwareCondition)}%</dd></div>
                 </dl>
                 <div className="mg-expedition-debrief">
                   <article><span>ЧТО СРАБОТАЛО</span>{debrief.strengths.length ? <ul>{debrief.strengths.map(item => <li key={item}>{item}</li>)}</ul> : <p>Сильных решений в отчёте не отмечено.</p>}</article>
@@ -647,7 +647,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                       <div><span>ТОПЛИВО</span><strong>{topo.supplies.fuelUnits.toFixed(1)}</strong></div>
                       <div><span>АПТЕЧКА</span><strong>{topo.gear.medkitCharges}</strong></div>
                       <div><span>ВЕРЁВКА</span><strong>{topo.ropeMeters} м · {Math.round(topo.gear.ropeCondition)}%</strong></div>
-                      <div><span>ЖЕЛЕЗО</span><strong>{Math.round(topo.gear.hardwareCondition)}%</strong></div>
+                      <div><span>СКАЛЬНОЕ</span><strong>{Math.round(topo.gear.rockHardwareCondition)}%</strong></div><div><span>ЛЕДОВОЕ</span><strong>{Math.round(topo.gear.iceHardwareCondition)}%</strong></div>
                       <div><span>УКРЫТИЕ</span><strong>{Math.round(topo.gear.shelterCondition)}%</strong></div>
                       <div><span>РАДИО</span><strong>{Math.round(topo.gear.radioCondition)}%</strong></div>
                     </div>

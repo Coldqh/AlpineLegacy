@@ -95,7 +95,7 @@ export function integratedStepPreview(
   const coordinationPenalty = Math.max(-6, Math.min(10, (55 - coordination) * .18));
   const leadershipReduction = integratedSpecialist(state, 'LEADERSHIP').skills.LEADERSHIP * .62;
   const skillReduction = skill * 1.85 + leader.skills.ENDURANCE * .52 + acclimatization + leadershipReduction;
-  const terrainGear = cell.terrain === 'GLACIER' || cell.terrain === 'ROCK' || cell.terrain === 'RIDGE' ? state.gear.hardwareCondition : 100;
+  const terrainGear = cell.terrain === 'GLACIER' ? state.gear.iceHardwareCondition : cell.terrain === 'ROCK' || cell.terrain === 'RIDGE' ? state.gear.rockHardwareCondition : 100;
   const gearPenalty = Math.max(0, 58 - terrainGear) * .24 + (fixedRope ? Math.max(0, 52 - state.gear.ropeCondition) * .18 : 0);
   const score = Math.max(0, Math.min(98, Math.round((baseRisk.score * tuning.risk + loadPenalty + conditionPenalty + coordinationPenalty + gearPenalty + wakePenalty - skillReduction) * pace.risk)));
   const band: LocalStepRiskBand = score >= 78 ? 'EXTREME' : score >= 55 ? 'HIGH' : score >= 30 ? 'MEDIUM' : 'LOW';
