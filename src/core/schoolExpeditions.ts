@@ -93,11 +93,12 @@ function crewFor(
   leader: NpcDefinition,
   route: ExpeditionRoute,
   cycle: number,
+  unavailableIds: ReadonlySet<string>,
 ) {
   const primary = routeSkill(route);
   const candidates = organization.memberNpcIds
     .map(id => world.ecosystem.content.npcs.byId[id])
-    .filter((npc): npc is NpcDefinition => Boolean(npc) && npc.id !== leader.id && !npc.isMentor)
+    .filter((npc): npc is NpcDefinition => Boolean(npc) && npc.id !== leader.id && !npc.isMentor && !unavailableIds.has(npc.id))
     .filter(npc => {
       const runtime = world.ecosystem.runtime.npcs.byId[npc.id];
       return !runtime || (runtime.status === 'ACTIVE' && runtime.availability >= 45);
@@ -125,6 +126,7 @@ function briefingFor(leader: NpcDefinition, route: ExpeditionRoute, phase: Schoo
 
 export function buildSchoolExpeditionBoard(world: WorldState, career: Pick<CareerState, 'year' | 'seasonDay' | 'routes' | 'acceptedOffer'>): ExpeditionOffer[] {
   const offers: ExpeditionOffer[] = [];
+  const occupiedNpcIds = new Set<string>();
   const organizations = world.ecosystem.content.organizations.allIds
     .map(id => world.ecosystem.content.organizations.byId[id])
     .filter((item): item is OrganizationDefinition => Boolean(item));
@@ -178,20 +180,31 @@ export function buildSchoolExpeditionBoard(world: WorldState, career: Pick<Caree
           preparationProgress: 0,
           planSeries,
         };
-        const phase = schoolExpeditionPhase(provisional, career.seasonDay);
-        const crew = crewFor(world, organization, leader, route, cycle);
+        const initialPhase = schoolExpeditionPhase(provisional, career.seasonDay);
+        const blocksPeople = ['ANNOUNCED', 'RECRUITING', 'PREPARING', 'WEATHER_HOLD', 'DEPARTING', 'ON_ROUTE'].includes(initialPhase);
+        const crew = crewFor(world, organization, leader, route, cycle, blocksPeople ? occupiedNpcIds : new Set<string>());
+        const minimumCrew = Math.min(2, Math.max(1, route.recommendedTeamSize - 1));
+        const staffingFailure = blocksPeople && crew.length < minimumCrew;
+        const resolvedOffer: ExpeditionOffer = staffingFailure
+          ? { ...provisional, scheduleStatus: 'CANCELLED', cancellationReason: 'не удалось собрать свободную связку: участники уже заняты в других программах' }
+          : provisional;
+        const phase = schoolExpeditionPhase(resolvedOffer, career.seasonDay);
+        if (blocksPeople && phase !== 'CANCELLED') {
+          occupiedNpcIds.add(leader.id);
+          crew.forEach(id => occupiedNpcIds.add(id));
+        }
         const preparationProgress = phase === 'ANNOUNCED' ? 8
           : phase === 'RECRUITING' ? Math.max(14, Math.min(38, Math.round((career.seasonDay - anchor + 1) / 8 * 38)))
             : phase === 'PREPARING' ? Math.max(42, Math.min(74, 42 + (career.seasonDay - (anchor + 8)) * 6))
               : phase === 'WEATHER_HOLD' ? 88
                 : ['DEPARTING', 'ON_ROUTE', 'RECOVERING'].includes(phase) ? 100 : 0;
         offers.push({
-          ...provisional,
+          ...resolvedOffer,
           memberNpcIds: crew,
           phase,
           preparationProgress,
           status: phase === 'ANNOUNCED' || phase === 'RECRUITING' || phase === 'PREPARING' || phase === 'WEATHER_HOLD' ? 'OPEN' : 'CLOSED',
-          briefing: briefingFor(leader, route, phase, delayDays, cancellationReason),
+          briefing: briefingFor(leader, route, phase, delayDays, resolvedOffer.cancellationReason ?? null),
         });
       });
     });

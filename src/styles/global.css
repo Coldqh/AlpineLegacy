@@ -4501,3 +4501,78 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
 .school-wait-action strong { font-size: 13px; }
 .school-wait-action span { color: var(--muted); font-size: 10px; }
 .school-wait-action b { font-size: 20px; }
+
+/* 0.19.0 unified mountain renderer and compact expedition camera */
+.mountain-model--expedition {
+  min-height: 520px;
+  border: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(125, 151, 141, .26), transparent 25%),
+    linear-gradient(180deg, #283632 0, #1a2421 54%, #111715 100%);
+}
+.mountain-model--expedition .mountain-model__backdrop { fill: transparent; }
+.mountain-model__metrics {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid rgba(205, 222, 213, .16);
+  border-radius: 10px;
+  background: rgba(7, 12, 10, .78);
+  backdrop-filter: blur(8px);
+}
+.mountain-model__metrics span { min-width: 0; padding: 8px 10px; border-right: 1px solid rgba(205, 222, 213, .12); }
+.mountain-model__metrics span:last-child { border-right: 0; }
+.mountain-model__metrics small { display: block; color: var(--muted, #9ba6a0); font-size: 8px; letter-spacing: .12em; }
+.mountain-model__metrics b { display: block; margin-top: 3px; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.mountain-model__controls {
+  display: flex;
+  gap: 7px;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(205, 222, 213, .12);
+  background: rgba(12, 19, 17, .9);
+}
+.mountain-model__controls button {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid rgba(205, 222, 213, .2);
+  border-radius: 8px;
+  background: rgba(31, 42, 38, .9);
+  color: inherit;
+  font-size: 10px;
+  font-weight: 700;
+}
+.mountain-model__marker circle { fill: #101715; stroke: #d9ded9; stroke-width: 1.8; }
+.mountain-model__marker text {
+  fill: #f1eee5;
+  stroke: #101715;
+  stroke-width: 3;
+  paint-order: stroke;
+  font-size: 12px;
+  font-weight: 700;
+}
+.mountain-model__marker.is-active circle { fill: #df5f3d; stroke: #fff; }
+.mountain-model__marker.is-entry circle { fill: #56a78d; stroke: #fff; stroke-width: 2; }
+.mountain-model__marker.is-summit path { fill: #df5f3d; stroke: #fff; stroke-width: 2; }
+.mg-viewer-card > .mountain-model { width: 100%; }
+
+@media (max-width: 720px) {
+  .mountain-model--hero { min-height: 250px; }
+  .mountain-model--detail { min-height: 330px; }
+  .mountain-model--expedition { min-height: 370px; }
+  .mountain-model__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); bottom: 8px; }
+  .mountain-model__metrics span:nth-child(2) { border-right: 0; }
+  .mountain-model__metrics span:nth-child(-n+2) { border-bottom: 1px solid rgba(205, 222, 213, .12); }
+  .mountain-model__controls { overflow-x: auto; padding: 8px; }
+  .mountain-model__controls button { flex: 0 0 auto; min-height: 32px; }
+  .mountain-model__marker text { font-size: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mountain-model svg { touch-action: pan-y; }
+  .mountain-model__hint { display: none; }
+}

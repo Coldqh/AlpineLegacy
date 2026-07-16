@@ -1,4 +1,4 @@
-import { MountainArt } from '../components/MountainArt';
+import { MountainModel } from '../components/MountainModel';
 import { ScreenShell } from '../components/ScreenShell';
 import { SkillBars } from '../components/SkillBars';
 import { TRAINING_ACTIONS, careerReadiness, formatSeasonDate, getQualificationTarget } from '../core/career';
@@ -37,7 +37,7 @@ export function CareerHubScreen({ world, career, onBack, onTrain, onStartClimb, 
         </header>
 
         <div className="career-poster">
-          <MountainArt points={mountain.profilePoints} variant="hero" label={mountain.name} elevation={mountain.elevation} />
+          <MountainModel mountain={mountain} seed={world.config.seed} variant="hero" label={mountain.name} />
           <div className="career-poster__overlay">
             <span>OBJECTIVE 001</span>
             <strong>{qualificationPassed ? 'КВАЛИФИКАЦИЯ ПРОЙДЕНА' : 'ДОПУСК К САМОСТОЯТЕЛЬНЫМ МАРШРУТАМ'}</strong>

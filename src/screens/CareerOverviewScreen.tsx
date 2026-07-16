@@ -1,4 +1,4 @@
-import { MountainArt } from '../components/MountainArt';
+import { MountainModel } from '../components/MountainModel';
 import { SkillBars } from '../components/SkillBars';
 import { TRAINING_ACTIONS, SKILL_LABELS, careerReadiness, expeditionReadiness, getSelectedRoute } from '../core/career';
 import { normalizeCareerProgression } from '../core/progression';
@@ -55,7 +55,7 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
       </section>
 
       <div className="overview-poster overview-poster--clear">
-        <MountainArt points={mountain.profilePoints} variant="hero" label={target.mountainName} elevation={target.summitElevation} />
+        <MountainModel mountain={mountain} seed={world.config.seed} variant="hero" label={target.mountainName} />
         <div className="overview-poster__plate">
           <small>{currentRegion.country ?? 'РЕГИОН'} · {currentRegion.name}</small>
           <strong>{target.mountainName}</strong>

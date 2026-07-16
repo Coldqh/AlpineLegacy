@@ -102,4 +102,17 @@ describe('rotating school expeditions and permanent teams', () => {
     expect(schoolExpeditionBoard(world, closed).some(item => item.id === offer.id)).toBe(false);
   });
 
+  it('does not place the same ordinary NPC into overlapping school programs', () => {
+    const { world, career } = organizationCareer();
+    const board = schoolExpeditionBoard(world, career, true)
+      .filter(item => !['CANCELLED', 'RECOVERING'].includes(schoolExpeditionPhase(item, career.seasonDay)));
+    const assignments = new Map<string, string[]>();
+    for (const offer of board) {
+      for (const memberId of offer.memberNpcIds) {
+        assignments.set(memberId, [...(assignments.get(memberId) ?? []), offer.id]);
+      }
+    }
+    expect([...assignments.values()].every(ids => ids.length === 1)).toBe(true);
+  });
+
 });

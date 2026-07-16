@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { CareerState, QualificationClimb } from '../core/types';
+import { MountainModel, type MountainModelMarker } from '../components/MountainModel';
 import { ensureIntegratedExpedition, persistIntegratedExpedition } from '../core/career';
 import { buildMountainMemory, type MountainMemorySnapshot } from '../core/mountainMemory';
 import { applyMountainDynamicsToMap, applyMountainDynamicsToWeather, buildMountainDynamics, type MountainDynamics } from '../core/mountainDynamics';
@@ -21,7 +22,6 @@ import {
 import {
   buildMountainRouteOptions,
   buildMountainStages,
-  cellAt,
   findLocalGuidedRoute,
   generateLocalStageMap,
   generateMountainGrid,
@@ -31,7 +31,6 @@ import {
   type GridPoint,
   type LocalRouteProfile,
   type LocalStageMap,
-  type MountainCell,
   type MountainRouteOption,
   type MountainTerrain,
   type StageDefinition,
@@ -39,7 +38,7 @@ import {
 
 type ExpeditionTab = 'CLIMB' | 'MOUNTAIN' | 'EXPEDITION' | 'JOURNAL';
 
-type Props = {
+export type TopoExpeditionProps = {
   career: CareerState;
   onPersist: (career: CareerState) => void;
   onExit: (terminal: boolean) => void;
@@ -96,60 +95,6 @@ function inheritedInfrastructure(memory: MountainMemorySnapshot, map: LocalStage
   return { revealed, camps, legacyRopes };
 }
 
-function projectMountainPoint(
-  xCell: number,
-  yCell: number,
-  elevation: number,
-  grid: ReturnType<typeof generateMountainGrid>,
-  yaw: number,
-  pitch: number,
-  zoom: number,
-) {
-  const cx = Math.max(1, (grid.width - 1) / 2);
-  const cy = Math.max(1, (grid.height - 1) / 2);
-  const x = (xCell - cx) / cx;
-  const z = (yCell - cy) / cy;
-  const normalizedHeight = (elevation - grid.baseElevation) / Math.max(1, grid.relief);
-  const footprintScale = Math.max(0.72, Math.min(1.34, grid.physicalDiameterKm / 9));
-  const verticalScale = Math.max(0.62, Math.min(1.58, grid.relief / 2950));
-  const fit = Math.max(0.72, Math.min(1, 1 / Math.max(0.96, footprintScale * 0.92, verticalScale * 0.74)));
-  const yawRad = yaw * Math.PI / 180;
-  const pitchRad = pitch * Math.PI / 180;
-  const rx = x * Math.cos(yawRad) - z * Math.sin(yawRad);
-  const rz = x * Math.sin(yawRad) + z * Math.cos(yawRad);
-  const ry = normalizedHeight * 1.42 * verticalScale;
-  const heightVisibility = Math.max(.32, Math.cos(pitchRad));
-  const py = ry * heightVisibility - rz * Math.sin(pitchRad);
-  const depth = rz * Math.cos(pitchRad) + ry * Math.sin(pitchRad);
-  return {
-    x: 500 + rx * 316 * footprintScale * fit * zoom,
-    y: 410 - py * 252 * fit * zoom,
-    depth,
-  };
-}
-
-function projectCell(cell: MountainCell, grid: ReturnType<typeof generateMountainGrid>, yaw: number, pitch: number, zoom: number) {
-  return projectMountainPoint(cell.x, cell.y, cell.elevation, grid, yaw, pitch, zoom);
-}
-
-
-function terrainBase(terrain: MountainTerrain) {
-  if (terrain === 'VALLEY') return [76, 91, 76];
-  if (terrain === 'SCREE') return [119, 109, 91];
-  if (terrain === 'GLACIER') return [178, 210, 218];
-  if (terrain === 'SNOW') return [225, 232, 229];
-  if (terrain === 'ROCK') return [76, 73, 68];
-  if (terrain === 'RIDGE') return [196, 205, 202];
-  return [242, 240, 232];
-}
-
-function terrainFill(cell: MountainCell) {
-  const [r, g, b] = terrainBase(cell.terrain);
-  const light = Math.cos((cell.aspect - 220) * Math.PI / 180) * 0.14 - cell.slope / 520;
-  const factor = Math.max(0.62, Math.min(1.18, 1 + light));
-  return `rgb(${Math.round(r * factor)} ${Math.round(g * factor)} ${Math.round(b * factor)})`;
-}
-
 function routeStroke(route?: MountainRouteOption) {
   if (!route) return '#e26a48';
   if (route.profile === 'CLASSIC') return '#66aa8e';
@@ -175,120 +120,41 @@ function MountainViewer({
   side: EntrySide;
   currentStage: number;
 }) {
-  const [yaw, setYaw] = useState(-35);
-  const [pitch, setPitch] = useState(38);
-  const [zoom, setZoom] = useState(grid.relief >= 6000 ? 0.82 : grid.relief >= 4300 ? 0.9 : 1);
-  const dragRef = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
-  const stride = grid.width <= 35 ? 1 : 2;
-  const mesh = useMemo(() => {
-    const polygons: Array<{ key: string; points: string; fill: string; depth: number; stroke?: string }> = [];
-    const addPolygon = (key: string, projected: Array<{ x: number; y: number; depth: number }>, fill: string, stroke?: string) => {
-      polygons.push({
-        key,
-        points: projected.map(point => `${point.x},${point.y}`).join(' '),
-        fill,
-        stroke,
-        depth: projected.reduce((sum, point) => sum + point.depth, 0) / projected.length,
-      });
-    };
-    for (let y = 0; y < grid.height - 1; y += stride) {
-      const y2 = Math.min(grid.height - 1, y + stride);
-      for (let x = 0; x < grid.width - 1; x += stride) {
-        const x2 = Math.min(grid.width - 1, x + stride);
-        const cells = [cellAt(grid, { x, y }), cellAt(grid, { x: x2, y }), cellAt(grid, { x: x2, y: y2 }), cellAt(grid, { x, y: y2 })];
-        if (cells.some(cell => !cell)) continue;
-        addPolygon(`surface:${x}:${y}`, cells.map(cell => projectCell(cell!, grid, yaw, pitch, zoom)), terrainFill(cells[0]!), 'rgba(16,22,21,.2)');
-      }
-    }
-
-    const baseElevation = grid.baseElevation - Math.max(120, grid.relief * .11);
-    const skirt = (key: string, a: MountainCell, b: MountainCell, fill: string) => addPolygon(key, [
-      projectCell(a, grid, yaw, pitch, zoom),
-      projectCell(b, grid, yaw, pitch, zoom),
-      projectMountainPoint(b.x, b.y, baseElevation, grid, yaw, pitch, zoom),
-      projectMountainPoint(a.x, a.y, baseElevation, grid, yaw, pitch, zoom),
-    ], fill, 'rgba(9,14,13,.34)');
-
-    for (let x = 0; x < grid.width - 1; x += stride) {
-      const x2 = Math.min(grid.width - 1, x + stride);
-      skirt(`skirt:n:${x}`, cellAt(grid, { x, y: 0 })!, cellAt(grid, { x: x2, y: 0 })!, '#38433e');
-      skirt(`skirt:s:${x}`, cellAt(grid, { x: x2, y: grid.height - 1 })!, cellAt(grid, { x, y: grid.height - 1 })!, '#222b28');
-    }
-    for (let y = 0; y < grid.height - 1; y += stride) {
-      const y2 = Math.min(grid.height - 1, y + stride);
-      skirt(`skirt:w:${y}`, cellAt(grid, { x: 0, y: y2 })!, cellAt(grid, { x: 0, y })!, '#303a36');
-      skirt(`skirt:e:${y}`, cellAt(grid, { x: grid.width - 1, y })!, cellAt(grid, { x: grid.width - 1, y: y2 })!, '#1f2825');
-    }
-    return polygons.sort((a, b) => a.depth - b.depth);
-  }, [grid, yaw, pitch, zoom, stride]);
-
-  const summitCell = cellAt(grid, grid.summit)!;
-  const summitPoint = projectCell(summitCell, grid, yaw, pitch, zoom);
-  const entryCell = cellAt(grid, grid.entries[side])!;
-  const entryPoint = projectCell(entryCell, grid, yaw, pitch, zoom);
-  const stagePoints = stages.map(stage => ({ stage, projected: projectCell(cellAt(grid, stage.globalPoint)!, grid, yaw, pitch, zoom) }));
-  const routePath = route.map(point => {
-    const projected = projectCell(cellAt(grid, point)!, grid, yaw, pitch, zoom);
-    return `${projected.x},${projected.y}`;
-  }).join(' ');
+  const markers: MountainModelMarker[] = [
+    { id: 'entry', point: grid.entries[side], label: `СТАРТ · ${SIDE_COPY[side]}`, kind: 'ENTRY' },
+    ...stages.map(stage => ({
+      id: stage.id,
+      point: stage.globalPoint,
+      label: stage.index === currentStage ? `${stage.index + 1} · ${stage.title}` : undefined,
+      kind: 'STAGE' as const,
+      active: stage.index === currentStage,
+    })),
+    { id: 'summit', point: grid.summit, label: `ПИК · ${grid.summitElevation} м`, kind: 'SUMMIT' },
+  ];
 
   return (
     <section className="mg-viewer-card">
       <div className="mg-panel-head">
         <div><span>3D МАССИВ</span><strong>{routeName}</strong></div>
-        <small>вращение · наклон · масштаб</small>
+        <small>единая модель · вращение · наклон · масштаб</small>
       </div>
-      <div
-        className="mg-3d-canvas"
-        onPointerDown={event => {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          dragRef.current = { x: event.clientX, y: event.clientY, yaw, pitch };
-        }}
-        onPointerMove={event => {
-          if (!dragRef.current) return;
-          const dx = event.clientX - dragRef.current.x;
-          const dy = event.clientY - dragRef.current.y;
-          setYaw(dragRef.current.yaw + dx * 0.35);
-          setPitch(Math.max(8, Math.min(72, dragRef.current.pitch - dy * 0.28)));
-        }}
-        onPointerUp={() => { dragRef.current = null; }}
-        onPointerCancel={() => { dragRef.current = null; }}
-        onWheel={event => {
-          event.preventDefault();
-          setZoom(value => Math.max(0.6, Math.min(1.48, value - event.deltaY * 0.001)));
-        }}
-      >
-        <svg viewBox="0 0 1000 700" role="img" aria-label="Интерактивная трёхмерная модель полной горы">
-          <defs>
-            <linearGradient id="mg-route-glow" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#fff" stopOpacity=".8"/><stop offset="1" stopColor="#fff" stopOpacity="0"/></linearGradient>
-          </defs>
-          <g>{mesh.map(poly => <polygon key={poly.key} points={poly.points} fill={poly.fill} stroke={poly.stroke ?? "rgba(16,22,21,.2)"} strokeWidth=".58" />)}</g>
-          {route.length > 1 && <polyline points={routePath} fill="none" stroke="rgba(8,12,11,.62)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />}
-          {route.length > 1 && <polyline points={routePath} fill="none" stroke={routeStroke(selectedRoute)} strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" />}
-          {stagePoints.map(({ stage, projected }) => (
-            <g key={stage.id} transform={`translate(${projected.x} ${projected.y})`} className={stage.index === currentStage ? 'mg-3d-stage is-active' : 'mg-3d-stage'}>
-              <circle r={stage.index === currentStage ? 8 : 4.5} />
-              {stage.index === currentStage && <text x="12" y="4">{stage.index + 1} · {stage.title}</text>}
-            </g>
-          ))}
-          <g transform={`translate(${entryPoint.x} ${entryPoint.y})`} className="mg-entry-marker"><circle r="8"/><text x="12" y="4">СТАРТ · {SIDE_COPY[side]}</text></g>
-          <g transform={`translate(${summitPoint.x} ${summitPoint.y})`} className="mg-summit-marker"><path d="M0 -18 L14 10 L-14 10 Z"/><text x="18" y="4">ПИК · {grid.summitElevation} м</text></g>
-        </svg>
-        <div className="mg-mountain-scale">
-          <div><span>ПЕРЕПАД</span><strong>{grid.relief} м</strong></div>
-          <div><span>МАССИВ</span><strong>{grid.physicalDiameterKm} км</strong></div>
-          <div><span>ДЕТАЛИЗАЦИЯ</span><strong>{grid.width} × {grid.height}</strong></div>
-          <div><span>ЭТАПЫ</span><strong>{stages.length}</strong></div>
-        </div>
-        <div className="mg-camera-readout"><span>{Math.round(yaw)}°</span><span>{Math.round(pitch)}°</span><span>{Math.round(zoom * 100)}%</span></div>
-      </div>
-      <div className="mg-camera-buttons">
-        <button onClick={() => setYaw(value => value - 20)}>←</button>
-        <button onClick={() => setYaw(value => value + 20)}>→</button>
-        <button onClick={() => setPitch(72)}>Сверху</button>
-        <button onClick={() => setPitch(18)}>Сбоку</button>
-        <button onClick={() => { setYaw(-35); setPitch(38); setZoom(grid.relief >= 6000 ? 0.82 : grid.relief >= 4300 ? 0.9 : 1); }}>Сброс</button>
-      </div>
+      <MountainModel
+        grid={grid}
+        route={route}
+        routeColor={routeStroke(selectedRoute)}
+        markers={markers}
+        variant="expedition"
+        label="Интерактивная трёхмерная модель полной горы"
+        initialYaw={-35}
+        initialPitch={38}
+        showControls
+        readout={[
+          { label: 'ПЕРЕПАД', value: `${grid.relief} м` },
+          { label: 'МАССИВ', value: `${grid.physicalDiameterKm} км` },
+          { label: 'СЕТКА', value: `${grid.width} × ${grid.height}` },
+          { label: 'ЭТАПЫ', value: String(stages.length) },
+        ]}
+      />
     </section>
   );
 }
@@ -410,7 +276,7 @@ function ExpeditionTutorial({ step, onStep }: { step: number; onStep: (step: num
   );
 }
 
-export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegenerate = false }: Props) {
+export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegenerate = false }: TopoExpeditionProps) {
   const integratedCareer = useMemo(() => ensureIntegratedExpedition(career), [career]);
   const climb = integratedCareer.activeClimb;
   const topo = climb?.topo;
@@ -422,7 +288,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.18.1</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.19.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -430,7 +296,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   return <ActiveTopoExpedition integratedCareer={integratedCareer} climb={climb} topo={topo} onPersist={onPersist} onExit={onExit} allowRegenerate={allowRegenerate} />;
 }
 
-type ActiveTopoProps = Omit<Props, 'career'> & {
+type ActiveTopoProps = Omit<TopoExpeditionProps, 'career'> & {
   integratedCareer: CareerState;
   climb: QualificationClimb;
   topo: IntegratedExpeditionState;
@@ -608,7 +474,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     <main className="mg-app mg-expedition-shell">
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.18.1</span>
+          <span>ALPINE LEGACY / 0.19.0</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()}</small>
         </div>

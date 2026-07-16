@@ -2603,8 +2603,9 @@ export function closeClimb(career: CareerState): CareerState {
     selectedOfferId: null,
     acceptedOffer: null,
     resolvedSchoolOfferIds,
-    seasonPlan: null as unknown as CareerState['seasonPlan'],
+    seasonPlan: finalized.seasonPlan,
   };
   const advanced = advanceLivingWorld(closed, 3);
-  return timeline.year > finalized.year ? rollCareerSeason(finalized, advanced) : syncCareerProgression(advanced);
+  const settled = timeline.year > finalized.year ? rollCareerSeason(finalized, advanced) : syncCareerProgression(advanced);
+  return { ...settled, seasonPlan: normalizeSeasonCampaignPlan(settled) };
 }

@@ -47,7 +47,7 @@ import { JournalScreen } from './JournalScreen';
 import { PeopleScreen } from './PeopleScreen';
 import { RoutePlanningScreen } from './RoutePlanningScreen';
 import { TeamScreen } from './TeamScreen';
-import { TopoExpeditionPrototype } from '../topography/TopoExpeditionPrototype';
+import { TopoExpeditionLoader } from '../components/TopoExpeditionLoader';
 
 type Props = {
   world: WorldState;
@@ -90,7 +90,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   const waitAndLaunch = () => { const next = waitForSchoolDeparture(world, career); onPersist(next); if (next.activeClimb) onTab('CLIMB'); };
   useScrollReset(tab);
   if (tab === 'CLIMB' && career.activeClimb) {
-    return <TopoExpeditionPrototype
+    return <TopoExpeditionLoader
       career={career}
       onPersist={onPersist}
       allowRegenerate={false}
@@ -172,7 +172,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
       );
     }
     if (tab === 'CLIMB' && career.activeClimb) {
-      return <TopoExpeditionPrototype
+      return <TopoExpeditionLoader
       career={career}
       onPersist={onPersist}
       allowRegenerate={false}
