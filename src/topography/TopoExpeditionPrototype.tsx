@@ -5,6 +5,7 @@ import { buildMountainMemory, type MountainMemorySnapshot } from '../core/mounta
 import { applyMountainDynamicsToMap, applyMountainDynamicsToWeather, buildMountainDynamics, type MountainDynamics } from '../core/mountainDynamics';
 import {
   EMPTY_INTEGRATED_INFRASTRUCTURE,
+  integratedExpeditionDebrief,
   integratedSpecialist,
   integratedStepPreview,
   integratedTeamMorale,
@@ -421,7 +422,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.16.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.17.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -502,7 +503,25 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const selectedRisk = integratedStepPreview(topo, localMap, currentPoint, selectedCell, weather, selectedProtected);
   const selectedDistance = Math.max(Math.abs(selectedCell.x - currentPoint.x), Math.abs(selectedCell.y - currentPoint.y));
   const canSecureSelected = selectedDistance <= 1 && (selectedCell.ropeRequired || selectedCell.ropeRecommended || selectedCell.hazard !== 'NONE');
-  const context: IntegratedExpeditionContext = { stageId: stage.id, stageTitle: stage.title, stageCount: stages.length, localMap, weather };
+  const context: IntegratedExpeditionContext = {
+    stageId: stage.id,
+    stageTitle: stage.title,
+    stageCount: stages.length,
+    localMap,
+    weather,
+    character: {
+      mountainCharacterId: authoredRoute?.mountainCharacterId ?? 'ENDURANCE',
+      mountainFormId: authoredRoute?.mountainFormId ?? null,
+      routeArchetype: authoredRoute?.routeArchetype ?? null,
+      routeName,
+      seasonTitle: mountainDynamics.seasonTitle,
+      hazardBias: mountainDynamics.hazardBias,
+      traceDensity: mountainDynamics.traceDensity,
+      historyAttempts: mountainDynamics.routeHistory.attempts,
+      historyTragedies: mountainDynamics.routeHistory.tragedies,
+      descentProblem: authoredRoute?.descentSummary ?? null,
+    },
+  };
 
   useEffect(() => {
     let nextTopo = topo;
@@ -583,12 +602,13 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const specialistNames = [...new Set([navigator.name, technician.name, medic.name])];
   const specialistSummary = specialistNames.length === 1 ? `${specialistNames[0]} · все роли` : specialistNames.join(' · ');
   const outcomeLabel = topo.phase === 'COMPLETE' ? 'Вершина и возвращение' : topo.phase === 'RETREATED' ? 'Экспедиция завершена отходом' : 'Экспедиция провалена';
+  const debrief = integratedExpeditionDebrief(topo);
 
   return (
     <main className="mg-app mg-expedition-shell">
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.16.0</span>
+          <span>ALPINE LEGACY / 0.17.0</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()}</small>
         </div>
@@ -725,6 +745,11 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                   <div><dt>Спасение</dt><dd>{topo.rescueCost > 0 ? `${topo.rescueCost} кр. · ${formatMinutes(topo.rescueDurationMinutes)}` : 'не потребовалось'}</dd></div>
                   <div><dt>Снаряжение</dt><dd>верёвка {Math.round(topo.gear.ropeCondition)}% · железо {Math.round(topo.gear.hardwareCondition)}%</dd></div>
                 </dl>
+                <div className="mg-expedition-debrief">
+                  <article><span>ЧТО СРАБОТАЛО</span>{debrief.strengths.length ? <ul>{debrief.strengths.map(item => <li key={item}>{item}</li>)}</ul> : <p>Сильных решений в отчёте не отмечено.</p>}</article>
+                  <article><span>ГДЕ БЫЛ РИСК</span>{debrief.risks.length ? <ul>{debrief.risks.map(item => <li key={item}>{item}</li>)}</ul> : <p>Крупных причин аварии не зафиксировано.</p>}</article>
+                  <article><span>КТО ПОМОГ</span><ul>{debrief.contributors.map(item => <li key={item}>{item}</li>)}</ul></article>
+                </div>
                 <button onClick={() => onExit(true)}>Закрыть экспедицию →</button>
               </section>
             ) : !topo.started ? (

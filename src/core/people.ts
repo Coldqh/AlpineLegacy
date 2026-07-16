@@ -250,6 +250,14 @@ export function buildExpeditionReport(career: CareerState, climb: QualificationC
     routeChoices: climb.routeChoices,
     fixedRopes: climb.fixedRopeSegmentIds.length,
     cachesRecovered: climb.caches.filter(item => item.recovered).length,
+    incidentSummary: climb.topo?.incidents.slice(-4).reverse().map(item => `${item.title}: ${item.detail}`) ?? [],
+    expeditionStrengths: [
+      climb.topo?.summitReached && climb.topo.phase === 'COMPLETE' ? 'вершина и полный спуск' : null,
+      climb.topo && Object.values(climb.topo.infrastructure).some(item => item.revealed.length >= 20) ? 'сильная разведка' : null,
+      climb.topo && Object.values(climb.topo.infrastructure).some(item => item.ropes.length > 0) ? 'защищённая техническая линия' : null,
+      !climb.casualties.length ? 'вся группа вернулась' : null,
+      climb.retreating && !climb.topo?.forcedRetreat ? 'своевременный отход' : null,
+    ].filter(Boolean) as string[],
     playtest: {
       seed: career.rootSeed,
       difficulty: career.difficulty,

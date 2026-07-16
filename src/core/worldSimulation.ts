@@ -757,7 +757,11 @@ export function registerHeroExpedition(career: CareerState, climb: Qualification
     seasonDay: career.seasonDay,
     type: firstAscent || firstRouteAscent ? 'RECORD' : successful ? 'SUMMIT' : report.casualties.length ? 'DEATH' : 'RETREAT',
     headline: firstAscent ? `${career.hero.name} открыл историю ${climb.mountainName}` : firstRouteAscent ? `${career.hero.name} первым прошёл «${climb.routeName}»` : successful ? `${career.hero.name} вернулся с вершины ${climb.mountainName}` : `${career.hero.name} завершил попытку на ${climb.mountainName}`,
-    summary: firstAscent ? `Первое подтверждённое восхождение прошло по маршруту «${climb.routeName}».` : firstRouteAscent ? `Первое полное прохождение этой линии теперь записано за ${career.hero.name}.` : `${report.clubReaction} ${report.pressReaction}`,
+    summary: firstAscent
+      ? `Первое подтверждённое восхождение прошло по маршруту «${climb.routeName}». ${report.incidentSummary?.[0] ?? ''}`.trim()
+      : firstRouteAscent
+        ? `Первое полное прохождение этой линии теперь записано за ${career.hero.name}. ${report.incidentSummary?.[0] ?? ''}`.trim()
+        : `${report.clubReaction} ${report.incidentSummary?.[0] ? `Ключевой эпизод: ${report.incidentSummary[0]}` : report.pressReaction}`,
     athleteIds: [career.hero.id, ...report.teamMemberIds],
     clubIds: [career.club.id],
     mountainId: climb.mountainId,

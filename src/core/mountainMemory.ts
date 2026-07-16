@@ -47,11 +47,12 @@ function outcomeLabel(expedition: WorldExpedition) {
 
 function expeditionStory(expedition: WorldExpedition, clubName: string | undefined): MountainMemoryStory {
   const base = `${formatYearDay(expedition.year, expedition.seasonDay)} · ${clubName ?? 'неизвестная школа'} · ${expedition.routeName}`;
+  const reportNote = expedition.summary ? ` ${expedition.summary}` : '';
   if (expedition.outcome === 'SUMMIT') {
     return {
       id: expedition.id,
       title: `${expedition.mountainName}: линия пройдена`,
-      detail: `${base}. Группа дошла до вершины за ${expedition.durationDays} дн. и вернулась без потерь.`,
+      detail: `${base}. Группа дошла до вершины за ${expedition.durationDays} дн. и вернулась без потерь.${reportNote}`,
       tag: outcomeLabel(expedition),
     };
   }
@@ -59,14 +60,14 @@ function expeditionStory(expedition: WorldExpedition, clubName: string | undefin
     return {
       id: expedition.id,
       title: `${expedition.mountainName}: аварийная история`,
-      detail: `${base}. На маршруте были потери — ${expedition.casualties.length}. После таких случаев на линии остаются тревожные ориентиры и закрытые решения.`,
+      detail: `${base}. На маршруте были потери — ${expedition.casualties.length}. После таких случаев на линии остаются тревожные ориентиры и закрытые решения.${reportNote}`,
       tag: outcomeLabel(expedition),
     };
   }
   return {
     id: expedition.id,
     title: `${expedition.mountainName}: попытка без вершины`,
-    detail: `${base}. Команда дошла до ${expedition.highestElevation} м и ушла вниз. Такие отчёты часто раскрывают слабые места маршрута.`,
+    detail: `${base}. Команда дошла до ${expedition.highestElevation} м и ушла вниз. Такие отчёты часто раскрывают слабые места маршрута.${reportNote}`,
     tag: outcomeLabel(expedition),
   };
 }

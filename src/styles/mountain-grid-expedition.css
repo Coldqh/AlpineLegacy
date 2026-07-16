@@ -1146,3 +1146,48 @@ button:disabled { cursor: not-allowed; opacity: .42; }
   opacity: .76;
 }
 .mg-map-legend .legend-legacy-rope { color: #e8d7ae; background: #6d5b39; }
+
+/* 0.17.0 — expedition character and debrief */
+.mg-expedition-debrief {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.mg-expedition-debrief article {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #3b4742;
+  border-radius: 9px;
+  background: rgba(8, 13, 12, .34);
+}
+.mg-expedition-debrief article > span {
+  display: block;
+  margin-bottom: 7px;
+  color: #90a099;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .13em;
+}
+.mg-expedition-debrief ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 15px;
+}
+.mg-expedition-debrief li,
+.mg-expedition-debrief p {
+  margin: 0;
+  color: #c1cac5;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.mg-expedition-summary > button {
+  grid-column: 1 / -1;
+  justify-self: end;
+  min-width: 220px;
+}
+@media (max-width: 760px) {
+  .mg-expedition-debrief { grid-template-columns: 1fr; }
+  .mg-expedition-summary > button { width: 100%; min-width: 0; }
+}

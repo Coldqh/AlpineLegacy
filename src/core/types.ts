@@ -1023,6 +1023,8 @@ export interface ExpeditionReport {
   recoveryDays?: number;
   maintenanceCost?: number;
   skillPractice?: Partial<Record<SkillId, number>>;
+  incidentSummary?: string[];
+  expeditionStrengths?: string[];
 }
 
 export type ClubRiskProfile = 'CAUTIOUS' | 'BALANCED' | 'AGGRESSIVE';

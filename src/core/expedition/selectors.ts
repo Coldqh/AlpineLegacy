@@ -1,5 +1,5 @@
 import { weatherAtGrid, type GridWeather } from '../../topography/mountainGridEngine';
-import type { IntegratedExpeditionState, IntegratedParticipantState, IntegratedSkillId } from './state';
+import type { IntegratedExpeditionState, IntegratedIncidentRecord, IntegratedParticipantState, IntegratedSkillId } from './state';
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 
@@ -73,4 +73,70 @@ export function integratedTeamLoadRatio(state: IntegratedExpeditionState) {
 export function integratedCanContinue(state: IntegratedExpeditionState) {
   return !['COMPLETE', 'RETREATED', 'FAILED'].includes(state.phase)
     && mobileIntegratedParticipants(state).length > 0;
+}
+
+export interface IntegratedExpeditionDebrief {
+  strengths: string[];
+  risks: string[];
+  contributors: string[];
+}
+
+export function integratedExpeditionDebrief(state: IntegratedExpeditionState): IntegratedExpeditionDebrief {
+  const revealed = Object.values(state.infrastructure).reduce((sum, item) => sum + item.revealed.length, 0);
+  const ropes = Object.values(state.infrastructure).reduce((sum, item) => sum + item.ropes.length, 0);
+  const strengths: string[] = [];
+  const risks: string[] = [];
+  const contributors: string[] = [];
+
+  if (state.summitReached && state.phase === 'COMPLETE') strengths.push('Группа достигла вершины и физически завершила спуск.');
+  else if (state.phase === 'RETREATED' && !state.forcedRetreat) strengths.push('Отход был принят до полного разрушения состояния группы.');
+  if (revealed >= 20) strengths.push(`Разведка раскрыла ${revealed} клеток и снизила количество слепых решений.`);
+  if (ropes > 0) strengths.push(`Закреплённая линия защитила ${ropes} технических участков и осталась на спуск.`);
+  if (state.nightsSlept > 0) strengths.push(`Группа провела ${state.nightsSlept} полноценн${state.nightsSlept === 1 ? 'ую ночь' : 'ых ночи'} на маршруте.`);
+  if (!state.casualties.length) strengths.push('Все участники вернулись живыми.');
+
+  const grouped = new Map<string, number>();
+  for (const incident of state.incidents) grouped.set(incident.type, (grouped.get(incident.type) ?? 0) + 1);
+  const riskLabels: Partial<Record<IntegratedIncidentRecord['type'], string>> = {
+    AVALANCHE: 'лавинные участки',
+    ROCKFALL: 'камнепад',
+    CREVASSE: 'трещины и снежные мосты',
+    DESCENT: 'ошибки и задержки на спуске',
+    FALL: 'незащищённые технические участки',
+    ALTITUDE: 'слишком быстрый набор высоты сна',
+    FROSTBITE: 'долгая работа на морозе',
+    EXHAUSTION: 'истощение и недосып',
+    NAVIGATION: 'потери линии',
+    WEATHER: 'ветер и плохая видимость',
+    GEAR_LOSS: 'износ и потеря снаряжения',
+    CONFLICT: 'низкое доверие внутри группы',
+  };
+  for (const [type, count] of [...grouped.entries()].sort((a, b) => b[1] - a[1])) {
+    const label = riskLabels[type as IntegratedIncidentRecord['type']];
+    if (label) risks.push(`${label}: ${count} событ${count === 1 ? 'ие' : 'ия'}.`);
+  }
+  if (state.minutesSinceSleep > 900) risks.push(`К концу вылазки группа не спала ${Math.round(state.minutesSinceSleep / 60)} ч.`);
+  if (state.supplies.waterUnits < 1) risks.push('Запас воды подошёл к критическому уровню.');
+  if (state.forcedRetreat) risks.push('Отход стал вынужденным после потери рабочего состояния группы.');
+
+  if (revealed > 0) {
+    const navigator = integratedSpecialist(state, 'NAVIGATION');
+    contributors.push(`${navigator.name}: навигация и разведка.`);
+  }
+  if (ropes > 0) {
+    const technical = integratedSpecialist(state, state.incidents.some(item => item.type === 'CREVASSE') ? 'ICE' : 'ROCK');
+    contributors.push(`${technical.name}: страховка и техническая линия.`);
+  }
+  if (state.injuries.length || state.rescuedMemberIds.length) {
+    const medic = integratedSpecialist(state, 'MEDICINE');
+    contributors.push(`${medic.name}: контроль травм и состояния людей.`);
+  }
+  const leader = integratedLeader(state);
+  contributors.push(`${leader.name}: удержание общего темпа и решений группы.`);
+
+  return {
+    strengths: [...new Set(strengths)].slice(0, 4),
+    risks: [...new Set(risks)].slice(0, 4),
+    contributors: [...new Set(contributors)].slice(0, 4),
+  };
 }

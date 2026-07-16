@@ -3,7 +3,7 @@
   "name": "Alpine Legacy",
   "short_name": "Alpine Legacy",
   "description": "Карьерная игра про альпинизм: планирование, команда, техническое восхождение и полноценная офлайн-игра.",
-  "start_url": "./?v=0.16.0",
+  "start_url": "./?v=0.17.0",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

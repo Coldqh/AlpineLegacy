@@ -98,8 +98,8 @@ function withIncident(
   severity: IntegratedIncidentRecord['severity'],
 ) {
   const incident: IntegratedIncidentRecord = {
-    id: `incident-${state.seed}-${state.actionSerial + 1}-${state.incidents.length + 1}`,
-    actionSerial: state.actionSerial + 1,
+    id: `incident-${state.seed}-${state.actionSerial}-${state.incidents.length + 1}`,
+    actionSerial: state.actionSerial,
     stageId: context.stageId,
     type,
     participantId: participant?.id ?? null,
@@ -110,8 +110,9 @@ function withIncident(
   };
   return {
     ...state,
+    lastIncidentActionSerial: state.actionSerial,
     incidents: [...state.incidents, incident],
-    lastEvent: event(state, 'INCIDENT', severity === 'CRITICAL' ? 'DANGER' : 'WARNING', `${title}. ${detail}`),
+    lastEvent: event(state, 'INCIDENT', severity === 'WARNING' ? 'WARNING' : 'DANGER', `${title}. ${detail}`),
     message: `${title}. ${detail}`,
   };
 }
@@ -245,6 +246,52 @@ function hazardBlockReason(state: IntegratedExpeditionState, context: Integrated
   return null;
 }
 
+function incidentCooldownSteps(state: IntegratedExpeditionState) {
+  if (state.difficulty === 'EXPLORER') return 5;
+  if (state.difficulty === 'EXPEDITION') return 3;
+  return 4;
+}
+
+function incidentReady(state: IntegratedExpeditionState, cell: ReturnType<typeof localCellAt>, riskScore: number) {
+  if (!cell) return false;
+  const urgentHazard = cell.hazard !== 'NONE' && riskScore >= 68;
+  return urgentHazard || state.actionSerial - state.lastIncidentActionSerial >= incidentCooldownSteps(state);
+}
+
+function contextualIncidentChance(
+  state: IntegratedExpeditionState,
+  context: IntegratedExpeditionContext,
+  baseChance: number,
+  point: GridPoint,
+  protectedByRope: boolean,
+) {
+  const cell = localCellAt(context.localMap, point)!;
+  const character = context.character;
+  let factor = 1;
+  if (character?.mountainCharacterId === 'TECHNICAL' && ['ROCK', 'GLACIER', 'RIDGE'].includes(cell.terrain)) factor *= 1.18;
+  if (character?.mountainCharacterId === 'ALTITUDE' && cell.elevation >= 4200) factor *= 1.2;
+  if (character?.mountainCharacterId === 'WEATHER' && (context.weather.windKmh >= 38 || context.weather.visibility <= 48)) factor *= 1.22;
+  if (state.phase === 'DESCENT' && character?.mountainCharacterId === 'DESCENT') factor *= 1.28;
+  if (character?.hazardBias === cell.hazard) factor *= 1.18;
+  if (character?.historyTragedies) factor *= Math.min(1.18, 1 + character.historyTragedies * .035);
+  if (character?.traceDensity && cell.hazard === 'NONE') factor *= Math.max(.72, 1 - character.traceDensity / 380);
+  if (protectedByRope) factor *= .62;
+  return Math.min(.32, baseChance * factor);
+}
+
+function strainWholeTeam(state: IntegratedExpeditionState, energyLoss: number, moraleLoss = 0, conditionLoss = 0) {
+  return {
+    ...state,
+    participants: state.participants.map(participant => participant.status === 'DEAD' ? participant : {
+      ...participant,
+      energy: clamp(participant.energy - energyLoss),
+      fatigue: clamp(participant.fatigue + energyLoss * 1.25),
+      morale: clamp(participant.morale - moraleLoss),
+      condition: clamp(participant.condition - conditionLoss),
+    }),
+  };
+}
+
 function resolveIncident(
   state: IntegratedExpeditionState,
   context: IntegratedExpeditionContext,
@@ -252,52 +299,108 @@ function resolveIncident(
   point: GridPoint,
   protectedByRope: boolean,
 ): IntegratedExpeditionState {
-  const rng = createRng(`${state.seed}:integrated:${context.stageId}:${state.actionSerial + 1}:${point.x}:${point.y}`);
+  const rng = createRng(`${state.seed}:integrated:${context.stageId}:${state.actionSerial}:${point.x}:${point.y}`);
   const target = rng.chance(0.42) ? integratedLeader(state) : weakestParticipant(state);
   const medic = integratedSpecialist(state, 'MEDICINE');
   const navigator = integratedSpecialist(state, 'NAVIGATION');
+  const rockLead = integratedSpecialist(state, 'ROCK');
+  const iceLead = integratedSpecialist(state, 'ICE');
   const cell = localCellAt(context.localMap, point)!;
+  const character = context.character;
   const medicalMitigation = Math.min(.34, medic.skills.MEDICINE * .034 + (state.gear.medkitCharges > 0 ? .08 : 0));
-  const weather = context.weather;
-  const severe = riskScore >= 80 || rng.chance(state.difficulty === 'EXPEDITION' ? 0.16 : 0.07);
+  const severe = riskScore >= 82 || rng.chance(state.difficulty === 'EXPEDITION' ? 0.13 : 0.055);
   const severityFactor = 1 - medicalMitigation;
   let next = adjustTeamMindset(state, severe ? -5 : -2, severe ? -3 : -1);
 
-  const altitudeGainSinceSleep = Math.max(0, state.currentElevation - state.lastSleepElevation);
-  const altitudeExposure = state.currentElevation >= 3000 && altitudeGainSinceSleep > 500 && state.acclimatizationDays < 5;
-  if (altitudeExposure && rng.chance(.38)) {
-    const injury = `${target.name}: высотные симптомы`;
-    next = damageParticipant(next, target.id, Math.round((severe ? 13 : 6) * severityFactor), severe ? 12 : 6, injury);
-    return withIncident(next, context, 'ALTITUDE', target, 'Высотные симптомы', `${target.name} плохо переносит набор высоты после сна на ${Math.round(state.lastSleepElevation)} м. ${medic.name} контролирует состояние.`, severe ? 'CRITICAL' : 'DANGER');
-  }
-  if (weather.temperatureC <= -20 && state.minutesSinceSleep > 480 && rng.chance(.24)) {
-    const injury = `${target.name}: обморожение`;
-    next = damageParticipant(next, target.id, Math.round((severe ? 12 : 5) * severityFactor), 5, injury);
-    return withIncident(next, context, 'FROSTBITE', target, 'Холодовая травма', `${target.name} долго работал на морозе. ${medic.name} начинает отогревание и проверку чувствительности.`, severe ? 'CRITICAL' : 'DANGER');
-  }
-
-  const technical = cell.ropeRequired || cell.slope >= 48 || cell.hazard === 'CREVASSE' || cell.hazard === 'CORNICE';
-  const fallChance = technical ? (protectedByRope ? .02 : .16) : 0;
-  if (fallChance > 0 && rng.chance(fallChance)) {
-    const injury = `${target.name}: ${severe ? 'травма после срыва' : 'растяжение после срыва'}`;
-    next = damageParticipant(next, target.id, Math.round((severe ? 22 : 7) * severityFactor), severe ? 16 : 6, injury);
-    return withIncident(next, context, 'FALL', target, 'Срыв', protectedByRope
-      ? `${target.name} сорвался, но страховка удержала. ${medic.name} проверяет травму.`
-      : `${target.name} сорвался на незащищённом участке.`, severe ? 'CRITICAL' : 'DANGER');
+  if (cell.hazard === 'CREVASSE') {
+    const delay = Math.max(12, 34 - iceLead.skills.ICE * 2);
+    next = applyTime(strainWholeTeam(next, severe ? 3.2 : 1.5, severe ? 3 : 1), delay, .72);
+    if (severe && rng.chance(protectedByRope ? .22 : .62)) {
+      const injury = `${target.name}: травма после провала снежного моста`;
+      next = damageParticipant(next, target.id, Math.round(11 * severityFactor), 8, injury);
+    }
+    return withIncident(next, context, 'CREVASSE', target, 'Просел снежный мост', protectedByRope
+      ? `${target.name} ушёл ногой в трещину, но связка и закреплённая линия удержали. ${iceLead.name} перестроил переход за ${delay} мин.`
+      : `${target.name} провалился на незащищённом участке. Группа вытащила его и закрыла прямой проход.`, severe ? 'CRITICAL' : 'DANGER');
   }
 
-  if (rng.chance(.11) && state.ropeMeters >= 20 && (cell.terrain === 'ROCK' || cell.terrain === 'RIDGE')) {
+  if (cell.hazard === 'AVALANCHE') {
+    const delay = Math.max(18, Math.round(42 + context.weather.snowSoftness * .45));
+    next = applyTime(strainWholeTeam(next, severe ? 5 : 2.5, severe ? 5 : 2, severe ? 1.5 : 0), delay, .88);
+    if (severe && rng.chance(.36)) {
+      const injury = `${target.name}: травма от снежной доски`;
+      next = damageParticipant(next, target.id, Math.round(15 * severityFactor), 10, injury);
+    }
+    return withIncident(next, context, 'AVALANCHE', target, 'Сошла снежная доска', `Слой снега треснул под группой на ${cell.slope}°. Связка ушла в безопасную зону и потеряла ${delay} мин. Причина: мягкий снег ${context.weather.snowSoftness}/100 и слабая стабильность участка.`, severe ? 'CRITICAL' : 'DANGER');
+  }
+
+  if (cell.hazard === 'ROCKFALL') {
+    const skillMitigation = Math.min(.42, rockLead.skills.ROCK * .045);
+    const hit = severe && rng.chance(Math.max(.12, .44 - skillMitigation));
+    next = applyTime(next, Math.max(10, 28 - rockLead.skills.ROCK * 2), .55);
     next = {
       ...next,
-      ropeMeters: Math.max(0, next.ropeMeters - 20),
-      gear: {
-        ...next.gear,
-        ropeCondition: clamp(next.gear.ropeCondition - 6),
-        hardwareCondition: clamp(next.gear.hardwareCondition - 3),
-        lostWeightKg: next.gear.lostWeightKg + 1.8,
-      },
+      gear: { ...next.gear, hardwareCondition: clamp(next.gear.hardwareCondition - (hit ? 5 : 2)) },
     };
-    return withIncident(rebalanceLoads(next), context, 'GEAR_LOSS', null, 'Потеря снаряжения', 'Часть бухты и несколько элементов страховки ушли вниз по склону.', 'DANGER');
+    if (hit) {
+      const injury = `${target.name}: травма от камнепада`;
+      next = damageParticipant(next, target.id, Math.round(14 * severityFactor), 7, injury);
+    }
+    return withIncident(next, context, 'ROCKFALL', hit ? target : rockLead, 'Камнепад', hit
+      ? `Камень сорвался после прогрева и задел ${target.name}. ${medic.name} осматривает пострадавшего; ${rockLead.name} уводит линию под защиту.`
+      : `${rockLead.name} услышал движение породы и остановил группу до основного потока. Железо получило удар, люди целы.`, hit ? 'CRITICAL' : 'DANGER');
+  }
+
+  const altitudeGainSinceSleep = Math.max(0, state.currentElevation - state.lastSleepElevation);
+  const altitudeExposure = state.currentElevation >= 3000 && altitudeGainSinceSleep > 500 && state.acclimatizationDays < 5;
+  if ((character?.mountainCharacterId === 'ALTITUDE' || altitudeExposure) && altitudeExposure && rng.chance(.5)) {
+    const injury = `${target.name}: высотные симптомы после слишком большого набора высоты сна`;
+    next = damageParticipant(next, target.id, Math.round((severe ? 13 : 6) * severityFactor), severe ? 12 : 6, injury);
+    return withIncident(next, context, 'ALTITUDE', target, 'Высотные симптомы', `${target.name} плохо переносит набор ${Math.round(altitudeGainSinceSleep)} м после последнего сна на ${Math.round(state.lastSleepElevation)} м. ${medic.name} проверяет координацию и дыхание.`, severe ? 'CRITICAL' : 'DANGER');
+  }
+
+  if (context.weather.temperatureC <= -20 && state.minutesSinceSleep > 480 && rng.chance(.32)) {
+    const injury = `${target.name}: холодовая травма после долгой работы на морозе`;
+    next = damageParticipant(next, target.id, Math.round((severe ? 12 : 5) * severityFactor), 5, injury);
+    return withIncident(next, context, 'FROSTBITE', target, 'Холодовая травма', `${target.name} провёл ${Math.round(state.minutesSinceSleep / 60)} ч без полноценного сна при ${context.weather.temperatureC}°. ${medic.name} начинает отогревание и проверку чувствительности.`, severe ? 'CRITICAL' : 'DANGER');
+  }
+
+  if ((context.weather.visibility < 38 || (character?.mountainCharacterId === 'WEATHER' && context.weather.visibility < 52)) && rng.chance(.62)) {
+    const delay = Math.max(8, 32 - navigator.skills.NAVIGATION * 2);
+    next = applyTime(next, delay, .42);
+    return withIncident(next, context, 'NAVIGATION', navigator, 'Линия потеряна в плохой видимости', `${navigator.name} заметил уход от маршрута при видимости ${context.weather.visibility}/100 и вернул группу по ориентирам. Потеряно ${delay} мин., травм нет.`, 'WARNING');
+  }
+
+  if ((character?.hazardBias === 'WIND' || character?.mountainCharacterId === 'WEATHER') && cell.terrain === 'RIDGE' && context.weather.windKmh >= 34) {
+    const delay = Math.max(10, Math.round(context.weather.windKmh * .55));
+    next = applyTime(strainWholeTeam(next, 1.8, 2), delay, .58);
+    return withIncident(next, context, 'WEATHER', target, 'Порыв на гребне', `Ветер ${context.weather.windKmh} км/ч сорвал рабочий ритм на открытом гребне. Группа присела ниже линии и переждала ${delay} мин.; травм нет.`, context.weather.windKmh >= 58 ? 'DANGER' : 'WARNING');
+  }
+
+  const technical = cell.ropeRequired || cell.slope >= 48 || cell.hazard === 'CORNICE';
+  if (state.phase === 'DESCENT' && (character?.mountainCharacterId === 'DESCENT' || technical) && rng.chance(.48)) {
+    if (protectedByRope) {
+      const delay = Math.max(12, 38 - rockLead.skills.ROCK * 2);
+      next = applyTime({
+        ...next,
+        gear: { ...next.gear, ropeCondition: clamp(next.gear.ropeCondition - 3), hardwareCondition: clamp(next.gear.hardwareCondition - 2) },
+      }, delay, .62);
+      return withIncident(next, context, 'DESCENT', rockLead, 'Верёвка закусила на спуске', `${rockLead.name} разгрузил станцию и освободил линию. Потеряно ${delay} мин.; причина — ${character?.descentProblem ?? 'сложный рельеф спуска'}.`, 'WARNING');
+    }
+    if (severe) {
+      const injury = `${target.name}: травма при незащищённом спуске`;
+      next = damageParticipant(next, target.id, Math.round(18 * severityFactor), 12, injury);
+      return withIncident(next, context, 'DESCENT', target, 'Срыв на спуске', `${target.name} потерял опору на ${cell.slope}° без закреплённой линии. Причина: ${character?.descentProblem ?? 'усталость и сложный рельеф'}.`, 'CRITICAL');
+    }
+  }
+
+  const fallChance = technical ? (protectedByRope ? .015 : .13) : 0;
+  if (fallChance > 0 && rng.chance(fallChance)) {
+    const injury = `${target.name}: травма после срыва на ${cell.terrain.toLowerCase()}`;
+    next = damageParticipant(next, target.id, Math.round((severe ? 22 : 7) * severityFactor), severe ? 16 : 6, injury);
+    return withIncident(next, context, 'FALL', target, 'Срыв', protectedByRope
+      ? `${target.name} сорвался на склоне ${cell.slope}°, но закреплённая верёвка удержала. ${medic.name} проверяет травму.`
+      : `${target.name} сорвался на незащищённом участке ${cell.slope}°. Причина — крутизна, поверхность ${cell.surface.toLowerCase()} и отсутствие закреплённой линии.`, severe ? 'CRITICAL' : 'DANGER');
   }
 
   if (target.energy < 28 || state.minutesSinceSleep > 900) {
@@ -308,16 +411,22 @@ function resolveIncident(
         ? { ...participant, energy: clamp(participant.energy - energyLoss), fatigue: clamp(participant.fatigue + energyLoss * 1.5) }
         : participant),
     };
-    return withIncident(next, context, 'EXHAUSTION', target, 'Сбой темпа', `${target.name} не удержал рабочий темп. Группа потеряла время, но травмы нет.`, 'WARNING');
+    return withIncident(next, context, 'EXHAUSTION', target, 'Сбой темпа', `${target.name} не удержал темп: силы ${Math.round(target.energy)}, без сна ${Math.round(state.minutesSinceSleep / 60)} ч, груз ${target.loadKg.toFixed(1)} кг. Группа потеряла время, травмы нет.`, 'WARNING');
   }
 
-  if (cell.terrain === 'SCREE' || context.weather.visibility < 45) {
+  if (cell.terrain === 'SCREE' || context.weather.visibility < 50) {
     const delay = Math.max(8, 28 - navigator.skills.NAVIGATION * 2);
     next = applyTime(next, delay, .45);
-    return withIncident(next, context, 'NAVIGATION', navigator, 'Ошибка линии', `${navigator.name} заметил неверный выход и вернул группу на линию. Потеряно ${delay} мин.`, 'WARNING');
+    return withIncident(next, context, 'NAVIGATION', navigator, 'Ошибка линии', `${navigator.name} заметил неверный выход на ${cell.terrain.toLowerCase()} и вернул группу. Потеряно ${delay} мин., травм нет.`, 'WARNING');
   }
 
-  return withIncident(next, context, 'NEAR_MISS', target, 'Опасный момент', `${target.name} вовремя остановился. Группа продолжает без травм.`, 'WARNING');
+  const cause = character?.hazardBias === 'ICE' ? 'жёсткий лёд'
+    : character?.hazardBias === 'WIND' ? 'порыв ветра'
+      : character?.hazardBias === 'ROCKFALL' ? 'движение породы'
+        : character?.hazardBias === 'AVALANCHE' ? 'трещина в снежной доске'
+          : character?.hazardBias === 'CREVASSE' ? 'просадка снежного моста'
+            : 'неустойчивая поверхность';
+  return withIncident(next, context, 'NEAR_MISS', target, 'Опасный момент без травмы', `${target.name} вовремя остановился: причина — ${cause}. Группа уточнила линию и продолжила.`, 'WARNING');
 }
 
 function teamRefusesFastPush(state: IntegratedExpeditionState, context: IntegratedExpeditionContext) {
@@ -385,9 +494,12 @@ function reduceStep(state: IntegratedExpeditionState, context: IntegratedExpedit
   if (rollback) {
     const rollbackTo = Math.max(0, state.positionIndex - Math.max(1, cell.rollbackCells));
     nextState = { ...nextState, positionIndex: rollbackTo, currentElevation: localCellAt(context.localMap, path[rollbackTo] ?? context.localMap.start)?.elevation ?? state.currentElevation };
-    if (rng.chance(Math.min(.2, .025 + preview.score / 700))) nextState = resolveIncident(nextState, context, Math.max(55, preview.score), next, protectedByRope);
-    const text = `Срыв на участке ${cell.slope}°. Группа откатилась на ${state.positionIndex - rollbackTo + 1} клеток.`;
-    nextState = { ...nextState, message: text, lastEvent: event(nextState, 'STOP', 'DANGER', text) };
+    const rollbackIncidentChance = contextualIncidentChance(nextState, context, Math.min(.2, .025 + preview.score / 700), next, protectedByRope);
+    if (incidentReady(nextState, cell, preview.score) && rng.chance(rollbackIncidentChance)) nextState = resolveIncident(nextState, context, Math.max(55, preview.score), next, protectedByRope);
+    if (nextState.lastEvent.kind === 'INCIDENT') return checkExpeditionViability(nextState, context);
+    const surfaceReason = cell.surface === 'SOFT' ? 'мягкий снег не держит ступени' : cell.terrain === 'SCREE' ? 'осыпь уходит из-под ног' : 'линию пришлось перестроить';
+    const text = `Группа потеряла продвижение на участке ${cell.slope}°: ${surfaceReason}. Откат на ${state.positionIndex - rollbackTo + 1} клеток, травм нет.`;
+    nextState = { ...nextState, message: text, lastEvent: event(nextState, 'STOP', 'WARNING', text) };
     return checkExpeditionViability(nextState, context);
   }
 
@@ -399,7 +511,8 @@ function reduceStep(state: IntegratedExpeditionState, context: IntegratedExpedit
     highestElevation: Math.max(nextState.highestElevation, cell.elevation),
   };
 
-  if (rng.chance(preview.incidentChance)) nextState = resolveIncident(nextState, context, preview.score, next, protectedByRope);
+  const incidentChance = contextualIncidentChance(nextState, context, preview.incidentChance, next, protectedByRope);
+  if (incidentReady(nextState, cell, preview.score) && rng.chance(incidentChance)) nextState = resolveIncident(nextState, context, preview.score, next, protectedByRope);
   else nextState = rewardSuccessfulStep(nextState, preview.score);
   nextState = checkExpeditionViability(nextState, context);
   if (nextState.forcedRetreat) return nextState;
@@ -565,13 +678,26 @@ function reduceIntegratedExpeditionCore(
     const navigator = integratedSpecialist(state, 'NAVIGATION');
     const radius = 4;
     const minutes = Math.max(8, Math.round(22 - navigator.skills.NAVIGATION * 1.5));
-    const around = context.localMap.cells
-      .filter(cell => Math.max(Math.abs(cell.x - current.x), Math.abs(cell.y - current.y)) <= radius)
-      .map(pointKey);
+    const nearbyCells = context.localMap.cells
+      .filter(cell => Math.max(Math.abs(cell.x - current.x), Math.abs(cell.y - current.y)) <= radius);
+    const around = nearbyCells.map(pointKey);
     let next = updateInfrastructure(state, context.stageId, value => ({ ...value, revealed: [...new Set([...value.revealed, ...around])] }));
     next = applyTime({ ...next, actionSerial: state.actionSerial + 1 }, minutes, .55);
-    const text = `${navigator.name} проверил квадрат 9×9 вокруг группы. Открыто ${around.length} клеток.`;
-    return { ...next, message: text, lastEvent: event(next, 'INFO', 'CALM', text) };
+    const hazardNames: Record<string, string> = { CREVASSE: 'трещины', AVALANCHE: 'лавинные карманы', ROCKFALL: 'зоны камнепада', CORNICE: 'карнизы' };
+    const hazardCounts = nearbyCells.reduce<Record<string, number>>((result, cell) => {
+      if (cell.hazard !== 'NONE') result[cell.hazard] = (result[cell.hazard] ?? 0) + 1;
+      return result;
+    }, {});
+    const foundHazards = Object.entries(hazardCounts).map(([hazard, count]) => `${hazardNames[hazard] ?? hazard.toLowerCase()} — ${count}`).join(', ');
+    const traceRng = createRng(`${state.seed}:scout-trace:${context.stageId}:${state.actionSerial + 1}:${current.x}:${current.y}`);
+    const traceFound = Boolean(context.character && context.character.traceDensity >= 24 && traceRng.chance(Math.min(.72, context.character.traceDensity / 115)));
+    const traceText = traceFound
+      ? context.character!.historyTragedies > 0
+        ? ' Найдены старая станция и следы аварийного обхода из прошлых отчётов.'
+        : ' Найдены утоптанная площадка и остатки старой станции прошлых связок.'
+      : '';
+    const text = `${navigator.name} проверил квадрат 9×9: открыто ${around.length} клеток.${foundHazards ? ` Опасности: ${foundHazards}.` : ' Явных опасностей не найдено.'}${traceText}`;
+    return { ...next, message: text, lastEvent: event(next, 'INFO', traceFound || foundHazards ? 'WARNING' : 'CALM', text) };
   }
   if (command.type === 'TOGGLE_ROPE') {
     const cell = localCellAt(context.localMap, command.point);

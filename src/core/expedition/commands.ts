@@ -1,12 +1,26 @@
 import type { EntrySide, GridPoint, GridWeather, LocalStageMap } from '../../topography/mountainGridEngine';
 import type { IntegratedPace, IntegratedRestMode } from './state';
 
+export interface IntegratedExpeditionCharacter {
+  mountainCharacterId: 'WEATHER' | 'TECHNICAL' | 'ENDURANCE' | 'ALTITUDE' | 'DESCENT';
+  mountainFormId: string | null;
+  routeArchetype: string | null;
+  routeName: string;
+  seasonTitle: string;
+  hazardBias: 'ROCKFALL' | 'AVALANCHE' | 'CREVASSE' | 'ICE' | 'WIND';
+  traceDensity: number;
+  historyAttempts: number;
+  historyTragedies: number;
+  descentProblem: string | null;
+}
+
 export interface IntegratedExpeditionContext {
   stageId: string;
   stageTitle: string;
   stageCount: number;
   localMap: LocalStageMap;
   weather: GridWeather;
+  character?: IntegratedExpeditionCharacter;
 }
 
 export type IntegratedExpeditionCommand =

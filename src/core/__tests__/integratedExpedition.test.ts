@@ -10,6 +10,7 @@ import {
 } from '../career';
 import {
   distributeIntegratedLoads,
+  integratedExpeditionDebrief,
   integratedStepPreview,
   normalizeIntegratedExpeditionState,
   integratedWeatherAt,
@@ -293,7 +294,7 @@ describe('integrated expedition career loop', () => {
     } as unknown as IntegratedExpeditionState;
     const migrated = normalizeIntegratedExpeditionState(legacy);
 
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(4);
     expect(migrated.pace).toBe('STEADY');
     expect(migrated.participants.every(participant => participant.carryCapacityKg > 0)).toBe(true);
     expect(migrated.eventLog.length).toBeGreaterThan(0);
@@ -359,6 +360,60 @@ describe('integrated expedition career loop', () => {
     expect(rested.minutesSinceSleep).toBe(0);
     expect(rested.nightsSlept).toBe(1);
     expect(rested.elapsedMinutes).toBeGreaterThanOrEqual(480);
+  });
+
+  it('explains the real causes of expedition incidents in the final debrief', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-DEBRIEF');
+    const { topo, context } = initializedTopo(career);
+    const state: IntegratedExpeditionState = {
+      ...topo,
+      phase: 'RETREATED',
+      retreating: true,
+      started: true,
+      nightsSlept: 1,
+      infrastructure: { [context.stageId]: { camps: ['1:1'], ropes: ['2:2'], revealed: Array.from({ length: 24 }, (_, index) => `${index}:0`) } },
+      incidents: [
+        { id: 'rockfall', actionSerial: 4, stageId: context.stageId, type: 'ROCKFALL', participantId: null, title: 'Камнепад', detail: 'Порода сошла после прогрева.', severity: 'DANGER', elapsedMinutes: 90 },
+        { id: 'navigation', actionSerial: 8, stageId: context.stageId, type: 'NAVIGATION', participantId: null, title: 'Ошибка линии', detail: 'Группа потеряла маршрут в тумане.', severity: 'WARNING', elapsedMinutes: 180 },
+      ],
+    };
+    const debrief = integratedExpeditionDebrief(state);
+
+    expect(debrief.strengths.join(' ')).toContain('Разведка');
+    expect(debrief.risks.join(' ')).toContain('камнепад');
+    expect(debrief.risks.join(' ')).toContain('потери линии');
+    expect(debrief.contributors.length).toBeGreaterThan(0);
+  });
+
+  it('reports concrete hazards and old route traces during scouting', () => {
+    const { career } = startCareer('CLIMBER', 'INTEGRATED-SCOUT-CONTEXT');
+    const { topo, context } = initializedTopo(career);
+    const target = context.localMap.cells.find(cell => cell.passable && Math.max(Math.abs(cell.x - context.localMap.start.x), Math.abs(cell.y - context.localMap.start.y)) <= 4 && (cell.x !== context.localMap.start.x || cell.y !== context.localMap.start.y))!;
+    const localMap = {
+      ...context.localMap,
+      cells: context.localMap.cells.map(cell => cell.x === target.x && cell.y === target.y ? { ...cell, hazard: 'CREVASSE' as const } : cell),
+    };
+    const contextual: IntegratedExpeditionContext = {
+      ...context,
+      localMap,
+      character: {
+        mountainCharacterId: 'TECHNICAL',
+        mountainFormId: 'GLACIER_DOME',
+        routeArchetype: 'GLACIER_LINE',
+        routeName: 'Тестовая ледовая линия',
+        seasonTitle: 'Раннее окно',
+        hazardBias: 'CREVASSE',
+        traceDensity: 100,
+        historyAttempts: 8,
+        historyTragedies: 1,
+        descentProblem: 'трещины на обратном пути',
+      },
+    };
+    const started = reduceIntegratedExpedition(topo, { type: 'START' }, contextual);
+    const scouted = reduceIntegratedExpedition(started, { type: 'SCOUT', point: context.localMap.start, radius: 4, minutes: 20 }, contextual);
+
+    expect(scouted.message).toContain('трещины');
+    expect(scouted.message).toMatch(/старая станция|аварийного обхода/);
   });
 
 });

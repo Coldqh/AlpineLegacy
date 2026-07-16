@@ -64,7 +64,7 @@ export interface IntegratedIncidentRecord {
   id: string;
   actionSerial: number;
   stageId: string;
-  type: 'FALL' | 'FROSTBITE' | 'ALTITUDE' | 'EXHAUSTION' | 'GEAR_LOSS' | 'SUPPLY_CRISIS' | 'RESCUE' | 'CONFLICT' | 'NEAR_MISS' | 'NAVIGATION' | 'WEATHER';
+  type: 'FALL' | 'FROSTBITE' | 'ALTITUDE' | 'EXHAUSTION' | 'GEAR_LOSS' | 'SUPPLY_CRISIS' | 'RESCUE' | 'CONFLICT' | 'NEAR_MISS' | 'NAVIGATION' | 'WEATHER' | 'AVALANCHE' | 'ROCKFALL' | 'CREVASSE' | 'DESCENT';
   participantId: string | null;
   title: string;
   detail: string;
@@ -80,7 +80,7 @@ export interface IntegratedExpeditionEvent {
 }
 
 export interface IntegratedExpeditionState {
-  version: 3;
+  version: 4;
   seed: string;
   difficulty: IntegratedDifficulty;
   authority: IntegratedAuthority;
@@ -96,6 +96,7 @@ export interface IntegratedExpeditionState {
   positionIndex: number;
   elapsedMinutes: number;
   actionSerial: number;
+  lastIncidentActionSerial: number;
   minutesSinceSleep: number;
   lastSleepElevation: number;
   nightsSlept: number;
@@ -207,7 +208,7 @@ export function createIntegratedExpeditionState(input: CreateIntegratedExpeditio
     shelterCondition: input.gear?.shelterCondition ?? (input.hasBivy ? 100 : 0),
   };
   return {
-    version: 3,
+    version: 4,
     seed: input.seed,
     difficulty: input.difficulty,
     authority: input.authority,
@@ -223,6 +224,7 @@ export function createIntegratedExpeditionState(input: CreateIntegratedExpeditio
     positionIndex: 0,
     elapsedMinutes: 0,
     actionSerial: 0,
+    lastIncidentActionSerial: -99,
     minutesSinceSleep: 0,
     lastSleepElevation: input.startElevation,
     nightsSlept: 0,
@@ -272,9 +274,10 @@ export function normalizeIntegratedExpeditionState(state: IntegratedExpeditionSt
     nightsSlept?: number;
     climbingDays?: number;
     tutorialStep?: number;
+    lastIncidentActionSerial?: number;
     participants: Array<IntegratedParticipantState & { loadKg?: number; carryCapacityKg?: number }>;
   };
-  const complete = raw.version === 3
+  const complete = raw.version === 4
     && raw.pace
     && raw.gear
     && Array.isArray(raw.eventLog)
@@ -285,12 +288,13 @@ export function normalizeIntegratedExpeditionState(state: IntegratedExpeditionSt
   const lastEvent = raw.lastEvent ?? { serial: 0, kind: 'INFO', severity: 'CALM', text: raw.message ?? 'Экспедиция восстановлена.' };
   return {
     ...raw,
-    version: 3,
+    version: 4,
     minutesSinceSleep: raw.minutesSinceSleep ?? raw.elapsedMinutes % 1440,
     lastSleepElevation: raw.lastSleepElevation ?? raw.startElevation,
     nightsSlept: raw.nightsSlept ?? 0,
     climbingDays: raw.climbingDays ?? Math.floor(raw.elapsedMinutes / 1440),
     tutorialStep: raw.tutorialStep ?? 0,
+    lastIncidentActionSerial: raw.lastIncidentActionSerial ?? -99,
     pace: raw.pace ?? 'STEADY',
     participants,
     gear: {
