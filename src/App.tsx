@@ -3,8 +3,10 @@ import { MountainModel } from './components/MountainModel';
 import { ScreenShell } from './components/ScreenShell';
 import { applyTraining, createCareer, formatSeasonDate } from './core/career';
 import { generateWorld } from './core/generator';
-import { deleteCareer, deleteWorld, loadCareer, loadWorld, saveCareer, saveWorld } from './core/storage';
+import { careerRecoveryStatus, deleteCareer, deleteWorld, loadCareer, loadWorld, saveCareer, saveWorld } from './core/storage';
 import { loadUiState, saveUiState, selectedMountainFromUi } from './core/uiState';
+import { releaseSafeCareerTab, repairCareerForRelease } from './core/releaseCandidate';
+import { pushRuntimeNotice } from './components/RuntimeNotice';
 import type {
   CareerDraft,
   CareerState,
@@ -52,13 +54,14 @@ function App() {
   const initial = useMemo(() => {
     const loadedWorld = loadWorld();
     const loadedCareer = loadedWorld ? loadCareer(loadedWorld) : null;
-    const ui = loadUiState(loadedWorld, loadedCareer);
-    return { world: loadedWorld, career: loadedCareer, ui };
+    const repaired = loadedWorld && loadedCareer ? repairCareerForRelease(loadedWorld, loadedCareer) : { career: loadedCareer, repairs: [] };
+    const ui = loadUiState(loadedWorld, repaired.career);
+    return { world: loadedWorld, career: repaired.career, repairs: repaired.repairs, ui, recovery: careerRecoveryStatus().lastRecovery };
   }, []);
 
   const [screen, setScreen] = useState<ScreenId>(initial.ui.screen);
   const [atlasReturnScreen, setAtlasReturnScreen] = useState<'MENU' | 'CAREER'>(initial.ui.atlasReturnScreen);
-  const [careerTab, setCareerTab] = useState<CareerTabId>(initial.ui.careerTab);
+  const [careerTab, setCareerTab] = useState<CareerTabId>(() => releaseSafeCareerTab(initial.career, initial.ui.careerTab));
   const [world, setWorld] = useState<WorldState | null>(initial.world);
   const [career, setCareer] = useState<CareerState | null>(initial.career);
   const [selectedMountain, setSelectedMountain] = useState<MountainData | null>(() => selectedMountainFromUi(initial.world, initial.ui));
@@ -82,8 +85,22 @@ function App() {
     });
   }, [screen, careerTab, atlasReturnScreen, selectedMountain?.id]);
 
+
+  useEffect(() => {
+    if (initial.career && initial.repairs.length) {
+      try {
+        saveCareer(initial.career);
+        pushRuntimeNotice({ tone: 'WARNING', title: 'Сейв восстановлен', message: initial.repairs.join(' ') });
+      } catch (error) {
+        pushRuntimeNotice({ tone: 'DANGER', title: 'Сейв открыт, но не записан', message: error instanceof Error ? error.message : 'Не удалось сохранить исправленное состояние.' });
+      }
+    } else if (initial.recovery?.reason) {
+      pushRuntimeNotice({ tone: 'INFO', title: 'Карьерный сейв восстановлен', message: initial.recovery.reason });
+    }
+  }, [initial.career, initial.recovery?.reason, initial.repairs]);
+
   if (topoPreview) {
-    if (!career?.activeClimb) return <main className="mg-app"><header className="mg-header"><div><span>ALPINE LEGACY / 0.19.0</span><h1>Нет активной экспедиции</h1></div><div className="mg-header-actions"><button onClick={() => setTopoPreview(false)}>Вернуться</button></div></header></main>;
+    if (!career?.activeClimb) return <main className="mg-app"><header className="mg-header"><div><span>ALPINE LEGACY / 0.20.0</span><h1>Нет активной экспедиции</h1></div><div className="mg-header-actions"><button onClick={() => setTopoPreview(false)}>Вернуться</button></div></header></main>;
     return <TopoExpeditionLoader career={career} onPersist={next => { setCareer(next); saveCareer(next); }} onExit={() => setTopoPreview(false)} allowRegenerate={false} />;
   }
 
@@ -124,8 +141,20 @@ function App() {
   }
 
   function persistCareer(next: CareerState) {
-    saveCareer(next);
-    setCareer(next);
+    if (!world) return;
+    const repaired = repairCareerForRelease(world, next);
+    try {
+      saveCareer(repaired.career);
+      setCareer(repaired.career);
+      if (repaired.repairs.length) pushRuntimeNotice({ tone: 'WARNING', title: 'Состояние исправлено', message: repaired.repairs.join(' ') });
+    } catch (error) {
+      pushRuntimeNotice({
+        tone: 'DANGER',
+        title: 'Карьера не сохранена',
+        message: error instanceof Error ? error.message : 'Браузер не смог записать текущий ход.',
+        timeoutMs: 12000,
+      });
+    }
   }
 
   function startCharacterCreation() {
@@ -208,7 +237,7 @@ function App() {
             <p className="eyebrow">NEW WORLD / NEW LIFE</p>
             <h1>Создай мир, который переживёт тебя.</h1>
             <p className="lead">Один seed определит географию, историю, вершины и людей. Смерть героя завершит карьеру, но не обязательно уничтожит мир.</p>
-            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.19.0</small></div>
+            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.20.0</small></div>
           </div>
 
           <div className="setup-form">
@@ -440,7 +469,7 @@ function App() {
   const archiveCount = career?.log.length ?? 0;
   if (mobile) return <MobileMenu world={world} career={career} onNew={() => setScreen('SETUP')} onContinue={continueCareer} onAtlas={openAtlasFromMenu} onArchive={() => { if (career) { setCareerTab('JOURNAL'); setScreen('CAREER'); } else setScreen('ARCHIVE'); }} onTopo={() => setTopoPreview(true)} />;
   return (
-    <ScreenShell rightLabel="EDITION 0.19.0 / INTEGRATED EXPEDITION">
+    <ScreenShell rightLabel="EDITION 0.20.0 / INTEGRATED EXPEDITION">
       <section className="menu-page page-enter">
         <div className="menu-hero-copy">
           <p className="eyebrow">A MOUNTAINEERING CAREER ROGUELIKE</p>
