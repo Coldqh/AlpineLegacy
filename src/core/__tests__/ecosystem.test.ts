@@ -11,12 +11,15 @@ describe('normalized world ecosystem', () => {
     const report = validateWorldEcosystem(world.ecosystem);
     expect(report.valid).toBe(true);
     expect(report.errors).toEqual([]);
-    expect(report.stats.regions).toBe(1);
-    expect(report.stats.mountains).toBe(world.region.mountains.length);
-    expect(report.stats.routes).toBe(world.region.mountains.length * 3);
-    expect(report.stats.organizations).toBeGreaterThanOrEqual(5);
-    expect(report.stats.npcs).toBeGreaterThanOrEqual(60);
-    expect(report.stats.offers).toBeGreaterThanOrEqual(9);
+    expect(report.stats.regions).toBe(6);
+    expect(report.stats.mountains).toBe(world.ecosystem.content.mountains.allIds.length);
+    expect(report.stats.routes).toBe(world.ecosystem.content.mountains.allIds.length * 3);
+    expect(report.stats.organizations).toBeGreaterThanOrEqual(18);
+    expect(report.stats.npcs).toBeGreaterThanOrEqual(200);
+    expect(report.stats.offers).toBeGreaterThanOrEqual(54);
+    const countries = world.ecosystem.content.regions.allIds.map(id => world.ecosystem.content.regions.byId[id]!.country);
+    expect(new Set(countries).size).toBe(6);
+    expect(world.region.country).toBe('Швейцария');
   });
 
   it('gives every route a reachable graph and a real play-time budget', () => {

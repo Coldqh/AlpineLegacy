@@ -690,7 +690,7 @@ function reduceIntegratedExpeditionCore(
     }, {});
     const foundHazards = Object.entries(hazardCounts).map(([hazard, count]) => `${hazardNames[hazard] ?? hazard.toLowerCase()} — ${count}`).join(', ');
     const traceRng = createRng(`${state.seed}:scout-trace:${context.stageId}:${state.actionSerial + 1}:${current.x}:${current.y}`);
-    const traceFound = Boolean(context.character && context.character.traceDensity >= 24 && traceRng.chance(Math.min(.72, context.character.traceDensity / 115)));
+    const traceFound = Boolean(context.character && context.character.traceDensity >= 24 && (context.character.traceDensity >= 90 || traceRng.chance(Math.min(.72, context.character.traceDensity / 115))));
     const traceText = traceFound
       ? context.character!.historyTragedies > 0
         ? ' Найдены старая станция и следы аварийного обхода из прошлых отчётов.'

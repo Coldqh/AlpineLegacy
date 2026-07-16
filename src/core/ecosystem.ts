@@ -102,7 +102,7 @@ function organizationKind(index: number): OrganizationKind {
 }
 
 function createOrganizations(world: Pick<WorldState, 'id' | 'config' | 'worldAge' | 'region'>): OrganizationDefinition[] {
-  const rng = createRng(`${world.config.seed}:ecosystem:organizations`);
+  const rng = createRng(`${world.config.seed}:${world.region.id}:ecosystem:organizations`);
   const region = world.region;
   return Array.from({ length: 5 }, (_, index) => {
     const kind = organizationKind(index);
@@ -142,12 +142,12 @@ function npcSkillProfile(rng: ReturnType<typeof createRng>, specialty: SkillId, 
 function createNpcs(world: Pick<WorldState, 'config' | 'region'>, organizations: OrganizationDefinition[]): NpcDefinition[] {
   const names = new Set<string>();
   const result: NpcDefinition[] = [];
-  const perOrganization = 20;
+  const perOrganization = 12;
   const mentorPreferences: MentorRoutePreference[] = ['EASY', 'BALANCED', 'HARD'];
   for (const [organizationIndex, organization] of organizations.entries()) {
     for (let localIndex = 0; localIndex < perOrganization; localIndex += 1) {
       const index = organizationIndex * perOrganization + localIndex;
-      const rng = createRng(`${world.config.seed}:ecosystem:npc:${index}`);
+      const rng = createRng(`${world.config.seed}:${world.region.id}:ecosystem:npc:${index}`);
       let name = '';
       while (!name || names.has(name)) name = `${rng.pick(firstNames)} ${rng.pick(lastNames)}`;
       names.add(name);
@@ -249,9 +249,11 @@ function createOffers(world: Pick<WorldState, 'config'>, routes: ExpeditionRoute
   const offers: ExpeditionOffer[] = [];
   organizations.forEach((organization, organizationIndex) => {
     const members = byOrganization.get(organization.id) ?? [];
+    const regionalRoutes = routes.filter(route => route.regionId === organization.regionId);
+    if (!regionalRoutes.length) return;
     const mentors = organization.mentorNpcIds.map(id => members.find(npc => npc.id === id)).filter((npc): npc is NpcDefinition => Boolean(npc));
     mentors.forEach((leader, mentorIndex) => {
-      const route = routeForPreference(routes, leader.routePreference, organizationIndex * 3 + mentorIndex);
+      const route = routeForPreference(regionalRoutes, leader.routePreference, organizationIndex * 3 + mentorIndex);
       const compatible = members
         .filter(npc => npc.id !== leader.id && !npc.isMentor)
         .sort((a, b) => b.skills[route.style === 'GLACIER' ? 'ICE' : route.style === 'ROCK' ? 'ROCK' : 'ENDURANCE'] - a.skills[route.style === 'GLACIER' ? 'ICE' : route.style === 'ROCK' ? 'ROCK' : 'ENDURANCE']);
@@ -297,28 +299,38 @@ function fingerprint(worldId: string, counts: number[]) {
   return `eco-${(hash >>> 0).toString(16)}`;
 }
 
-export function createWorldEcosystem(world: Pick<WorldState, 'id' | 'config' | 'worldAge' | 'region'>, routes = generateRoutesForWorld(world as WorldState)): WorldEcosystem {
-  const organizations = createOrganizations(world);
-  const npcs = createNpcs(world, organizations);
-  const mountains = world.region.mountains.map(mountain => ({
+export function createWorldEcosystem(
+  world: Pick<WorldState, 'id' | 'config' | 'worldAge' | 'region'>,
+  routes = generateRoutesForWorld(world as WorldState),
+  regions: RegionData[] = [world.region],
+): WorldEcosystem {
+  const regionalDefinitions = regions.map(region => {
+    const regionalWorld = { ...world, region };
+    const organizations = createOrganizations(regionalWorld);
+    const npcs = createNpcs(regionalWorld, organizations);
+    return { region, organizations, npcs };
+  });
+  const organizations = regionalDefinitions.flatMap(item => item.organizations);
+  const npcs = regionalDefinitions.flatMap(item => item.npcs);
+  const mountains = regions.flatMap(region => region.mountains.map(mountain => ({
     ...mountain,
-    regionId: world.region.id,
+    regionId: region.id,
     routeIds: routes.filter(route => route.mountainId === mountain.id).map(route => route.id),
-  }));
-  const region: RegionData = {
-    ...world.region,
-    mountainIds: mountains.map(mountain => mountain.id),
-    organizationIds: organizations.map(organization => organization.id),
-    mountains,
-  };
+  })));
+  const regionEntries = regionalDefinitions.map(item => ({
+    ...item.region,
+    mountainIds: mountains.filter(mountain => mountain.regionId === item.region.id).map(mountain => mountain.id),
+    organizationIds: item.organizations.map(organization => organization.id),
+    mountains: mountains.filter(mountain => mountain.regionId === item.region.id),
+  } satisfies RegionData));
   const offers = createOffers(world, routes, organizations, npcs);
   const ecosystem: WorldEcosystem = {
     schemaVersion: 2,
-    contentFingerprint: fingerprint(world.id, [2, mountains.length, routes.length, organizations.length, npcs.length]),
+    contentFingerprint: fingerprint(world.id, [3, regionEntries.length, mountains.length, routes.length, organizations.length, npcs.length]),
     content: {
       version: 2,
-      primaryRegionId: region.id,
-      regions: entityTable([region]),
+      primaryRegionId: world.region.id,
+      regions: entityTable(regionEntries),
       mountains: entityTable(mountains),
       routes: entityTable(routes),
       organizations: entityTable(organizations),
@@ -448,8 +460,12 @@ export function getOrganizations(world: WorldState) {
   return tableValues(world.ecosystem.content.organizations);
 }
 
+export function getOrganizationsForRegion(world: WorldState, regionId = world.ecosystem.content.primaryRegionId) {
+  return getOrganizations(world).filter(organization => organization.regionId === regionId);
+}
+
 export function getEntryOrganizations(world: WorldState) {
-  return getOrganizations(world).filter(organization => organization.acceptsNovices);
+  return getOrganizationsForRegion(world).filter(organization => organization.acceptsNovices);
 }
 
 export function getOrganization(world: WorldState, organizationId: string | null) {

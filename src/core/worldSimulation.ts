@@ -96,7 +96,10 @@ function primaryRouteSkill(route: CareerState['routes'][number] | null): SkillId
 }
 
 function routeForAthlete(career: CareerState, athlete: WorldAthlete, club: WorldClub | undefined, rng: ReturnType<typeof createRng>) {
-  const sorted = [...career.routes].sort((a, b) => routeDifficulty(a) - routeDifficulty(b));
+  const homeRoutes = club?.regionId ? career.routes.filter(route => route.regionId === club.regionId) : career.routes;
+  const international = Boolean(club && club.prestige >= 82 && athlete.fame >= 42 && rng.chance(.18));
+  const routeSource = international ? career.routes : homeRoutes.length ? homeRoutes : career.routes;
+  const sorted = [...routeSource].sort((a, b) => routeDifficulty(a) - routeDifficulty(b));
   if (!sorted.length) return null;
   const clubBias = club?.riskProfile ?? 'BALANCED';
   const preference = athlete.routePreference === 'EASY' && clubBias === 'AGGRESSIVE' ? 'BALANCED'
@@ -123,10 +126,11 @@ function athleteName(seed: string, index: number) {
   return `${rng.pick(firstNames)} ${rng.pick(lastNames)}`;
 }
 
-function clubFromCareer(club: ClubData): WorldClub {
+function clubFromCareer(club: ClubData, world: WorldState): WorldClub {
   const profile = clubProfile(0, club.standing, club.specialty);
   return {
     id: club.id,
+    regionId: world.ecosystem.content.primaryRegionId,
     name: club.name,
     country: club.town,
     foundedYear: club.foundedYear,
@@ -144,10 +148,12 @@ function createClubs(world: WorldState, club: ClubData): WorldClub[] {
   const organizations = getOrganizations(world).map((organization, index) => {
     const runtime = world.ecosystem.runtime.organizations.byId[organization.id];
     const prestige = runtime?.prestige ?? organization.prestige;
+    const region = world.ecosystem.content.regions.byId[organization.regionId];
     return {
       id: organization.id,
+      regionId: organization.regionId,
       name: organization.name,
-      country: organization.headquarters,
+      country: region?.country ?? organization.headquarters,
       foundedYear: organization.foundedYear,
       prestige,
       doctrine: organization.doctrine,
@@ -158,7 +164,7 @@ function createClubs(world: WorldState, club: ClubData): WorldClub[] {
       ...clubProfile(index, prestige, organization.specialty),
     } satisfies WorldClub;
   });
-  if (!organizations.some(item => item.id === club.id)) organizations.unshift(clubFromCareer(club));
+  if (!organizations.some(item => item.id === club.id)) organizations.unshift(clubFromCareer(club, world));
   return organizations;
 }
 
@@ -360,7 +366,8 @@ function baseRecords(athletes: WorldAthlete[], world: WorldState): WorldRecord[]
   const mostSummits = [...athletes].sort((a, b) => b.summits - a.summits || b.fame - a.fame)[0]!;
   const firstAscents = [...athletes].sort((a, b) => b.firstAscents - a.firstAscents || b.fame - a.fame)[0]!;
   const rescuer = [...athletes].sort((a, b) => b.rescues - a.rescues || b.fame - a.fame)[0]!;
-  const highest = world.region.mountains.find((_, index) => index >= 4) ?? world.region.mountains.at(-1)!;
+  const allMountains = tableValues(world.ecosystem.content.mountains).sort((a, b) => b.elevation - a.elevation);
+  const highest = allMountains[0] ?? world.region.mountains.at(-1)!;
   return [
     { id: 'record-highest', category: 'HIGHEST_SUMMIT', title: 'Высочайшая покорённая вершина', holderAthleteId: mostSummits.id, holderName: mostSummits.name, value: highest.elevation, unit: 'м', mountainId: highest.id, mountainName: highest.name, year: world.config.startYear - 4, description: `Высочайшая подтверждённая вершина текущего поколения — ${highest.name}.` },
     { id: 'record-summits', category: 'MOST_SUMMITS', title: 'Больше всего вершин', holderAthleteId: mostSummits.id, holderName: mostSummits.name, value: mostSummits.summits, unit: 'вершин', mountainId: null, mountainName: null, year: world.config.startYear, description: 'Подтверждённые восхождения в пределах региона.' },
@@ -391,8 +398,8 @@ export function createLivingWorld(world: WorldState, roster: TeamMember[], club:
     tick: 0,
     athletes,
     clubs,
-    mountainHistory: world.region.mountains.map((mountain, index) => initialMountainHistory(mountain, world.config.startYear, index)),
-    news: [{ id: `news-opening-${world.id}`, year: world.config.startYear, seasonDay: 1, type: 'CLUB', headline: 'Новый сезон открыт', summary: `${world.region.name} входит в новый сезон. Организации публикуют составы и экспедиционные заявки.`, athleteIds: [], clubIds: clubs.map(item => item.id), mountainId: null, importance: 55, isBreaking: false }],
+    mountainHistory: tableValues(world.ecosystem.content.mountains).map((mountain, index) => initialMountainHistory(mountain, world.config.startYear, index)),
+    news: [{ id: `news-opening-${world.id}`, year: world.config.startYear, seasonDay: 1, type: 'CLUB', headline: 'Новый сезон открыт', summary: `Мировой сезон открыт. Региональные школы публикуют составы и экспедиционные заявки.`, athleteIds: [], clubIds: clubs.map(item => item.id), mountainId: null, importance: 55, isBreaking: false }],
     expeditions: [],
     records: baseRecords(athletes, world),
   };
@@ -446,22 +453,56 @@ export function hydrateLivingWorld(world: WorldState, roster: TeamMember[], club
   }
   const expeditions = (legacy.expeditions ?? []).map((expedition: any) => ({
     ...expedition,
+    regionId: expedition.regionId ?? fresh.clubs.find(club => club.id === expedition.clubId)?.regionId ?? world.ecosystem.content.primaryRegionId,
     routeId: expedition.routeId ?? null,
     routeName: expedition.routeName ?? 'Свободная линия',
     difficultyScore: expedition.difficultyScore ?? 0,
     teamSize: expedition.teamSize ?? Math.max(1, (expedition.memberAthleteIds?.length ?? 0) + 1),
     recoveryDays: expedition.recoveryDays ?? Math.max(2, Math.ceil((expedition.durationDays ?? 3) * .7)),
   }));
+  const legacyClubsById = new Map((legacy.clubs ?? []).map((saved: any) => [saved.id, saved]));
+  const clubs = fresh.clubs.map((fallback, index) => {
+    const saved = legacyClubsById.get(fallback.id) as any;
+    return saved ? {
+      ...fallback,
+      ...saved,
+      regionId: fallback.regionId,
+      ...clubProfile(index, saved.prestige ?? fallback.prestige, saved.specialty ?? fallback.doctrine),
+    } : fallback;
+  });
+  const legacyMountainsById = new Map((legacy.mountainHistory ?? []).map((saved: any) => [saved.mountainId, saved]));
+  const mountainHistory = fresh.mountainHistory.map(fallback => {
+    const saved = legacyMountainsById.get(fallback.mountainId) as any;
+    return saved ? {
+      ...fallback,
+      ...saved,
+      mountainId: fallback.mountainId,
+      mountainName: fallback.mountainName,
+      elevation: fallback.elevation,
+      technicality: fallback.technicality,
+      altitudeSeverity: fallback.altitudeSeverity,
+      prestige: fallback.prestige,
+      firstAscentAthleteIds: [...(saved.firstAscentAthleteIds ?? [])],
+    } : fallback;
+  });
+  const validMountainIds = new Set(fresh.mountainHistory.map(item => item.mountainId));
+  const legacyRecordsById = new Map((legacy.records ?? [])
+    .filter((record: any) => !record.mountainId || validMountainIds.has(record.mountainId))
+    .map((record: any) => [record.id, record]));
+  const records = fresh.records.map(fallback => ({ ...fallback, ...(legacyRecordsById.get(fallback.id) as any ?? {}) }));
+  for (const record of legacyRecordsById.values() as Iterable<any>) {
+    if (!records.some(item => item.id === record.id)) records.push(record);
+  }
   return {
     ...fresh,
     ...legacy,
     version: 3,
     athletes: mergedAthletes,
-    clubs: legacy.clubs?.length ? legacy.clubs.map((saved: any, index: number) => ({ ...fresh.clubs[index % fresh.clubs.length], ...saved, ...clubProfile(index, saved.prestige ?? 50, saved.specialty ?? '') })) : fresh.clubs,
-    mountainHistory: legacy.mountainHistory?.length ? legacy.mountainHistory : fresh.mountainHistory,
+    clubs,
+    mountainHistory,
     news: legacy.news ?? fresh.news,
     expeditions,
-    records: legacy.records?.length ? legacy.records : fresh.records,
+    records,
   };
 }
 
@@ -675,7 +716,7 @@ function simulateTick(career: CareerState, state: LivingWorldState, tickYear: nu
 
     clubs = clubs.map(item => item.id === leader.clubId ? { ...item, expeditions: item.expeditions + 1, summits: item.summits + (succeeded ? 1 : 0), losses: item.losses + casualties.length, prestige: clamp(item.prestige + (firstAscent ? 7 : succeeded ? 2 : tragedy ? -4 : 0)) } : item);
     mountainHistory[historyIndex] = history;
-    const expedition: WorldExpedition = { id: `world-expedition-${state.tick}-${eventIndex}-${leader.id}`, year: tickYear, seasonDay: tickDay, mountainId, mountainName, routeId: selectedRoute?.id ?? null, routeName: selectedRoute?.name ?? 'Свободная линия', difficultyScore, leaderAthleteId: leader.id, memberAthleteIds: teammates.map(item => item.id), clubId: leader.clubId, outcome, highestElevation, durationDays, casualties, recordId, summary, teamSize: team.length, recoveryDays: expeditionRecoveryDays };
+    const expedition: WorldExpedition = { id: `world-expedition-${state.tick}-${eventIndex}-${leader.id}`, regionId: selectedRoute?.regionId ?? club?.regionId ?? career.currentRegionId, year: tickYear, seasonDay: tickDay, mountainId, mountainName, routeId: selectedRoute?.id ?? null, routeName: selectedRoute?.name ?? 'Свободная линия', difficultyScore, leaderAthleteId: leader.id, memberAthleteIds: teammates.map(item => item.id), clubId: leader.clubId, outcome, highestElevation, durationDays, casualties, recordId, summary, teamSize: team.length, recoveryDays: expeditionRecoveryDays };
     expeditions.push(expedition);
     const item: WorldNewsItem = { id: `world-news-${state.tick}-${eventIndex}-${leader.id}`, year: tickYear, seasonDay: tickDay, type: tragedy ? (casualties.length ? 'DEATH' : 'INJURY') : firstAscent || firstRouteAscent ? 'RECORD' : succeeded ? 'SUMMIT' : outcome === 'RETREAT' ? 'RETREAT' : 'EXPEDITION', headline, summary, athleteIds: [leader.id, ...teammates.map(member => member.id)], clubIds: [leader.clubId], mountainId, importance, isBreaking: importance >= 90 };
     news.push(item);
@@ -770,6 +811,7 @@ export function registerHeroExpedition(career: CareerState, climb: Qualification
   };
   const expedition: WorldExpedition = {
     id: `world-${report.id}`,
+    regionId: career.routes.find(route => route.id === climb.routeId)?.regionId ?? career.currentRegionId,
     year: career.year,
     seasonDay: career.seasonDay,
     mountainId: climb.mountainId,

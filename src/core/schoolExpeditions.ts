@@ -139,7 +139,9 @@ export function buildSchoolExpeditionBoard(world: WorldState, career: Pick<Caree
         const anchor = baseAnchor + planSeries * CYCLE_DAYS;
         if (anchor > 180) return;
         const cycle = Math.floor((anchor - 1) / CYCLE_DAYS);
-        const route = chooseRoute(career.routes, leader, organizationIndex, mentorIndex, cycle, world.config.seed);
+        const regionalRoutes = career.routes.filter(item => item.regionId === organization.regionId);
+        if (!regionalRoutes.length) return;
+        const route = chooseRoute(regionalRoutes, leader, organizationIndex, mentorIndex, cycle, world.config.seed);
         const scheduleRng = createRng(`${world.config.seed}:school-schedule:${organization.id}:${leader.id}:${cycle}`);
         const cancelled = scheduleRng.chance(leader.routePreference === 'HARD' ? .08 : .045);
         const delayed = !cancelled && scheduleRng.chance(.32);

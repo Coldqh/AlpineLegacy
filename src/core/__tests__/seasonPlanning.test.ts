@@ -25,7 +25,7 @@ describe('season campaign planning', () => {
   it('creates three long-term objectives and a protected budget', () => {
     const career = careerFixture();
     const plan = normalizeSeasonCampaignPlan(career);
-    expect(career.schemaVersion).toBe(19);
+    expect(career.schemaVersion).toBe(20);
     expect(plan.goalRouteIds.length).toBeGreaterThanOrEqual(2);
     expect(plan.goalRouteIds.length).toBeLessThanOrEqual(3);
     expect(plan.reserveCredits).toBeGreaterThan(0);
@@ -34,7 +34,8 @@ describe('season campaign planning', () => {
 
   it('lets the player change goals, budget and risk without creating daily micromanagement', () => {
     let career = careerFixture();
-    const route = career.routes.at(-1)!;
+    const existing = normalizeSeasonCampaignPlan(career).goalRouteIds;
+    const route = career.routes.find(item => item.regionId === career.currentRegionId && !existing.includes(item.id))!;
     career = toggleSeasonGoal(career, route.id);
     career = setSeasonBudgetPolicy(career, 'FULL');
     career = setSeasonRiskPolicy(career, 'CAUTIOUS');

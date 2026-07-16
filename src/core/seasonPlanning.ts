@@ -47,9 +47,10 @@ function defaultCoreMembers(career: Pick<CareerState, 'permanentTeam' | 'teamRos
   return available.slice(0, 5);
 }
 
-export function createSeasonCampaignPlan(career: Pick<CareerState, 'year' | 'hero' | 'routes' | 'reports' | 'permanentTeam' | 'teamRoster'>): SeasonCampaignPlan {
+export function createSeasonCampaignPlan(career: Pick<CareerState, 'year' | 'hero' | 'routes' | 'reports' | 'permanentTeam' | 'teamRoster' | 'currentRegionId'>): SeasonCampaignPlan {
   const completedRouteIds = career.reports.filter(report => report.outcome === 'SUMMIT').map(report => report.routeName);
-  const goals = chooseDefaultGoals(career.routes.filter(route => !completedRouteIds.includes(route.name)));
+  const regionalRoutes = career.routes.filter(route => route.regionId === career.currentRegionId);
+  const goals = chooseDefaultGoals(regionalRoutes.filter(route => !completedRouteIds.includes(route.name)));
   const budgetPolicy: SeasonBudgetPolicy = career.hero.money >= 700 ? 'FULL' : career.hero.money >= 350 ? 'STANDARD' : 'LEAN';
   return {
     version: 1,
@@ -71,7 +72,7 @@ export function createSeasonCampaignPlan(career: Pick<CareerState, 'year' | 'her
 export function normalizeSeasonCampaignPlan(career: CareerState): SeasonCampaignPlan {
   const raw = career.seasonPlan;
   if (!raw || raw.year !== career.year) return createSeasonCampaignPlan(career);
-  const validGoals = raw.goalRouteIds.filter(id => career.routes.some(route => route.id === id));
+  const validGoals = raw.goalRouteIds.filter(id => career.routes.some(route => route.id === id && route.regionId === career.currentRegionId));
   const validMembers = raw.coreMemberIds.filter(id => career.teamRoster.some(member => member.id === id && member.status === 'ACTIVE'));
   const budgetPolicy = raw.budgetPolicy ?? 'STANDARD';
   return {
@@ -79,7 +80,7 @@ export function normalizeSeasonCampaignPlan(career: CareerState): SeasonCampaign
     year: career.year,
     riskPolicy: raw.riskPolicy ?? 'BALANCED',
     budgetPolicy,
-    goalRouteIds: (validGoals.length ? unique(validGoals) : chooseDefaultGoals(career.routes)).slice(0, 3),
+    goalRouteIds: (validGoals.length ? unique(validGoals) : chooseDefaultGoals(career.routes.filter(route => route.regionId === career.currentRegionId))).slice(0, 3),
     coreMemberIds: unique(validMembers).slice(0, 5),
     reserveCredits: Math.max(0, Math.round(raw.reserveCredits ?? career.hero.money * budgetShare[budgetPolicy])),
     spentCredits: Math.max(0, Math.round(raw.spentCredits ?? 0)),

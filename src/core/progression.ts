@@ -255,5 +255,5 @@ export function rollCareerSeason(source: CareerState, next: CareerState): Career
 }
 
 export function hydrateCareerProgression(career: CareerState): CareerState {
-  return syncCareerProgression({ ...career, schemaVersion: 19, progression: normalizeCareerProgression(career) });
+  return syncCareerProgression({ ...career, schemaVersion: 20, progression: normalizeCareerProgression(career) });
 }

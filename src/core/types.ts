@@ -256,6 +256,14 @@ export interface MountainData {
 
 export interface RegionData {
   id: RegionId;
+  country?: string;
+  rangeName?: string;
+  accessReputation?: number;
+  travelCost?: number;
+  travelDays?: number;
+  climbingSeason?: string;
+  permitNote?: string;
+  generationProfile?: 'ALPINE' | 'GLACIAL' | 'HIGH_ALTITUDE' | 'ARID' | 'TECHNICAL';
   mountainIds?: MountainId[];
   organizationIds?: OrganizationId[];
   name: string;
@@ -1031,6 +1039,7 @@ export type ClubRiskProfile = 'CAUTIOUS' | 'BALANCED' | 'AGGRESSIVE';
 
 export interface WorldClub {
   id: string;
+  regionId: RegionId;
   name: string;
   country: string;
   foundedYear: number;
@@ -1131,6 +1140,7 @@ export interface WorldNewsItem {
 
 export interface WorldExpedition {
   id: string;
+  regionId: RegionId;
   year: number;
   seasonDay: number;
   mountainId: string;
@@ -1286,8 +1296,19 @@ export interface PermanentTeamState {
   losses: number;
 }
 
+
+export interface RegionTravelRecord {
+  id: string;
+  fromRegionId: RegionId;
+  toRegionId: RegionId;
+  year: number;
+  seasonDay: number;
+  days: number;
+  cost: number;
+}
+
 export interface CareerState {
-  schemaVersion: 19;
+  schemaVersion: 20;
   id: string;
   worldId: string;
   rootSeed: string;
@@ -1320,6 +1341,9 @@ export interface CareerState {
   permanentTeam: PermanentTeamState;
   acceptedOffer: ExpeditionOffer | null;
   seasonPlan: SeasonCampaignPlan;
+  currentRegionId: RegionId;
+  unlockedRegionIds: RegionId[];
+  travelHistory: RegionTravelRecord[];
 }
 
 export interface CareerDraft {

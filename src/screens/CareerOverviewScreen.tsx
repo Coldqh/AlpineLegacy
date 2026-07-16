@@ -2,6 +2,7 @@ import { MountainArt } from '../components/MountainArt';
 import { SkillBars } from '../components/SkillBars';
 import { TRAINING_ACTIONS, SKILL_LABELS, careerReadiness, expeditionReadiness, getSelectedRoute } from '../core/career';
 import { normalizeCareerProgression } from '../core/progression';
+import { careerRegion } from '../core/regionalCareer';
 import { normalizeSeasonCampaignPlan, seasonPlanRoutes } from '../core/seasonPlanning';
 import type { CareerState, SeasonBudgetPolicy, SeasonRiskPolicy, TrainingId, WorldState } from '../core/types';
 
@@ -25,7 +26,8 @@ function signed(value: number) {
 
 export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition, onOpenWorld, onSeasonRisk, onSeasonBudget, onSeasonGoal, onSeasonTeam }: Props) {
   const target = getSelectedRoute(career);
-  const mountain = world.region.mountains.find(item => item.id === target.mountainId) ?? world.region.mountains[0]!;
+  const currentRegion = careerRegion(world, career);
+  const mountain = world.ecosystem.content.mountains.byId[target.mountainId] ?? world.region.mountains[0]!;
   const readiness = careerReadiness(career);
   const expedition = expeditionReadiness(career);
   const progression = normalizeCareerProgression(career);
@@ -35,7 +37,7 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
   const mentorActivity = [...career.livingWorld.expeditions].reverse().filter(item => clubMentorIds.has(item.leaderAthleteId)).slice(0, 3);
   const seasonPlan = normalizeSeasonCampaignPlan(career);
   const seasonGoals = seasonPlanRoutes(career);
-  const seasonCandidates = [...career.routes].sort((a, b) => a.objectiveRisk - b.objectiveRisk || a.summitElevation - b.summitElevation).filter((route, index, list) => list.findIndex(item => item.mountainId === route.mountainId) === index).slice(0, 8);
+  const seasonCandidates = career.routes.filter(route => route.regionId === career.currentRegionId).sort((a, b) => a.objectiveRisk - b.objectiveRisk || a.summitElevation - b.summitElevation).filter((route, index, list) => list.findIndex(item => item.mountainId === route.mountainId) === index).slice(0, 8);
   const seasonCore = career.teamRoster.filter(member => seasonPlan.coreMemberIds.includes(member.id));
   const nextMessage = career.recoveryDays > 0
     ? `После экспедиции нужен отдых: ещё ${career.recoveryDays} дн. Тяжёлые тренировки временно закрыты.`
@@ -64,7 +66,7 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
       <div className="overview-poster overview-poster--clear">
         <MountainArt points={mountain.profilePoints} variant="hero" label={target.mountainName} elevation={target.summitElevation} />
         <div className="overview-poster__plate">
-          <small>ТЕКУЩАЯ ЦЕЛЬ</small>
+          <small>{currentRegion.country ?? 'РЕГИОН'} · {currentRegion.name}</small>
           <strong>{target.mountainName}</strong>
           <span>{target.name} · {target.summitElevation} м</span>
         </div>

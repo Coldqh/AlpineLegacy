@@ -2,6 +2,7 @@ import { MountainArt } from '../components/MountainArt';
 import { EXPEDITION_RANK_LABELS, expeditionReadiness, getSelectedRoute, routesForMountain } from '../core/career';
 import type { CareerState, ExpeditionOffer, WorldState } from '../core/types';
 import { buildMountainMemory } from '../core/mountainMemory';
+import { careerRegion, regionMountains } from '../core/regionalCareer';
 import { buildMountainDynamics } from '../core/mountainDynamics';
 import { SCHOOL_EXPEDITION_PHASE_LABELS, schoolExpeditionPhase, schoolOfferCanAccept } from '../core/schoolExpeditions';
 
@@ -34,10 +35,12 @@ function mountainScore(mountain: WorldState['region']['mountains'][number]) {
 
 export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSelectMountain, onSelectRoute, onContinue }: Props) {
   const route = getSelectedRoute(career);
-  const mountain = world.region.mountains.find(item => item.id === route.mountainId) ?? world.region.mountains[0]!;
+  const currentRegion = careerRegion(world, career);
+  const currentMountains = regionMountains(world, currentRegion.id);
+  const mountain = world.ecosystem.content.mountains.byId[route.mountainId] ?? currentMountains[0]!;
   const routes = routesForMountain(career, mountain.id);
   const readiness = expeditionReadiness(career);
-  const mountains = [...world.region.mountains].sort((a, b) => mountainScore(a) - mountainScore(b));
+  const mountains = [...currentMountains].sort((a, b) => mountainScore(a) - mountainScore(b));
   const latestApplication = career.applications[career.applications.length - 1] ?? null;
   const mountainMemory = buildMountainMemory(career, mountain.id);
   const routeDynamics = buildMountainDynamics(career, mountain.id, route.id);
@@ -91,7 +94,7 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
     <section className="workspace-page route-planning-page">
       <header className="workspace-title workspace-title--compact">
         <div>
-          <p className="eyebrow">ШАГ 1 ИЗ 4 · ЦЕЛЬ ЭКСПЕДИЦИИ</p>
+          <p className="eyebrow">ШАГ 1 ИЗ 4 · {currentRegion.country ?? 'РЕГИОН'} · {currentRegion.name}</p>
           <h1>Выбери гору.</h1>
           <p>Сначала вершина, потом линия. Все показатели ниже влияют на время, состав, груз и шанс вернуться.</p>
         </div>

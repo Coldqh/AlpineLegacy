@@ -15,6 +15,7 @@ import {
   schoolExpeditionBoard,
 } from '../core/career';
 import { buildMountainDynamics } from '../core/mountainDynamics';
+import { careerRegion, regionAccessList, regionMountains } from '../core/regionalCareer';
 import { SCHOOL_EXPEDITION_PHASE_LABELS, schoolExpeditionPhase, schoolOfferCanAccept } from '../core/schoolExpeditions';
 import { CAREER_TIER_LABELS, SEASON_PHASE_LABELS, careerSeasonPhase, careerWorldRank, currentSeasonExpeditionCount, expeditionLimitForTier, nextCareerMilestone, normalizeCareerProgression } from '../core/progression';
 import { buildMountainMemory } from '../core/mountainMemory';
@@ -105,9 +106,11 @@ export function MobileOverview({ world, career, onTrain, onOpenExpedition, onSea
 export function MobileRoute({ world, career, offers, onAcceptOffer, onSelectMountain, onSelectRoute, onContinue }: { world: WorldState; career: CareerState; offers: ExpeditionOffer[]; onAcceptOffer: (id: string) => void; onSelectMountain: (id: string) => void; onSelectRoute: (id: string) => void; onContinue: () => void }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const route = getSelectedRoute(career);
-  const mountain = world.region.mountains.find(item => item.id === route.mountainId) ?? world.region.mountains[0]!;
+  const currentRegion = careerRegion(world, career);
+  const currentMountains = regionMountains(world, currentRegion.id);
+  const mountain = world.ecosystem.content.mountains.byId[route.mountainId] ?? currentMountains[0]!;
   const canPlan = career.membership.permissions.canChooseRoute;
-  const mountains = [...world.region.mountains].sort((a, b) => mountainScore(a) - mountainScore(b));
+  const mountains = [...currentMountains].sort((a, b) => mountainScore(a) - mountainScore(b));
   const routes = routesForMountain(career, mountain.id);
   const mountainMemory = useMemo(() => buildMountainMemory(career, mountain.id), [career, mountain.id]);
   const applicationFor = (offerId: string) => [...career.applications].reverse().find(application => application.offerId === offerId) ?? null;
@@ -233,22 +236,31 @@ export function MobileExpedition({ career, difficulty, onLaunch, onOpenTab, onSe
   </section>;
 }
 
-export function MobileWorld({ world, career }: { world: WorldState; career: CareerState }) {
+export function MobileWorld({ world, career, onTravel }: { world: WorldState; career: CareerState; onTravel: (regionId: string) => void }) {
   const living = career.livingWorld;
-  const active = living.athletes.filter(item => item.status === 'ACTIVE' && item.recoveryDays === 0).length;
-  const recovering = living.athletes.filter(item => item.status === 'INJURED' || item.recoveryDays > 0).length;
-  const losses = living.athletes.filter(item => item.status === 'DEAD' || item.status === 'MISSING').length;
-  const latest = [...living.expeditions].reverse().slice(0, 6);
+  const currentRegion = careerRegion(world, career);
+  const access = regionAccessList(world, career);
+  const localClubs = living.clubs.filter(club => club.regionId === currentRegion.id);
+  const localClubIds = new Set(localClubs.map(club => club.id));
+  const localAthletes = living.athletes.filter(item => localClubIds.has(item.clubId));
+  const active = localAthletes.filter(item => item.status === 'ACTIVE' && item.recoveryDays === 0).length;
+  const recovering = localAthletes.filter(item => item.status === 'INJURED' || item.recoveryDays > 0).length;
+  const losses = localAthletes.filter(item => item.status === 'DEAD' || item.status === 'MISSING').length;
+  const latest = [...living.expeditions].filter(item => item.regionId === currentRegion.id).reverse().slice(0, 6);
   const plans = schoolExpeditionBoard(world, career, true);
+  const localMountains = regionMountains(world, currentRegion.id);
+  const localMountainIds = new Set(localMountains.map(item => item.id));
   return <section className="m-screen">
+    <section className="m-world-region-head"><small>{currentRegion.country} · {currentRegion.rangeName}</small><strong>{currentRegion.name}</strong><span>{currentRegion.climbingSeason}</span></section>
+    <div className="m-region-carousel">{access.map(({ region, current, unlocked, reputationGap, affordable, travelCost, travelDays }) => <article key={region.id} className={`${current ? 'is-current' : ''} ${!unlocked ? 'is-locked' : ''}`}><div><small>{region.country}</small><strong>{region.name}</strong><span>{region.elevationMin}–{region.elevationMax} м</span></div><button disabled={current || !unlocked || !affordable || Boolean(career.activeClimb)} onClick={() => onTravel(region.id)}>{current ? 'Здесь' : !unlocked ? `+${reputationGap} реп.` : !affordable ? 'Нет средств' : `${travelDays}д · ${travelCost} кр.`}</button></article>)}</div>
     <div className="m-state-strip"><span>В строю <b>{active}</b></span><span>Восстановление <b>{recovering}</b></span><span>Потери <b>{losses}</b></span></div>
     <div className="m-section-head"><h2>Планы школ</h2><span>{plans.length}</span></div>
     <div className="m-school-plan-list">{plans.map(plan => { const route = career.routes.find(item => item.id === plan.routeId); const leader = plan.leaderNpcId ? world.ecosystem.content.npcs.byId[plan.leaderNpcId] : null; const club = living.clubs.find(item => item.id === plan.organizationId); const phase = schoolExpeditionPhase(plan, career.seasonDay); return <article key={plan.id} className={`is-${phase.toLowerCase()}`}><small>{SCHOOL_EXPEDITION_PHASE_LABELS[phase]} · день {plan.departureDay ?? '—'}</small><strong>{route?.mountainName ?? 'Гора'} · {route?.name ?? 'Маршрут'}</strong><span>{club?.name ?? 'Школа'} · {leader?.name ?? 'Инструктор'}</span></article>; })}</div>
     <div className="m-section-head"><h2>Школы региона</h2></div>
-    <div className="m-club-list">{living.clubs.slice().sort((a, b) => b.prestige - a.prestige).map(club => <article key={club.id} className={club.id === career.club.id ? 'is-player' : ''}><div><strong>{club.name}</strong><small>{SKILL_LABELS[club.focusSkill]} · {club.riskProfile === 'CAUTIOUS' ? 'осторожная' : club.riskProfile === 'AGGRESSIVE' ? 'агрессивная' : 'сбалансированная'} школа</small></div><b>{club.prestige}</b></article>)}</div>
-    <div className="m-section-head"><h2>Последние выходы</h2><span>{living.expeditions.length}</span></div>
+    <div className="m-club-list">{localClubs.slice().sort((a, b) => b.prestige - a.prestige).map(club => <article key={club.id} className={club.id === career.club.id ? 'is-player' : ''}><div><strong>{club.name}</strong><small>{SKILL_LABELS[club.focusSkill]} · {club.riskProfile === 'CAUTIOUS' ? 'осторожная' : club.riskProfile === 'AGGRESSIVE' ? 'агрессивная' : 'сбалансированная'} школа</small></div><b>{club.prestige}</b></article>)}</div>
+    <div className="m-section-head"><h2>Последние выходы</h2><span>{latest.length}</span></div>
     <div className="m-world-expedition-list">{latest.map(item => { const leader = living.athletes.find(person => person.id === item.leaderAthleteId); return <article key={item.id}><div><small>{item.teamSize} чел. · {item.durationDays} дн. · отдых {item.recoveryDays} дн.</small><strong>{item.mountainName}</strong><span>{item.routeName} · {leader?.name ?? 'Группа'}</span></div><b className={`is-${item.outcome.toLowerCase()}`}>{item.outcome === 'SUMMIT' ? 'Вершина' : item.outcome === 'RETREAT' ? 'Отход' : item.outcome === 'TRAGEDY' ? 'Трагедия' : 'Авария'}</b></article>; })}</div>
-    <details className="m-details"><summary>Состояние гор · {world.region.mountains.length}</summary><div className="m-world-mountains">{living.mountainHistory.map((history, index) => { const mountain = world.region.mountains.find(item => item.id === history.mountainId); return <article key={history.mountainId}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{history.mountainName}</strong><small>{mountain?.elevation ?? 0} м · {history.firstAscentYear ? `первая ${history.firstAscentYear}` : 'не покорена'}</small></div></article>; })}</div></details>
+    <details className="m-details"><summary>Состояние гор · {localMountains.length}</summary><div className="m-world-mountains">{living.mountainHistory.filter(history => localMountainIds.has(history.mountainId)).map((history, index) => { const mountain = world.ecosystem.content.mountains.byId[history.mountainId]; return <article key={history.mountainId}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{history.mountainName}</strong><small>{mountain?.elevation ?? 0} м · {history.firstAscentYear ? `первая ${history.firstAscentYear}` : 'не покорена'}</small></div></article>; })}</div></details>
   </section>;
 }
 

@@ -18,7 +18,8 @@ import {
 } from './seasonPlanning';
 import { defaultDescentSegments, generateRoutesForWorld, getQualificationTarget } from './routeFactory';
 export { getQualificationTarget } from './routeFactory';
-import { getEntryOrganizations, getOrganization, organizationToClub, rankAtLeast, rosterForOrganization } from './ecosystem';
+import { getEntryOrganizations, getOrganization, materializeNpc, organizationToClub, rankAtLeast, rosterForOrganization } from './ecosystem';
+import { automaticUnlockedRegions, careerRegion, defaultRouteForRegion, regionTravelCost } from './regionalCareer';
 import { buildExpeditionReport, createClimbTeamStates, enrichRoster, finalizeRosterAfterClimb, memory, teamAverage } from './people';
 import { advanceLivingWorld, createLivingWorld, hydrateLivingWorld, registerHeroExpedition } from './worldSimulation';
 import { createCareerProgression, currentSeasonExpeditionCount, expeditionLimitForTier, hydrateCareerProgression, normalizeCareerProgression, rollCareerSeason, syncCareerProgression } from './progression';
@@ -66,6 +67,7 @@ import type {
   OriginDefinition,
   OriginId,
   QualificationClimb,
+  RegionId,
   RouteSegment,
   SkillId,
   SkillSet,
@@ -301,23 +303,26 @@ function makeTeam(world: WorldState, club: ClubData): TeamMember[] {
   return enrichRoster(raw, world.config.seed, world.config.startYear, 1);
 }
 
-function makeWeatherWindows(world: WorldState): WeatherWindow[] {
-  const rng = createRng(`${world.config.seed}:career:weather`);
-  const cold = world.config.eraId === 'PIONEER' ? -2 : 0;
+function makeWeatherWindows(world: WorldState, regionId = world.ecosystem.content.primaryRegionId): WeatherWindow[] {
+  const region = world.ecosystem.content.regions.byId[regionId] ?? world.region;
+  const rng = createRng(`${world.config.seed}:career:weather:${region.id}`);
+  const profileCold = region.generationProfile === 'HIGH_ALTITUDE' ? -9 : region.generationProfile === 'GLACIAL' ? -4 : region.generationProfile === 'ARID' ? -2 : 0;
+  const cold = (world.config.eraId === 'PIONEER' ? -2 : 0) + profileCold;
+  const snowScale = region.generationProfile === 'ARID' ? .35 : region.generationProfile === 'HIGH_ALTITUDE' ? .8 : 1;
   return [
     {
       id: 'window-early', label: 'Раннее окно', startsInDays: 4, durationHours: rng.int(17, 23), temperatureC: rng.int(-17, -10) + cold,
-      windKmh: rng.int(24, 38), snowfallCm: rng.int(0, 6), stability: rng.int(58, 70),
+      windKmh: rng.int(24, 38), snowfallCm: Math.round(rng.int(0, 6) * snowScale), stability: rng.int(58, 70),
       description: 'Холодно и жёстко. Снег держится лучше, но ветер остаётся сильным.',
     },
     {
       id: 'window-stable', label: 'Стабильное окно', startsInDays: 9, durationHours: rng.int(28, 39), temperatureC: rng.int(-13, -7) + cold,
-      windKmh: rng.int(12, 24), snowfallCm: rng.int(0, 3), stability: rng.int(74, 88),
+      windKmh: rng.int(12, 24), snowfallCm: Math.round(rng.int(0, 3) * snowScale), stability: rng.int(74, 88),
       description: 'Самое чистое окно. Дольше ждать, зато прогноз устойчивее.',
     },
     {
       id: 'window-warm', label: 'Тёплый разрыв', startsInDays: 15, durationHours: rng.int(20, 30), temperatureC: rng.int(-8, -2) + cold,
-      windKmh: rng.int(8, 20), snowfallCm: rng.int(3, 10), stability: rng.int(48, 63),
+      windKmh: rng.int(8, 20), snowfallCm: Math.round(rng.int(3, 10) * snowScale), stability: rng.int(48, 63),
       description: 'Меньше ветра, но потепление ухудшает снег и ледовые участки.',
     },
   ];
@@ -500,7 +505,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
   const activeClimb = normalizedActiveClimb && activeRoute ? { ...normalizedActiveClimb, simulation: normalizedActiveClimb.simulation ? hydrateExpeditionSimulation(normalizedActiveClimb, activeRoute) : null, strategic: hydrateStrategicExpedition(normalizedActiveClimb, activeRoute) } : normalizedActiveClimb;
   const foundation = {
     ...career,
-    schemaVersion: 19,
+    schemaVersion: 20,
     club,
     routes,
     teamRoster,
@@ -511,6 +516,11 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     recoveryDays: Math.max(0, Math.round(career.recoveryDays ?? 0)),
     permanentTeam: career.permanentTeam ?? { name: `${career.hero?.name ?? 'Альпинист'} · связка`, style: 'BALANCED', memberIds: [], createdYear: career.year ?? world.config.startYear, createdDay: career.seasonDay ?? 1, cohesion: 24, climbs: 0, summits: 0, rescues: 0, losses: 0 },
     acceptedOffer: career.acceptedOffer ?? null,
+    currentRegionId: career.currentRegionId && world.ecosystem.content.regions.byId[career.currentRegionId]
+      ? career.currentRegionId
+      : world.ecosystem.content.primaryRegionId,
+    unlockedRegionIds: career.unlockedRegionIds ?? [world.ecosystem.content.primaryRegionId],
+    travelHistory: career.travelHistory ?? [],
     expeditionPlan: {
       ...career.expeditionPlan,
       offerId: career.expeditionPlan?.offerId ?? null,
@@ -521,6 +531,12 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     livingWorld: hydrateLivingWorld(world, teamRoster, club, career.livingWorld),
     activeClimb,
   } as CareerState;
+  foundation.unlockedRegionIds = automaticUnlockedRegions(world, foundation);
+  const regionalRoute = foundation.routes.find(route => route.id === foundation.expeditionPlan.routeId && route.regionId === foundation.currentRegionId)
+    ?? defaultRouteForRegion(foundation, foundation.currentRegionId)
+    ?? foundation.routes[0]!;
+  foundation.expeditionPlan = { ...foundation.expeditionPlan, routeId: regionalRoute.id };
+  foundation.weatherWindows = career.weatherWindows?.length ? career.weatherWindows : makeWeatherWindows(world, foundation.currentRegionId);
   foundation.seasonPlan = normalizeSeasonCampaignPlan(foundation);
   return hydrateCareerProgression(foundation);
 }
@@ -534,7 +550,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = rosterForOrganization(world, membership.organizationId);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 19,
+    schemaVersion: 20,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,
@@ -583,6 +599,9 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     permanentTeam: { name: `${draft.name.trim() || 'Новый альпинист'} · связка`, style: 'BALANCED', memberIds: [], createdYear: world.config.startYear, createdDay: 1, cohesion: 24, climbs: 0, summits: 0, rescues: 0, losses: 0 },
     acceptedOffer: null,
     seasonPlan: null as unknown as CareerState['seasonPlan'],
+    currentRegionId: world.ecosystem.content.primaryRegionId,
+    unlockedRegionIds: [world.ecosystem.content.primaryRegionId],
+    travelHistory: [],
   };
 
   const opening = membership.mode === 'INDEPENDENT'
@@ -810,13 +829,78 @@ export function applyTraining(career: CareerState, trainingId: TrainingId): Care
   return timeline.year > career.year ? rollCareerSeason(career, advanced) : syncCareerProgression(advanced);
 }
 
+export function travelToRegion(world: WorldState, career: CareerState, regionId: RegionId): CareerState {
+  if (career.activeClimb || regionId === career.currentRegionId) return career;
+  const region = world.ecosystem.content.regions.byId[regionId];
+  if (!region) return career;
+  const unlocked = new Set(automaticUnlockedRegions(world, career));
+  if (!unlocked.has(regionId)) return career;
+  const cost = regionTravelCost(world, region);
+  const days = Math.max(1, region.travelDays ?? 2);
+  if (career.hero.money < cost) return career;
+  const route = defaultRouteForRegion(career, regionId);
+  if (!route) return career;
+  const from = careerRegion(world, career);
+  const timeline = advanceDays(career, days);
+  const weatherWindows = makeWeatherWindows(world, regionId);
+  const coreIds = career.permanentTeam.memberIds.filter(id => career.teamRoster.some(member => member.id === id && member.status === 'ACTIVE' && member.availability >= 45));
+  let next: CareerState = {
+    ...career,
+    year: timeline.year,
+    seasonDay: timeline.seasonDay,
+    week: timeline.week,
+    hero: {
+      ...career.hero,
+      age: career.hero.age + timeline.ageDelta,
+      money: Math.max(0, career.hero.money - cost),
+      fatigue: clamp(career.hero.fatigue + Math.max(2, Math.round(days * .7)), 0, 100),
+      morale: clamp(career.hero.morale + 2, 0, 100),
+    },
+    recoveryDays: Math.max(0, career.recoveryDays - days),
+    currentRegionId: regionId,
+    unlockedRegionIds: [...new Set([...career.unlockedRegionIds, ...unlocked, regionId])],
+    travelHistory: [...career.travelHistory, {
+      id: `travel-${career.year}-${career.seasonDay}-${regionId}-${career.travelHistory.length + 1}`,
+      fromRegionId: from.id,
+      toRegionId: regionId,
+      year: career.year,
+      seasonDay: career.seasonDay,
+      days,
+      cost,
+    }],
+    weatherWindows,
+    selectedOfferId: null,
+    acceptedOffer: null,
+    expeditionPlan: {
+      ...career.expeditionPlan,
+      routeId: route.id,
+      weatherWindowId: weatherWindows[0]!.id,
+      offerId: null,
+      leaderNpcId: null,
+      playerRole: career.membership.mode === 'INDEPENDENT' ? 'LEADER' : 'SUPPORT',
+      authorityMode: career.membership.mode === 'INDEPENDENT' ? 'COMMAND' : career.membership.authority,
+      teamMemberIds: coreIds,
+    },
+  };
+  next.seasonPlan = createSeasonCampaignPlan(next);
+  next.log = [...career.log, careerLog(next, 'CAREER', `Переезд: ${region.country ?? region.name}`, `${from.name} → ${region.name}. Дорога ${days} дн., расходы ${cost} кр. Теперь доступны местные школы, маршруты и погодные окна.`)];
+  const advanced = advanceLivingWorld(next, days);
+  return timeline.year > career.year ? rollCareerSeason(career, advanced) : syncCareerProgression(advanced);
+}
+
 export function updateExpeditionPlan(career: CareerState, patch: Partial<ExpeditionPlan>): CareerState {
   return { ...career, expeditionPlan: { ...career.expeditionPlan, ...patch } };
 }
 
 export function schoolExpeditionBoard(world: WorldState, career: CareerState, allSchools = false): ExpeditionOffer[] {
+  const homeOrganization = getOrganization(world, career.membership.organizationId);
+  const awayFromHome = Boolean(homeOrganization && homeOrganization.regionId !== career.currentRegionId);
   return buildSchoolExpeditionBoard(world, career)
-    .filter(offer => allSchools || career.membership.mode === 'INDEPENDENT' || offer.organizationId === career.membership.organizationId);
+    .filter(offer => {
+      const route = world.ecosystem.content.routes.byId[offer.routeId];
+      return route?.regionId === career.currentRegionId;
+    })
+    .filter(offer => allSchools || awayFromHome || career.membership.mode === 'INDEPENDENT' || offer.organizationId === career.membership.organizationId);
 }
 
 export function availableExpeditionOffers(world: WorldState, career: CareerState): ExpeditionOffer[] {
@@ -868,6 +952,10 @@ function acceptOfferState(world: WorldState, career: CareerState, offerId: strin
   if (!route) return career;
   const participantIds = [offer.leaderNpcId, ...offer.memberNpcIds].filter((id): id is string => Boolean(id));
   const known = [...new Set([...career.knownNpcIds, ...participantIds])];
+  const guestMembers = participantIds
+    .filter(id => !career.teamRoster.some(member => member.id === id))
+    .map(id => materializeNpc(world, id))
+    .filter((member): member is TeamMember => Boolean(member));
   const existingApplication = applicationForOffer(career, offer.id);
   const acceptedApplication: ExpeditionApplication = existingApplication?.status === 'ACCEPTED' ? existingApplication : {
     id: `application-${offer.id}-${career.year}-${career.seasonDay}-${career.applications.length + 1}`, offerId: offer.id, status: 'ACCEPTED', score: 100, reason: 'Место подтверждено.', appliedYear: career.year, appliedDay: career.seasonDay,
@@ -878,6 +966,7 @@ function acceptOfferState(world: WorldState, career: CareerState, offerId: strin
     selectedOfferId: offer.id,
     acceptedOffer: offer,
     knownNpcIds: known,
+    teamRoster: guestMembers.length ? [...career.teamRoster, ...guestMembers] : career.teamRoster,
     expeditionPlan: { ...career.expeditionPlan, routeId: route.id, offerId: offer.id, leaderNpcId: offer.leaderNpcId, playerRole: offer.playerRole, authorityMode: offer.authority, teamMemberIds: participantIds },
     log: [...career.log, careerLog(career, 'EXPEDITION', scheduled ? 'Место в плане школы подтверждено' : 'Принято место в экспедиции', `${route.mountainName} · ${route.name}. ${scheduled && offer.departureDay ? `Выход запланирован на день ${offer.departureDay}.` : `Роль: ${offer.playerRole}.`}`)],
   };

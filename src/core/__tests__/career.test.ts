@@ -63,11 +63,13 @@ describe('career and expedition module', () => {
     const organization = getEntryOrganizations(world)[0]!;
     const career = createCareer(world, { name: 'Test Climber', age: 20, originId: 'CLUB_SCHOOL', entryMode: 'ORGANIZATION', organizationId: organization.id });
     expect(career.worldId).toBe(world.id);
-    expect(career.schemaVersion).toBe(19);
+    expect(career.schemaVersion).toBe(20);
     expect(career.membership.rank).toBe('NOVICE');
     expect(career.membership.permissions.canChooseRoute).toBe(false);
     expect(career.expeditionPlan.teamMemberIds).toEqual([]);
-    expect(career.routes).toHaveLength(world.region.mountains.length * 3);
+    expect(career.routes).toHaveLength(world.ecosystem.content.routes.allIds.length);
+    expect(career.currentRegionId).toBe(world.ecosystem.content.primaryRegionId);
+    expect(career.unlockedRegionIds).toContain(career.currentRegionId);
     expect(career.teamRoster.length).toBeGreaterThanOrEqual(10);
     expect(career.weatherWindows).toHaveLength(3);
     expect(career.livingWorld.athletes.length).toBe(world.ecosystem.content.npcs.allIds.length);
@@ -110,27 +112,22 @@ describe('career and expedition module', () => {
     career = startPlannedClimb(career);
     const climb = career.activeClimb!;
     const simulation = climb.simulation!;
-    const lastIndex = simulation.ascentStages.length - 1;
-    const last = simulation.ascentStages[lastIndex]!;
     career = {
       ...career,
       activeClimb: {
         ...climb,
-        energy: 100,
-        condition: 100,
-        hoursAwake: 0,
+        phase: 'SUMMIT',
+        summitReached: true,
+        currentElevation: climb.summitElevation,
         simulation: {
           ...simulation,
-          stageIndex: lastIndex,
-          relativeElevation: last.relativeStart,
-          activeEvent: null,
-          leaderOrder: null,
-          ascentStages: simulation.ascentStages.map((stage, index) => index === lastIndex ? { ...stage, progress: stage.requiredProgress - 1, preparation: 100, routeKnowledge: 100, surfaceKnowledge: 100, preparationTags: [...stage.preparationOptions[0]] } : stage),
+          status: 'SUMMIT',
+          stageIndex: simulation.ascentStages.length,
+          relativeElevation: simulation.maxRelativeElevation,
+          highestRelativeElevation: simulation.maxRelativeElevation,
         },
       },
     };
-    career = resolveExpeditionFieldAction(career, 'MOVE_CAUTIOUS').career;
-    expect(career.activeClimb?.phase).toBe('SUMMIT');
     expect(career.completedClimbs).toBe(0);
     career = beginDescent(career);
     expect(career.activeClimb?.phase).toBe('DESCENT');

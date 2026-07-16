@@ -35,6 +35,7 @@ import {
   setSeasonBudgetPolicy,
   toggleSeasonGoal,
   usePermanentTeamForSeason,
+  travelToRegion,
   updateExpeditionPlan,
 } from '../core/career';
 import type { CareerState, CareerTabId, ExpeditionPlan, TrainingId, WorldState } from '../core/types';
@@ -114,7 +115,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   }
   function renderMobileTab() {
     if (tab === 'OVERVIEW') return <MobileOverview world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} onSeasonRisk={policy => onPersist(setSeasonRiskPolicy(career, policy))} onSeasonBudget={policy => onPersist(setSeasonBudgetPolicy(career, policy))} onSeasonGoal={routeId => onPersist(toggleSeasonGoal(career, routeId))} onSeasonTeam={() => onPersist(usePermanentTeamForSeason(career))} />;
-    if (tab === 'WORLD') return <MobileWorld world={world} career={career} />;
+    if (tab === 'WORLD') return <MobileWorld world={world} career={career} onTravel={regionId => onPersist(travelToRegion(world, career, regionId))} />;
     if (tab === 'NEWS') return <MobileNews career={career} />;
     if (tab === 'RIVALS') return <MobileRivals career={career} />;
     if (tab === 'RECORDS') return <MobileRecords career={career} />;
@@ -131,7 +132,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     if (tab === 'OVERVIEW') {
       return <CareerOverviewScreen world={world} career={career} onTrain={onTrain} onOpenExpedition={() => onTab(career.activeClimb ? 'CLIMB' : 'ROUTE')} onOpenWorld={() => onTab('WORLD')} onSeasonRisk={policy => onPersist(setSeasonRiskPolicy(career, policy))} onSeasonBudget={policy => onPersist(setSeasonBudgetPolicy(career, policy))} onSeasonGoal={routeId => onPersist(toggleSeasonGoal(career, routeId))} onSeasonTeam={() => onPersist(usePermanentTeamForSeason(career))} />;
     }
-    if (tab === 'WORLD') return <WorldScreen world={world} career={career} />;
+    if (tab === 'WORLD') return <WorldScreen world={world} career={career} onTravel={regionId => onPersist(travelToRegion(world, career, regionId))} />;
     if (tab === 'NEWS') return <NewsScreen career={career} />;
     if (tab === 'RIVALS') return <RivalsScreen career={career} />;
     if (tab === 'RECORDS') return <RecordsScreen career={career} />;

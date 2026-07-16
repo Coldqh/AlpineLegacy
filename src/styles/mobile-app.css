@@ -582,3 +582,42 @@
 .m-season-plan-label { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 9px; }
 .m-season-plan-label b { color: var(--text); text-align: right; }
 .m-season-team-button { min-height: 36px; border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(24, 50, 39, .74); color: var(--text); font-size: 10px; }
+
+/* 0.18.0 — mobile world travel */
+.m-world-region-head {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(8, 16, 13, .48);
+}
+.m-world-region-head small { color: var(--muted); font-size: 8px; letter-spacing: .1em; text-transform: uppercase; }
+.m-world-region-head strong { font-family: var(--serif); font-size: 27px; font-weight: 500; }
+.m-world-region-head span { color: var(--muted); font-size: 10px; }
+.m-region-carousel {
+  display: flex;
+  gap: 8px;
+  margin: 10px -2px 12px;
+  padding: 0 2px 4px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+}
+.m-region-carousel article {
+  display: grid;
+  flex: 0 0 220px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(8, 14, 12, .38);
+  scroll-snap-align: start;
+}
+.m-region-carousel article.is-current { border-color: rgba(226, 106, 72, .7); }
+.m-region-carousel article.is-locked { opacity: .58; }
+.m-region-carousel small, .m-region-carousel span { display: block; color: var(--muted); font-size: 8px; }
+.m-region-carousel strong { display: block; margin: 3px 0; font-size: 12px; }
+.m-region-carousel button { min-height: 34px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 8px; background: transparent; color: var(--text); font-size: 8px; font-weight: 700; white-space: nowrap; }
+.m-region-carousel button:disabled { opacity: .45; }

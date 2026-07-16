@@ -20,9 +20,10 @@ const CAREER_KEY_V15 = 'alpine-legacy:career:v15';
 const CAREER_KEY_V16 = 'alpine-legacy:career:v16';
 const CAREER_KEY_V17 = 'alpine-legacy:career:v17';
 const CAREER_KEY_V18 = 'alpine-legacy:career:v18';
-const CAREER_KEY = 'alpine-legacy:career:v19';
-const CAREER_BACKUP_KEY = 'alpine-legacy:career:backup:v19';
-const CAREER_PENDING_KEY = 'alpine-legacy:career:pending:v19';
+const CAREER_KEY_V19 = 'alpine-legacy:career:v19';
+const CAREER_KEY = 'alpine-legacy:career:v20';
+const CAREER_BACKUP_KEY = 'alpine-legacy:career:backup:v20';
+const CAREER_PENDING_KEY = 'alpine-legacy:career:pending:v20';
 const RECOVERY_META_KEY = 'alpine-legacy:career:recovery-meta:v1';
 
 let lastCareerSerialized: string | null = null;
@@ -37,7 +38,7 @@ function careerFingerprint(career: CareerState) {
   return `${career.activeClimb?.id}:${simulation.direction}:${stage?.id ?? simulation.stageIndex}:${Math.floor(simulation.totalActions / 5)}`;
 }
 
-const LEGACY_KEYS = [CAREER_KEY_V18, CAREER_KEY_V17, CAREER_KEY_V16, CAREER_KEY_V15, CAREER_KEY_V14, CAREER_KEY_V13, CAREER_KEY_V12, CAREER_KEY_V11, CAREER_KEY_V10, CAREER_KEY_V9, CAREER_KEY_V8, CAREER_KEY_V7, CAREER_KEY_V6, CAREER_KEY_V5, CAREER_KEY_V4, CAREER_KEY_V3, CAREER_KEY_V2];
+const LEGACY_KEYS = [CAREER_KEY_V19, CAREER_KEY_V18, CAREER_KEY_V17, CAREER_KEY_V16, CAREER_KEY_V15, CAREER_KEY_V14, CAREER_KEY_V13, CAREER_KEY_V12, CAREER_KEY_V11, CAREER_KEY_V10, CAREER_KEY_V9, CAREER_KEY_V8, CAREER_KEY_V7, CAREER_KEY_V6, CAREER_KEY_V5, CAREER_KEY_V4, CAREER_KEY_V3, CAREER_KEY_V2];
 
 function parseJson(raw: string | null) {
   if (!raw) return null;
@@ -216,10 +217,11 @@ export function saveCareer(career: CareerState) {
 
 function migratePayload(parsed: any, world: WorldState): CareerState | null {
   if (!isCareerPayload(parsed) || parsed.worldId !== world.id) return null;
-  if (parsed.schemaVersion === 19) return hydrateCareerFoundation(parsed, world, false);
-  if (parsed.schemaVersion === 18) return hydrateCareerFoundation({ ...parsed, schemaVersion: 19 } as CareerState, world, false);
-  if (parsed.schemaVersion === 17) return hydrateCareerFoundation({ ...parsed, schemaVersion: 19, recoveryDays: parsed.recoveryDays ?? 0 } as CareerState, world, false);
-  if (parsed.schemaVersion === 16) return hydrateCareerFoundation({ ...parsed, schemaVersion: 19, recoveryDays: parsed.recoveryDays ?? 0 } as CareerState, world, false);
+  if (parsed.schemaVersion === 20) return hydrateCareerFoundation(parsed, world, false);
+  if (parsed.schemaVersion === 19) return hydrateCareerFoundation({ ...parsed, schemaVersion: 20 } as CareerState, world, false);
+  if (parsed.schemaVersion === 18) return hydrateCareerFoundation({ ...parsed, schemaVersion: 20 } as CareerState, world, false);
+  if (parsed.schemaVersion === 17) return hydrateCareerFoundation({ ...parsed, schemaVersion: 20, recoveryDays: parsed.recoveryDays ?? 0 } as CareerState, world, false);
+  if (parsed.schemaVersion === 16) return hydrateCareerFoundation({ ...parsed, schemaVersion: 20, recoveryDays: parsed.recoveryDays ?? 0 } as CareerState, world, false);
   if (parsed.schemaVersion === 15 || parsed.schemaVersion === 14 || parsed.schemaVersion === 13 || parsed.schemaVersion === 12 || parsed.schemaVersion === 11) return hydrateCareerFoundation(parsed, world, false);
   if (parsed.schemaVersion === 10) return migrateCareerV10(parsed, world);
   if (parsed.schemaVersion === 9) return hydrateCareerFoundation({ ...parsed, schemaVersion: 10 } as CareerState, world, true);

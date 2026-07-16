@@ -416,7 +416,7 @@ function makeRoute(world: WorldState, mountain: MountainData, recipe: RouteRecip
 
   const provisional: ExpeditionRoute = {
     id: routeId,
-    regionId: world.region.id,
+    regionId: mountain.regionId ?? world.region.id,
     mountainId: mountain.id,
     mountainName: mountain.name,
     mountainCharacterId: mountain.characterId,
@@ -470,8 +470,8 @@ function makeMountainRoutes(world: WorldState, mountain: MountainData): Expediti
   return CHARACTER_RECIPES[mountain.characterId].map((recipe, routeIndex) => makeRoute(world, mountain, recipe, routeIndex, signatureMountain));
 }
 
-export function generateRoutesForWorld(world: WorldState): ExpeditionRoute[] {
-  return [...world.region.mountains]
+export function generateRoutesForWorld(world: WorldState, mountains: MountainData[] = world.region.mountains): ExpeditionRoute[] {
+  return [...mountains]
     .sort((a, b) => mountainDifficulty(a) - mountainDifficulty(b))
     .flatMap(mountain => makeMountainRoutes(world, mountain));
 }
