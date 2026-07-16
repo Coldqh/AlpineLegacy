@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { MountainModel } from './components/MountainModel';
 import { ScreenShell } from './components/ScreenShell';
 import { applyTraining, createCareer, formatSeasonDate } from './core/career';
@@ -25,6 +25,11 @@ import { MobileGeneratingScreen, MobileMenu, MobileMountainScreen, MobileRegionS
 import { useIsMobile, useScrollReset } from './mobile/useMobile';
 import { CareerWorkspaceScreen } from './screens/CareerWorkspaceScreen';
 import { TopoExpeditionLoader } from './components/TopoExpeditionLoader';
+
+const BalanceLabScreen = lazy(async () => {
+  const module = await import('./screens/BalanceLabScreen');
+  return { default: module.BalanceLabScreen };
+});
 
 const ERA_YEARS: Record<EraId, [number, number]> = {
   PIONEER: [1860, 1935],
@@ -67,6 +72,7 @@ function App() {
   const [selectedMountain, setSelectedMountain] = useState<MountainData | null>(() => selectedMountainFromUi(initial.world, initial.ui));
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [topoPreview, setTopoPreview] = useState(() => new URLSearchParams(window.location.search).get('topo') === '1');
+  const [balanceLab, setBalanceLab] = useState(() => new URLSearchParams(window.location.search).get('balance') === '1');
   const [config, setConfig] = useState<WorldSeedConfig>({
     seed: randomSeed(),
     eraId: 'EXPEDITION',
@@ -99,8 +105,12 @@ function App() {
     }
   }, [initial.career, initial.recovery?.reason, initial.repairs]);
 
+  if (balanceLab) {
+    return <Suspense fallback={<main className="balance-lab"><p>Сбор результатов…</p></main>}><BalanceLabScreen onClose={() => { const url = new URL(window.location.href); url.searchParams.delete('balance'); window.history.replaceState({}, '', url); setBalanceLab(false); }} /></Suspense>;
+  }
+
   if (topoPreview) {
-    if (!career?.activeClimb) return <main className="mg-app"><header className="mg-header"><div><span>ALPINE LEGACY / 0.25.0</span><h1>Нет активной экспедиции</h1></div><div className="mg-header-actions"><button onClick={() => setTopoPreview(false)}>Вернуться</button></div></header></main>;
+    if (!career?.activeClimb) return <main className="mg-app"><header className="mg-header"><div><span>ALPINE LEGACY / 0.26.0</span><h1>Нет активной экспедиции</h1></div><div className="mg-header-actions"><button onClick={() => setTopoPreview(false)}>Вернуться</button></div></header></main>;
     return <TopoExpeditionLoader career={career} onPersist={next => { setCareer(next); saveCareer(next); }} onExit={() => setTopoPreview(false)} allowRegenerate={false} />;
   }
 
@@ -237,7 +247,7 @@ function App() {
             <p className="eyebrow">NEW WORLD / NEW LIFE</p>
             <h1>Создай мир, который переживёт тебя.</h1>
             <p className="lead">Один seed определит географию, историю, вершины и людей. Смерть героя завершит карьеру, но не обязательно уничтожит мир.</p>
-            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.25.0</small></div>
+            <div className="edition-stamp"><span>AL</span><strong>WORLD ENGINE</strong><small>SEED BASED / V0.26.0</small></div>
           </div>
 
           <div className="setup-form">
@@ -469,7 +479,7 @@ function App() {
   const archiveCount = career?.log.length ?? 0;
   if (mobile) return <MobileMenu world={world} career={career} onNew={() => setScreen('SETUP')} onContinue={continueCareer} onAtlas={openAtlasFromMenu} onArchive={() => { if (career) { setCareerTab('JOURNAL'); setScreen('CAREER'); } else setScreen('ARCHIVE'); }} onTopo={() => setTopoPreview(true)} />;
   return (
-    <ScreenShell rightLabel="EDITION 0.25.0 / INTEGRATED EXPEDITION">
+    <ScreenShell rightLabel="EDITION 0.26.0 / INTEGRATED EXPEDITION">
       <section className="menu-page page-enter">
         <div className="menu-hero-copy">
           <p className="eyebrow">A MOUNTAINEERING CAREER ROGUELIKE</p>

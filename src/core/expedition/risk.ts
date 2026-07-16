@@ -1,18 +1,7 @@
 import { evaluateLocalStepRisk, localCellAt, localMoveCost, type GridPoint, type GridWeather, type LocalStageMap, type LocalStepRiskBand } from '../../topography/mountainGridEngine';
+import { INTEGRATED_DIFFICULTY, INTEGRATED_PACE } from '../balanceTuning';
 import type { IntegratedDifficulty, IntegratedExpeditionState, IntegratedPace, IntegratedParticipantState, IntegratedSkillId } from './state';
 import { integratedLeader, integratedSpecialist, integratedTeamLoadRatio, integratedTeamMorale, integratedTeamTrust, mobileIntegratedParticipants } from './selectors';
-
-const DIFFICULTY = {
-  EXPLORER: { risk: 0.72, energy: 0.88, incident: 0.66, condition: 0.74 },
-  CLIMBER: { risk: 1, energy: 1, incident: 1, condition: 1 },
-  EXPEDITION: { risk: 1.2, energy: 1.08, incident: 1.28, condition: 1.2 },
-} satisfies Record<IntegratedDifficulty, { risk: number; energy: number; incident: number; condition: number }>;
-
-const PACE = {
-  CAUTIOUS: { risk: .8, energy: .7, minutes: 1.2, incident: .78 },
-  STEADY: { risk: 1, energy: 1, minutes: 1, incident: 1 },
-  FAST: { risk: 1.23, energy: 1.1, minutes: .8, incident: 1.3 },
-} satisfies Record<IntegratedPace, { risk: number; energy: number; minutes: number; incident: number }>;
 
 const SKILL_BY_TERRAIN: Record<string, IntegratedSkillId> = {
   VALLEY: 'ENDURANCE',
@@ -35,11 +24,11 @@ const TERRAIN_EXERTION: Record<string, number> = {
 };
 
 export function integratedDifficultyTuning(difficulty: IntegratedDifficulty) {
-  return DIFFICULTY[difficulty];
+  return INTEGRATED_DIFFICULTY[difficulty];
 }
 
 export function integratedPaceTuning(pace: IntegratedPace) {
-  return PACE[pace];
+  return INTEGRATED_PACE[pace];
 }
 
 function participantEnergyForStep(
@@ -62,8 +51,8 @@ function participantEnergyForStep(
   const wakeFactor = 1 + Math.max(0, state.minutesSinceSleep - 720) / 2200;
   const fatigueFactor = 1 + Math.max(0, participant.fatigue - 52) / 170;
   const ropeFactor = fixedRope && ['ROCK', 'RIDGE', 'GLACIER'].includes(terrain) ? .88 : 1;
-  const tuning = DIFFICULTY[state.difficulty];
-  const pace = PACE[state.pace];
+  const tuning = INTEGRATED_DIFFICULTY[state.difficulty];
+  const pace = INTEGRATED_PACE[state.pace];
   return Math.max(.1, hours * basePerHour * terrainFactor * loadFactor * altitudeFactor * wakeFactor * fatigueFactor * ropeFactor * tuning.energy * pace.energy);
 }
 
@@ -83,8 +72,8 @@ export function integratedStepPreview(
   const leaderSkill = leader.skills[skillId];
   const specialistSkill = specialist.skills[skillId];
   const skill = Math.round((leaderSkill * .55 + specialistSkill * .45) * 10) / 10;
-  const tuning = DIFFICULTY[state.difficulty];
-  const pace = PACE[state.pace];
+  const tuning = INTEGRATED_DIFFICULTY[state.difficulty];
+  const pace = INTEGRATED_PACE[state.pace];
   const baseRisk = evaluateLocalStepRisk(map, from, to, weather, { fixedRope, leaderEnergy: leader.energy, attempt });
   const acclimatization = Math.min(16, state.acclimatizationDays * 1.5 + state.nightsSlept * .45);
   const loadRatio = integratedTeamLoadRatio(state);

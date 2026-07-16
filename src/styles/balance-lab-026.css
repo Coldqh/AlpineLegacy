@@ -1,0 +1,32 @@
+.balance-lab { min-height: 100vh; padding: 28px; color: #e9f0ed; background: radial-gradient(circle at 20% 0%, #223630 0, #111817 42%, #090d0c 100%); font-family: Inter, system-ui, sans-serif; }
+.balance-lab__header { display: flex; justify-content: space-between; gap: 24px; align-items: start; max-width: 1440px; margin: 0 auto 24px; padding-bottom: 22px; border-bottom: 1px solid rgba(216,232,224,.16); }
+.balance-lab__header span, .balance-lab__equipment header span, .balance-lab__warnings header span { color: #8da69b; font-size: 11px; letter-spacing: .16em; }
+.balance-lab__header h1 { margin: 8px 0; font: 500 clamp(34px, 5vw, 64px)/1 Georgia, serif; }
+.balance-lab__header p { max-width: 780px; margin: 0; color: #a7b7b0; line-height: 1.55; }
+.balance-lab button { padding: 10px 14px; border: 1px solid rgba(222,236,229,.2); border-radius: 10px; color: inherit; background: rgba(14,24,21,.72); cursor: pointer; }
+.balance-lab button:hover, .balance-lab button.is-active { border-color: #dd7653; background: rgba(221,118,83,.16); }
+.balance-lab__controls { display: flex; flex-wrap: wrap; gap: 8px; max-width: 1440px; margin: 0 auto 18px; }
+.balance-lab__difficulty-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 1440px; margin: 0 auto; }
+.balance-lab__difficulty-grid > article, .balance-lab__equipment, .balance-lab__warnings { border: 1px solid rgba(216,232,224,.14); border-radius: 16px; background: rgba(11,18,16,.76); box-shadow: 0 24px 80px rgba(0,0,0,.22); }
+.balance-lab__difficulty-grid > article { padding: 18px; }
+.balance-lab__difficulty-grid article > header { display: flex; justify-content: space-between; align-items: end; gap: 12px; }
+.balance-lab__difficulty-grid header span { color: #a6b6af; font-size: 13px; text-transform: uppercase; letter-spacing: .12em; }
+.balance-lab__difficulty-grid header strong { font: 500 38px/1 Georgia, serif; }
+.balance-lab__bar { height: 7px; margin: 15px 0 18px; overflow: hidden; border-radius: 99px; background: #202c28; }
+.balance-lab__bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6fae96, #e0a054); }
+.balance-lab dl { margin: 0; }
+.balance-lab dl div { display: flex; justify-content: space-between; gap: 14px; padding: 9px 0; border-top: 1px solid rgba(216,232,224,.09); }
+.balance-lab dt { color: #8fa098; }
+.balance-lab dd { margin: 0; font-weight: 700; }
+.balance-lab__equipment, .balance-lab__warnings { max-width: 1404px; margin: 12px auto 0; padding: 18px; }
+.balance-lab__equipment h2 { margin: 5px 0 16px; font: 500 30px/1.1 Georgia, serif; }
+.balance-lab__equipment > div { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.balance-lab__equipment article { padding: 14px; border-radius: 12px; background: rgba(216,232,224,.05); }
+.balance-lab__equipment small { color: #8fa098; }
+.balance-lab__equipment article strong { display: block; margin: 8px 0; font: 500 29px/1 Georgia, serif; }
+.balance-lab__equipment p, .balance-lab__warnings p, .balance-lab__warnings li { color: #a7b7b0; line-height: 1.45; }
+.balance-lab__warnings header { display: flex; justify-content: space-between; gap: 16px; }
+.balance-lab__warnings.is-clear { border-color: rgba(104,180,145,.32); }
+.balance-lab__warnings.has-warnings { border-color: rgba(222,112,75,.42); }
+@media (max-width: 850px) { .balance-lab { padding: 16px; } .balance-lab__header { flex-direction: column; } .balance-lab__difficulty-grid { grid-template-columns: 1fr; } .balance-lab__equipment > div { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 520px) { .balance-lab__equipment > div { grid-template-columns: 1fr; } }

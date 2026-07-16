@@ -1,5 +1,6 @@
 import { detectTerrainModule, terrainModuleById } from '../content/terrainModules';
 import { targetStageBudget } from './contentPipeline';
+import { LEGACY_DIFFICULTY } from './balanceTuning';
 import {
   buildStageBrief,
   missingPreparationGroups,
@@ -444,6 +445,7 @@ function makeLeaderOrder(career: CareerState, stage: ExpeditionSimulationStage, 
 
 function chanceFor(career: CareerState, actionId: ExpeditionFieldActionId, stage: ExpeditionSimulationStage) {
   const climb = career.activeClimb!;
+  const tuning = LEGACY_DIFFICULTY[career.difficulty];
   const skillId = actionSkill(actionId, stage);
   const skill = skillId ? career.hero.skills[skillId] : 5;
   const weatherPenalty = Math.max(0, climb.windKmh - 42) * .22 + Math.max(0, 50 - climb.visibility) * .18 + Math.max(0, -18 - climb.temperatureC) * .28;
@@ -455,8 +457,8 @@ function chanceFor(career: CareerState, actionId: ExpeditionFieldActionId, stage
   const loadPenalty = Math.max(0, climb.packWeightKg - 13) * 1.2;
   const tactic = movementTacticModifier(career, stage, actionId);
   const repeatFailures = stage.incidentHistory.filter(item => item === `ACTION_FAIL:${actionId}`).length;
-  const learningBonus = Math.min(36, repeatFailures * 18);
-  const raw = 58 + skill * 8 + career.hero.form * .15 + preparation + tactic + learningBonus - stage.difficulty * .48 - stage.exposure * .14 - weatherPenalty - fatiguePenalty - loadPenalty - tacticalPenalty;
+  const learningBonus = Math.min(tuning.learningCap, repeatFailures * tuning.learningPerFailure);
+  const raw = 58 + tuning.chanceBonus + skill * 8 + career.hero.form * .15 + preparation + tactic + learningBonus - stage.difficulty * .48 - stage.exposure * .14 - weatherPenalty - fatiguePenalty - loadPenalty - tacticalPenalty;
   return Math.round(clamp(raw, 3, 94));
 }
 
@@ -488,7 +490,7 @@ function preview(career: CareerState, actionId: ExpeditionFieldActionId): Expedi
                             : 10;
   const remaining = Math.max(0, stage.requiredProgress - stage.progress);
   const progress = move ? remaining : 0;
-  const movementCost = Math.max(2, Math.round((1.5 + stage.difficulty * .018 + stage.exposure * .012 + Math.max(0, climb.packWeightKg - 13) * .065) * (actionId === 'MOVE_CAUTIOUS' ? .88 : actionId === 'MOVE_FAST' ? 1.3 : 1)));
+  const movementCost = Math.max(2, Math.round((1.5 + stage.difficulty * .018 + stage.exposure * .012 + Math.max(0, climb.packWeightKg - 13) * .065) * (actionId === 'MOVE_CAUTIOUS' ? .88 : actionId === 'MOVE_FAST' ? 1.3 : 1) * LEGACY_DIFFICULTY[career.difficulty].energyMultiplier));
   const energyDelta = move ? -movementCost
     : actionId === 'SCOUT_LINE' ? -1
       : actionId === 'PLACE_ANCHOR' || actionId === 'FIX_ROPE' ? -2
@@ -867,10 +869,11 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
       nextSimulation.relativeElevation = Math.round(stage.relativeStart + (stage.relativeEnd - stage.relativeStart) * stageRatio);
       nextSimulation.highestRelativeElevation = Math.max(nextSimulation.highestRelativeElevation, nextSimulation.relativeElevation);
       const failureNumber = previousMoveFailures + 1;
-      const loss = rng.int(3, 7) + Math.round(stage.exposure / 28) + (correctTactic ? 0 : 3);
+      const consequence = LEGACY_DIFFICULTY[career.difficulty].failureConsequence;
+      const loss = Math.round((rng.int(3, 7) + Math.round(stage.exposure / 28) + (correctTactic ? 0 : 3)) * consequence);
       energy = clamp(energy - loss);
-      condition = clamp(condition - rng.int(0, Math.max(1, Math.round(stage.exposure / 34))));
-      teamCondition = clamp(teamCondition - rng.int(0, 3));
+      condition = clamp(condition - Math.round(rng.int(0, Math.max(1, Math.round(stage.exposure / 34))) * consequence));
+      teamCondition = clamp(teamCondition - Math.round(rng.int(0, 3) * consequence));
       duration += rng.int(25, 65);
       severity = stage.critical || stage.exposure >= 50 ? 'DANGER' : 'WARNING';
       if (!prepared) {
@@ -885,9 +888,9 @@ export function resolveExpeditionFieldAction(career: CareerState, actionId: Expe
         teamCondition = clamp(teamCondition - 2);
         detail += ' Повторная ошибка стала общей проблемой экспедиции.';
       }
-      if (stage.critical && failureNumber >= 3 && simulation.direction === 'ASCENT') {
+      if (stage.critical && failureNumber >= LEGACY_DIFFICULTY[career.difficulty].criticalFailureLimit && simulation.direction === 'ASCENT') {
         nextSimulation.forcedRetreat = true;
-        nextSimulation.returnReason = `Три неудачных попытки на этапе «${stage.label}»`;
+        nextSimulation.returnReason = `${failureNumber} неудачных попытки на этапе «${stage.label}»`;
         headline = 'Руководитель прекращает подъём';
         detail += ' Дальнейшие попытки запрещены. Теперь нужно пройти весь путь вниз.';
       }

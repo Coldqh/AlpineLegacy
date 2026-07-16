@@ -256,9 +256,7 @@ function hazardBlockReason(state: IntegratedExpeditionState, context: Integrated
 }
 
 function incidentCooldownSteps(state: IntegratedExpeditionState) {
-  if (state.difficulty === 'EXPLORER') return 5;
-  if (state.difficulty === 'EXPEDITION') return 3;
-  return 4;
+  return integratedDifficultyTuning(state.difficulty).incidentCooldown;
 }
 
 function incidentReady(state: IntegratedExpeditionState, cell: ReturnType<typeof localCellAt>, riskScore: number) {
@@ -316,9 +314,11 @@ function resolveIncident(
   const iceLead = integratedSpecialist(state, 'ICE');
   const cell = localCellAt(context.localMap, point)!;
   const character = context.character;
-  const medicalMitigation = Math.min(.34, medic.skills.MEDICINE * .034 + (state.gear.medkitCharges > 0 ? .08 : 0));
-  const severe = riskScore >= 82 || rng.chance(state.difficulty === 'EXPEDITION' ? 0.13 : 0.055);
-  const severityFactor = 1 - medicalMitigation;
+  const difficulty = integratedDifficultyTuning(state.difficulty);
+  const medicalMitigation = Math.min(.38, medic.skills.MEDICINE * .034 + (state.gear.medkitCharges > 0 ? .1 : 0));
+  const severeChance = state.difficulty === 'EXPLORER' ? .028 : state.difficulty === 'EXPEDITION' ? .17 : .07;
+  const severe = riskScore >= (state.difficulty === 'EXPLORER' ? 88 : state.difficulty === 'EXPEDITION' ? 76 : 82) || rng.chance(severeChance);
+  const severityFactor = Math.max(.52, difficulty.injury * (1 - medicalMitigation));
   let next = adjustTeamMindset(state, severe ? -5 : -2, severe ? -3 : -1);
 
   if (cell.hazard === 'CREVASSE') {
