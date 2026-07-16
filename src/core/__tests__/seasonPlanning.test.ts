@@ -25,7 +25,7 @@ describe('season campaign planning', () => {
   it('creates three long-term objectives and a protected budget', () => {
     const career = careerFixture();
     const plan = normalizeSeasonCampaignPlan(career);
-    expect(career.schemaVersion).toBe(20);
+    expect(career.schemaVersion).toBe(21);
     expect(plan.goalRouteIds.length).toBeGreaterThanOrEqual(2);
     expect(plan.goalRouteIds.length).toBeLessThanOrEqual(3);
     expect(plan.reserveCredits).toBeGreaterThan(0);

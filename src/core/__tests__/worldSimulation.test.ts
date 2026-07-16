@@ -92,7 +92,7 @@ describe('living world simulation', () => {
     const career = createCareer(world, draft);
     const legacy = { ...career, schemaVersion: 6, routes: career.routes.map(({ mountainCharacterId, ...route }) => route) } as any;
     const migrated = migrateCareerV6(legacy, world);
-    expect(migrated.schemaVersion).toBe(20);
+    expect(migrated.schemaVersion).toBe(21);
     expect(migrated.routes.every(route => route.mountainCharacterId)).toBe(true);
   });
 
@@ -102,7 +102,7 @@ describe('living world simulation', () => {
     const career = selectMountain(createCareer(world, draft), target.id);
     const legacy = { ...career, schemaVersion: 5 } as any;
     const migrated = migrateCareerV5(legacy, world);
-    expect(migrated.schemaVersion).toBe(20);
+    expect(migrated.schemaVersion).toBe(21);
     expect(getSelectedRoute(migrated).mountainId).toBe(target.id);
   });
 
@@ -112,7 +112,7 @@ describe('living world simulation', () => {
     const legacy = { ...career, schemaVersion: 4 } as any;
     delete legacy.livingWorld;
     const migrated = migrateCareerV4(legacy, world);
-    expect(migrated.schemaVersion).toBe(20);
+    expect(migrated.schemaVersion).toBe(21);
     expect(migrated.teamRoster.map(item => item.id)).toEqual(career.teamRoster.map(item => item.id));
     expect(migrated.livingWorld.athletes.length).toBeGreaterThan(30);
   });
@@ -121,7 +121,7 @@ describe('living world simulation', () => {
     const career = createCareer(world, draft);
     const legacy = { ...career, schemaVersion: 7, activeClimb: null } as any;
     const migrated = migrateCareerV7(legacy, world);
-    expect(migrated.schemaVersion).toBe(20);
+    expect(migrated.schemaVersion).toBe(21);
     expect(migrated.routes.some(route => route.isSignature && route.descentSegments?.length)).toBe(true);
   });
 
@@ -133,7 +133,7 @@ describe('living world simulation', () => {
     delete legacy.difficulty;
     delete legacy.onboarding;
     const migrated = migrateCareerV8(legacy, world);
-    expect(migrated.schemaVersion).toBe(20);
+    expect(migrated.schemaVersion).toBe(21);
     expect(migrated.rootSeed).toBe(config.seed);
     expect(migrated.difficulty).toBe(config.difficulty);
     expect(migrated.onboarding.completed).toBe(false);

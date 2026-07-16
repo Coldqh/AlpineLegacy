@@ -10,6 +10,7 @@ type Props = {
   onTrain: (trainingId: TrainingId) => void;
   onOpenExpedition: () => void;
   onOpenWorld: () => void;
+  onOpenStories: () => void;
 };
 
 const trainingForSkill: Record<SkillId, TrainingId> = {
@@ -30,7 +31,7 @@ function routePrimarySkill(career: CareerState) {
   return (Object.entries(count).sort((a, b) => b[1]! - a[1]!)[0]?.[0] as SkillId | undefined) ?? 'ENDURANCE';
 }
 
-export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition, onOpenWorld }: Props) {
+export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition, onOpenWorld, onOpenStories }: Props) {
   const target = getSelectedRoute(career);
   const currentRegion = careerRegion(world, career);
   const mountain = world.ecosystem.content.mountains.byId[target.mountainId] ?? world.region.mountains[0]!;
@@ -42,6 +43,7 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
   const trainingIds = [...new Set<TrainingId>([recommendedTraining, 'CONDITIONING', 'RECOVERY'])].slice(0, 3);
   const nextMilestone = progression.milestones.find(item => !item.completed);
   const latestNews = career.livingWorld.news[0];
+  const activeStory = [...career.storyState.events].reverse().find(event => event.status === 'OPEN') ?? null;
   const nextTitle = career.recoveryDays > 0
     ? 'Вернуть силы после экспедиции'
     : career.activeClimb
@@ -66,6 +68,12 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
         <div className="ux-hq__focus-copy"><small>ГЛАВНОЕ СЕЙЧАС</small><h2>{nextTitle}</h2><p>{nextDetail}</p><button onClick={career.recoveryDays > 0 ? () => onTrain('RECOVERY') : onOpenExpedition}>{career.recoveryDays > 0 ? 'Восстановиться' : career.activeClimb ? 'Вернуться на маршрут' : 'Открыть экспедицию'}<b>→</b></button></div>
         <div className="ux-hq__focus-mountain"><MountainModel mountain={mountain} seed={world.config.seed} variant="hero" label={target.mountainName} /><footer><span>{target.mountainName}</span><strong>{target.name}</strong><small>{target.summitElevation} м · готовность {Math.round(expedition.total)}%</small></footer></div>
       </section>
+
+      {activeStory && <button className="career-story-teaser" onClick={onOpenStories}>
+        <span>{career.storyState.unreadCount || 1}</span>
+        <div><small>ТРЕБУЕТ РЕШЕНИЯ · {activeStory.kind}</small><strong>{activeStory.title}</strong><p>{activeStory.summary}</p></div>
+        <b>→</b>
+      </button>}
 
       <section className="ux-hq__status" aria-label="Состояние героя">
         <article><span>Форма</span><strong>{Math.round(career.hero.form)}</strong><i><b style={{ width: `${career.hero.form}%` }} /></i></article>

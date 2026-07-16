@@ -33,7 +33,7 @@ function report(year: number, index: number): ExpeditionReport {
 describe('career progression 0.6', () => {
   it('creates a season, tier and milestone track', () => {
     const career = careerFixture();
-    expect(career.schemaVersion).toBe(20);
+    expect(career.schemaVersion).toBe(21);
     expect(career.progression.seasonNumber).toBe(1);
     expect(career.progression.tier).toBe('NOVICE');
     expect(career.progression.milestones).toHaveLength(10);

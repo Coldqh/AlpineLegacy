@@ -32,6 +32,7 @@ const tabs: PrimaryTab[] = [
 ];
 
 const moreTabs: Array<{ id: CareerTabId; label: string; description: string }> = [
+  { id: 'STORIES', label: 'Истории', description: 'Решения, соперники и линии наставников' },
   { id: 'PEOPLE', label: 'Досье', description: 'Отношения, память и навыки участников' },
 ];
 
@@ -75,7 +76,7 @@ export function CareerShell({ world, career, activeTab, onTab, onExit, onAtlas, 
             <button className={`career-sidebar__more-button ${moreActive || moreOpen ? 'is-active' : ''}`} disabled={locked} onClick={() => setMoreOpen(value => !value)} aria-expanded={moreOpen}>
               <span className="career-sidebar__short">•••</span>
               <span className="career-sidebar__index">05</span>
-              <span className="career-sidebar__copy"><strong>Ещё</strong><small>Досье и атлас</small></span>
+              <span className="career-sidebar__copy"><strong>Ещё{career.storyState.unreadCount ? ` · ${career.storyState.unreadCount}` : ''}</strong><small>Истории, досье и атлас</small></span>
               <span className="career-sidebar__mobile-label">Ещё</span>
             </button>
             {moreOpen && <div className="career-more-popover">{moreTabs.map(item => <button key={item.id} className={activeTab === item.id ? 'is-active' : ''} onClick={() => { setMoreOpen(false); onTab(item.id); }}><span><strong>{item.label}</strong><small>{item.description}</small></span><b>›</b></button>)}</div>}

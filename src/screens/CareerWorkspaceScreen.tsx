@@ -26,6 +26,8 @@ import { JournalScreen } from './JournalScreen';
 import { PeopleScreen } from './PeopleScreen';
 import { PreparationHubScreen } from './PreparationHubScreen';
 import { WorldHubScreen } from './WorldHubScreen';
+import { CareerStoriesScreen } from './CareerStoriesScreen';
+import { markCareerStoriesRead, resolveCareerStory } from '../core/careerStories';
 
 type Props = {
   world: WorldState;
@@ -82,6 +84,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
         onTrain={onTrain}
         onOpenExpedition={() => onTab('EXPEDITION')}
         onOpenWorld={() => onTab('WORLD')}
+        onOpenStories={() => onTab('STORIES')}
       />;
     }
 
@@ -114,6 +117,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     }
 
     if (tab === 'PEOPLE') return <PeopleScreen career={career} />;
+    if (tab === 'STORIES') return <CareerStoriesScreen career={career} onResolve={(eventId, choiceId) => onPersist(resolveCareerStory(career, eventId, choiceId))} onRead={() => onPersist(markCareerStoriesRead(career))} />;
     return <JournalScreen career={career} world={world} />;
   };
 

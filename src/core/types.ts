@@ -12,7 +12,7 @@ export type ScreenId =
   | 'ARCHIVE'
   | 'SETTINGS';
 
-export type CareerTabId = 'OVERVIEW' | 'WORLD' | 'NEWS' | 'RIVALS' | 'RECORDS' | 'ROUTE' | 'TEAM' | 'PEOPLE' | 'EQUIPMENT' | 'EXPEDITION' | 'CLIMB' | 'JOURNAL';
+export type CareerTabId = 'OVERVIEW' | 'WORLD' | 'NEWS' | 'RIVALS' | 'RECORDS' | 'ROUTE' | 'TEAM' | 'PEOPLE' | 'STORIES' | 'EQUIPMENT' | 'EXPEDITION' | 'CLIMB' | 'JOURNAL';
 export type OriginId = 'CLUB_SCHOOL' | 'HIGHLAND_LOCAL' | 'ROCK_SECTION';
 export type SkillId = 'ENDURANCE' | 'ROCK' | 'ICE' | 'NAVIGATION' | 'MEDICINE' | 'LEADERSHIP';
 export type TrainingId = 'CONDITIONING' | 'ROCK_PRACTICE' | 'ICE_PRACTICE' | 'MAP_ROOM' | 'FIRST_AID' | 'CLUB_DUTY' | 'RECOVERY';
@@ -1296,6 +1296,59 @@ export interface PermanentTeamState {
   losses: number;
 }
 
+export type CareerStoryKind = 'INVITATION' | 'RIVALRY' | 'MENTOR' | 'TEAM' | 'CLUB' | 'TRANSFER';
+export type CareerStoryStatus = 'OPEN' | 'RESOLVED' | 'EXPIRED';
+export type CareerStoryArcStatus = 'ACTIVE' | 'COMPLETE';
+
+export interface CareerStoryChoice {
+  id: string;
+  title: string;
+  detail: string;
+}
+
+export interface CareerStoryEvent {
+  id: string;
+  arcId: string;
+  stage: number;
+  kind: CareerStoryKind;
+  title: string;
+  summary: string;
+  detail: string;
+  year: number;
+  seasonDay: number;
+  expiresOnDay: number | null;
+  npcIds: NpcId[];
+  routeId: RouteId | null;
+  mountainId: MountainId | null;
+  choices: CareerStoryChoice[];
+  status: CareerStoryStatus;
+  resolvedChoiceId: string | null;
+  outcome: string | null;
+  importance: number;
+}
+
+export interface CareerStoryArc {
+  id: string;
+  kind: CareerStoryKind;
+  title: string;
+  npcIds: NpcId[];
+  stage: number;
+  status: CareerStoryArcStatus;
+  lastEventId: string | null;
+}
+
+export interface CareerStoryState {
+  version: 1;
+  lastProcessedYear: number;
+  lastProcessedDay: number;
+  events: CareerStoryEvent[];
+  arcs: CareerStoryArc[];
+  rivalNpcIds: NpcId[];
+  mentorNpcIds: NpcId[];
+  teamLegacyName: string;
+  teamReputation: number;
+  unreadCount: number;
+}
 
 export interface RegionTravelRecord {
   id: string;
@@ -1308,7 +1361,7 @@ export interface RegionTravelRecord {
 }
 
 export interface CareerState {
-  schemaVersion: 20;
+  schemaVersion: 21;
   id: string;
   worldId: string;
   rootSeed: string;
@@ -1345,6 +1398,7 @@ export interface CareerState {
   unlockedRegionIds: RegionId[];
   travelHistory: RegionTravelRecord[];
   resolvedSchoolOfferIds: ExpeditionOfferId[];
+  storyState: CareerStoryState;
 }
 
 export interface CareerDraft {

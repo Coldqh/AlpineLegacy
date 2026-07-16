@@ -12,7 +12,7 @@ const primary = [
 
 const prepTabs: CareerTabId[] = ['ROUTE', 'TEAM', 'EQUIPMENT', 'EXPEDITION'];
 const worldTabs: CareerTabId[] = ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'];
-const moreTabs: CareerTabId[] = ['PEOPLE'];
+const moreTabs: CareerTabId[] = ['PEOPLE', 'STORIES'];
 
 function isPrep(tab: CareerTabId) { return prepTabs.includes(tab); }
 function isWorld(tab: CareerTabId) { return worldTabs.includes(tab); }
@@ -24,6 +24,7 @@ function pageTitle(activeTab: CareerTabId, career: CareerState) {
   if (isWorld(activeTab)) return 'Живой мир';
   if (activeTab === 'JOURNAL') return 'Архив';
   if (activeTab === 'PEOPLE') return 'Досье';
+  if (activeTab === 'STORIES') return 'Истории карьеры';
   if (activeTab === 'CLIMB') return career.activeClimb ? 'Экспедиция' : 'Восхождение';
   return 'Карьера';
 }
@@ -66,10 +67,10 @@ export function MobileCareerShell({ world, career, activeTab, onTab, onExit, onA
           const disabled = false;
           return <button key={item.id} disabled={disabled} className={active ? 'is-active' : ''} onClick={() => navigate(item.id)}><b>{item.icon}</b><span>{item.label}</span></button>;
         })}
-        <button className={isMore(activeTab) || moreOpen ? 'is-active' : ''} onClick={() => setMoreOpen(value => !value)} aria-expanded={moreOpen}><b>•••</b><span>Ещё</span></button>
+        <button className={isMore(activeTab) || moreOpen ? 'is-active' : ''} onClick={() => setMoreOpen(value => !value)} aria-expanded={moreOpen}><b>•••{career.storyState.unreadCount ? <i>{career.storyState.unreadCount}</i> : null}</b><span>Ещё</span></button>
       </nav>}
 
-      {!locked && moreOpen && <div className="m-more-layer" onClick={() => setMoreOpen(false)}><section className="m-more-sheet" onClick={event => event.stopPropagation()}><header><strong>Разделы</strong><button onClick={() => setMoreOpen(false)} aria-label="Закрыть">×</button></header><div className="m-more-menu"><button onClick={() => navigate('PEOPLE')}><span>Досье команды</span><b>›</b></button><button onClick={() => { setMoreOpen(false); resetAppScroll(); onAtlas(); }}><span>Горный атлас</span><b>›</b></button></div></section></div>}
+      {!locked && moreOpen && <div className="m-more-layer" onClick={() => setMoreOpen(false)}><section className="m-more-sheet" onClick={event => event.stopPropagation()}><header><strong>Разделы</strong><button onClick={() => setMoreOpen(false)} aria-label="Закрыть">×</button></header><div className="m-more-menu"><button onClick={() => navigate('STORIES')}><span>Истории карьеры{career.storyState.unreadCount ? ` · ${career.storyState.unreadCount}` : ''}</span><b>›</b></button><button onClick={() => navigate('PEOPLE')}><span>Досье команды</span><b>›</b></button><button onClick={() => { setMoreOpen(false); resetAppScroll(); onAtlas(); }}><span>Горный атлас</span><b>›</b></button></div></section></div>}
     </main>
   );
 }

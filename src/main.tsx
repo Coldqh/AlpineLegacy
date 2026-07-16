@@ -14,6 +14,7 @@ import './styles/mountain-grid-expedition.css';
 import './styles/ux-rebuild.css';
 import './styles/visual-023.css';
 import './styles/live-expedition-024.css';
+import './styles/career-stories-025.css';
 
 registerOfflineApp();
 

@@ -12,7 +12,7 @@ export interface PersistedUiState {
 }
 
 const validTabs = new Set<CareerTabId>([
-  'OVERVIEW', 'WORLD', 'NEWS', 'RIVALS', 'RECORDS', 'ROUTE', 'TEAM', 'PEOPLE', 'EQUIPMENT', 'EXPEDITION', 'CLIMB', 'JOURNAL',
+  'OVERVIEW', 'WORLD', 'NEWS', 'RIVALS', 'RECORDS', 'ROUTE', 'TEAM', 'PEOPLE', 'STORIES', 'EQUIPMENT', 'EXPEDITION', 'CLIMB', 'JOURNAL',
 ]);
 
 const restorableScreens = new Set<ScreenId>(['MENU', 'REGION', 'MOUNTAIN', 'CAREER']);
