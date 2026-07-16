@@ -4221,3 +4221,34 @@ html[data-theme='dark'] .summit-dot { fill: #e38a76; }
   .mountain-memory-summary { align-items: flex-start; }
   .mountain-memory-summary > span { max-width: 150px; }
 }
+
+/* 0.14.0 dynamic mountain state */
+.mountain-dynamic-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, .34fr);
+  gap: 18px;
+  align-items: stretch;
+  margin: 18px 0;
+  padding: 16px 18px;
+  border: 1px solid rgba(126, 161, 143, .28);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(50, 91, 73, .22), rgba(9, 16, 14, .72));
+}
+.mountain-dynamic-banner > div { display: grid; gap: 5px; }
+.mountain-dynamic-banner small { color: var(--muted); font-size: 9px; letter-spacing: .13em; }
+.mountain-dynamic-banner strong { font-family: var(--serif); font-size: 25px; font-weight: 500; }
+.mountain-dynamic-banner p { max-width: 780px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.mountain-dynamic-banner > span { display: grid; align-content: center; gap: 4px; padding: 12px 14px; border-left: 1px solid var(--line); }
+.mountain-dynamic-banner > span b { font-size: 18px; text-transform: uppercase; }
+.mountain-dynamic-banner > span em { color: #d8b58f; font-size: 10px; line-height: 1.4; font-style: normal; }
+.mountain-dynamic-banner.is-caution { border-color: rgba(208, 147, 73, .42); background: linear-gradient(135deg, rgba(104, 69, 28, .24), rgba(9, 16, 14, .72)); }
+.mountain-dynamic-banner.is-closed { border-color: rgba(195, 76, 60, .48); background: linear-gradient(135deg, rgba(103, 38, 31, .3), rgba(9, 16, 14, .76)); }
+.route-choice-grid button.is-dynamic-caution { border-color: rgba(204, 144, 72, .42); }
+.route-choice-grid button.is-dynamic-closed { opacity: .58; filter: saturate(.55); }
+.route-choice-grid button.is-dynamic-closed footer { color: #d6a197; }
+
+@media (max-width: 760px) {
+  .mountain-dynamic-banner { grid-template-columns: 1fr; gap: 10px; padding: 12px; }
+  .mountain-dynamic-banner > span { border-left: 0; border-top: 1px solid var(--line); padding: 10px 0 0; }
+  .mountain-dynamic-banner strong { font-size: 20px; }
+}

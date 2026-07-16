@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { CareerState, QualificationClimb } from '../core/types';
 import { ensureIntegratedExpedition, persistIntegratedExpedition } from '../core/career';
 import { buildMountainMemory, type MountainMemorySnapshot } from '../core/mountainMemory';
+import { applyMountainDynamicsToMap, applyMountainDynamicsToWeather, buildMountainDynamics, type MountainDynamics } from '../core/mountainDynamics';
 import {
   EMPTY_INTEGRATED_INFRASTRUCTURE,
   integratedSpecialist,
@@ -75,15 +76,23 @@ const TERRAIN_CLASS: Record<MountainTerrain, string> = {
 function pointKey(point: GridPoint) { return `${point.x}:${point.y}`; }
 function formatMinutes(minutes: number) { return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`; }
 
-function inheritedInfrastructure(memory: MountainMemorySnapshot, map: LocalStageMap, route: GridPoint[]) {
-  if (memory.attempts <= 0 || route.length === 0) return { revealed: [] as string[], camps: [] as string[] };
-  const knownSteps = Math.min(route.length, 2 + Math.min(5, memory.attempts) + Math.floor(memory.attention / 24));
+function inheritedInfrastructure(memory: MountainMemorySnapshot, map: LocalStageMap, route: GridPoint[], dynamics: MountainDynamics) {
+  if (memory.attempts <= 0 || route.length === 0) return { revealed: [] as string[], camps: [] as string[], legacyRopes: [] as string[] };
+  const knownSteps = Math.min(route.length, 2 + Math.min(5, memory.attempts) + Math.floor(memory.attention / 24) + Math.floor(dynamics.knownRouteBonus / 14));
   const knownRoute = route.slice(0, knownSteps);
-  const revealRadius = memory.attention >= 70 ? 2 : 1;
+  const revealRadius = memory.attention >= 70 || dynamics.knownRouteBonus >= 30 ? 2 : 1;
   const revealed = map.cells
     .filter(cell => knownRoute.some(point => Math.max(Math.abs(cell.x - point.x), Math.abs(cell.y - point.y)) <= revealRadius))
     .map(pointKey);
-  return { revealed, camps: [] as string[] };
+  const campCandidates = knownRoute
+    .map(point => localCellAt(map, point))
+    .filter((cell): cell is NonNullable<typeof cell> => Boolean(cell?.campPossible));
+  const camps = [...new Set(campCandidates.filter((_, index) => index % 3 === 0).slice(0, Math.min(2, memory.summits)).map(pointKey))];
+  const ropeCandidates = knownRoute
+    .map(point => localCellAt(map, point))
+    .filter((cell): cell is NonNullable<typeof cell> => Boolean(cell && (cell.ropeRequired || cell.ropeRecommended)));
+  const legacyRopes = [...new Set(ropeCandidates.filter((_, index) => index % 2 === 0).slice(0, Math.min(4, Math.floor(dynamics.traceDensity / 18))).map(pointKey))];
+  return { revealed, camps, legacyRopes };
 }
 
 function projectMountainPoint(
@@ -283,12 +292,13 @@ function MountainViewer({
   );
 }
 
-function LocalMap({ map, path, positionIndex, camps, ropes, revealed, selectedPoint, started, onCell }: {
+function LocalMap({ map, path, positionIndex, camps, ropes, legacyRopes, revealed, selectedPoint, started, onCell }: {
   map: LocalStageMap;
   path: GridPoint[];
   positionIndex: number;
   camps: string[];
   ropes: string[];
+  legacyRopes: string[];
   revealed: string[];
   selectedPoint: GridPoint;
   started: boolean;
@@ -322,6 +332,7 @@ function LocalMap({ map, path, positionIndex, camps, ropes, revealed, selectedPo
           isSamePoint(map.goal, cell) ? 'is-goal' : '',
           camps.includes(id) ? 'has-camp' : '',
           ropes.includes(id) ? 'has-rope' : '',
+          legacyRopes.includes(id) ? 'has-legacy-rope' : '',
           knownHazard ? `has-hazard hazard-${cell.hazard.toLowerCase()}` : '',
         ].filter(Boolean).join(' ');
         const style = {
@@ -348,6 +359,7 @@ function LocalMap({ map, path, positionIndex, camps, ropes, revealed, selectedPo
             {cell.campPossible && <b className="mg-camp-dot" />}
             {camps.includes(id) && <em>▲</em>}
             {ropes.includes(id) && <u>⌁</u>}
+            {!ropes.includes(id) && legacyRopes.includes(id) && <span className="mg-legacy-rope-mark">⌁</span>}
           </button>
         );
       })}
@@ -359,7 +371,7 @@ function LocalMap({ map, path, positionIndex, camps, ropes, revealed, selectedPo
       )}
       <div className="mg-map-north">N</div>
       <div className="mg-tool-hint">{started ? 'Нажми на клетку, чтобы проверить её. Разведка раскрывает квадрат 9×9 вокруг группы.' : 'Начни экспедицию после проверки людей и снаряжения.'}</div>
-      <div className="mg-map-legend"><span><b className="legend-rope-required">R</b> верёвка обязательна</span><span><b className="legend-rope-recommended">r</b> полезна</span><span><b className="legend-camp" /> лагерь</span><span><b className="legend-unknown">?</b> не разведано</span></div>
+      <div className="mg-map-legend"><span><b className="legend-rope-required">R</b> верёвка обязательна</span><span><b className="legend-rope-recommended">r</b> полезна</span><span><b className="legend-camp" /> лагерь</span><span><b className="legend-legacy-rope">⌁</b> старая верёвка</span><span><b className="legend-unknown">?</b> не разведано</span></div>
     </div>
   );
 }
@@ -409,7 +421,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.13.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.14.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -431,6 +443,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
 
   const participantMode = topo.authority !== 'COMMAND';
   const mountainMemory = useMemo(() => buildMountainMemory(integratedCareer, climb.mountainId), [integratedCareer.livingWorld, climb.mountainId]);
+  const mountainDynamics = useMemo(() => buildMountainDynamics(integratedCareer, climb.mountainId, climb.routeId), [integratedCareer.year, integratedCareer.seasonDay, integratedCareer.livingWorld, climb.mountainId, climb.routeId]);
   const authoredRoute = integratedCareer.routes.find(route => route.id === climb.routeId);
   const gridProfile = useMemo(() => ({
     formId: authoredRoute?.mountainFormId,
@@ -459,8 +472,9 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const descending = topo.phase === 'DESCENT' || topo.phase === 'COMPLETE' || topo.phase === 'RETREATED';
   const localMap = useMemo(() => {
     const base = generateLocalStageMap(stage, grid.seed);
-    return descending ? { ...base, start: base.goal, goal: base.start } : base;
-  }, [stage, grid.seed, descending]);
+    const oriented = descending ? { ...base, start: base.goal, goal: base.start } : base;
+    return applyMountainDynamicsToMap(oriented, mountainDynamics);
+  }, [stage, grid.seed, descending, mountainDynamics]);
   const guidedLocalRoute = useMemo(() => findLocalGuidedRoute(localMap, localProfileFor(selectedRoute)), [localMap, selectedRoute]);
   const previousAscentPath = topo.completedStagePaths[stage.id];
   const defaultPath = descending && previousAscentPath
@@ -468,7 +482,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     : participantMode || selectedRoute
       ? guidedLocalRoute
       : [localMap.start];
-  const rememberedInfrastructure = useMemo(() => inheritedInfrastructure(mountainMemory, localMap, defaultPath), [mountainMemory.attempts, mountainMemory.summits, mountainMemory.attention, localMap, defaultPath]);
+  const rememberedInfrastructure = useMemo(() => inheritedInfrastructure(mountainMemory, localMap, defaultPath, mountainDynamics), [mountainMemory.attempts, mountainMemory.summits, mountainMemory.attention, localMap, defaultPath, mountainDynamics]);
   const storedPath = topo.paths[stage.id];
   const needsDescentPath = Boolean(
     descending
@@ -478,7 +492,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   );
   const path = needsDescentPath ? defaultPath : storedPath ?? defaultPath;
   const infra = topo.infrastructure[stage.id] ?? EMPTY_INTEGRATED_INFRASTRUCTURE;
-  const weather = integratedWeatherAt(topo);
+  const weather = applyMountainDynamicsToWeather(integratedWeatherAt(topo), mountainDynamics);
   const completed = ['COMPLETE', 'RETREATED', 'FAILED'].includes(topo.phase);
   const currentPoint = path[Math.min(topo.positionIndex, Math.max(0, path.length - 1))] ?? localMap.start;
   const currentCell = localCellAt(localMap, currentPoint)!;
@@ -574,7 +588,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     <main className="mg-app mg-expedition-shell">
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.13.0</span>
+          <span>ALPINE LEGACY / 0.14.0</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()}</small>
         </div>
@@ -614,7 +628,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
               <div className="mg-stage-heading">
                 <span>{phaseLabel} · ЭТАП {stageIndex + 1} / {stages.length}</span>
                 <h2>{stage.title}</h2>
-                <p>{stage.subtitle} · сложность {stage.difficulty}/5</p>
+                <p>{stage.subtitle} · сложность {stage.difficulty}/5 · {mountainDynamics.seasonTitle.toLowerCase()}</p>
               </div>
               <div className="mg-stage-weather mg-status-strip" aria-label="Состояние вылазки">
                 <span><small>ТЕМП.</small><b>{weather.temperatureC}°</b></span>
@@ -648,6 +662,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                   positionIndex={topo.positionIndex}
                   camps={infra.camps}
                   ropes={infra.ropes}
+                  legacyRopes={rememberedInfrastructure.legacyRopes}
                   revealed={infra.revealed}
                   selectedPoint={selectedPoint}
                   started={topo.started}
@@ -714,7 +729,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
               </section>
             ) : !topo.started ? (
               <section className="mg-preflight">
-                <div><span>ГОТОВНОСТЬ</span><h3>Команда собрана</h3><p>Навигатор ведёт разведку, техник отвечает за страховку, медик работает с травмами. Ты управляешь линией, темпом, отдыхом и отходом.</p></div>
+                <div><span>ГОТОВНОСТЬ · {mountainDynamics.seasonTitle}</span><h3>Команда собрана</h3><p>{mountainDynamics.seasonSummary} Навигатор ведёт разведку, техник отвечает за страховку, медик работает с травмами.</p></div>
                 <dl>
                   <div><dt>Команда</dt><dd>{topo.participants.length}</dd></div>
                   <div><dt>Специалисты</dt><dd>{specialistSummary}</dd></div>

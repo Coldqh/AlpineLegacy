@@ -1,4 +1,5 @@
 import { createRng } from './rng';
+import { buildMountainDynamics } from './mountainDynamics';
 import { getOrganizations, materializeNpc, tableValues } from './ecosystem';
 import type {
   CareerState,
@@ -101,14 +102,20 @@ function routeForAthlete(career: CareerState, athlete: WorldAthlete, club: World
   const preference = athlete.routePreference === 'EASY' && clubBias === 'AGGRESSIVE' ? 'BALANCED'
     : athlete.routePreference === 'HARD' && clubBias === 'CAUTIOUS' ? 'BALANCED'
       : athlete.routePreference;
-  const candidates = preference === 'EASY'
+  const preferred = preference === 'EASY'
     ? sorted.slice(0, Math.max(1, Math.ceil(sorted.length * .38)))
     : preference === 'HARD'
       ? sorted.slice(Math.max(0, Math.floor(sorted.length * .56)))
       : sorted.slice(Math.floor(sorted.length * .18), Math.max(Math.floor(sorted.length * .18) + 1, Math.ceil(sorted.length * .82)));
-  const rested = candidates.filter(route => route.id !== athlete.lastRouteId && route.mountainId !== athlete.lastMountainId);
-  const available = rested.length ? rested : candidates.filter(route => route.id !== athlete.lastRouteId);
-  return rng.pick(available.length ? available : candidates.length ? candidates : sorted);
+  const candidates = preferred.filter(route => buildMountainDynamics(career, route.mountainId, route.id).status !== 'CLOSED');
+  const availableCandidates = candidates.length ? candidates : preferred;
+  const clubFocusCandidates = club
+    ? availableCandidates.filter(route => primaryRouteSkill(route) === club.focusSkill || route.segments.some(segment => segment.skill === club.focusSkill))
+    : [];
+  const selectionPool = clubFocusCandidates.length >= 2 ? clubFocusCandidates : availableCandidates;
+  const rested = selectionPool.filter(route => route.id !== athlete.lastRouteId && route.mountainId !== athlete.lastMountainId);
+  const available = rested.length ? rested : selectionPool.filter(route => route.id !== athlete.lastRouteId);
+  return rng.pick(available.length ? available : selectionPool.length ? selectionPool : sorted);
 }
 
 function athleteName(seed: string, index: number) {
@@ -565,6 +572,7 @@ function simulateTick(career: CareerState, state: LivingWorldState, tickYear: nu
     const failed = !succeeded && !tragedy && rng.chance(.18);
     const outcome = succeeded ? 'SUMMIT' as const : tragedy ? 'TRAGEDY' as const : failed ? 'FAILED' as const : 'RETREAT' as const;
     const firstAscent = succeeded && history.firstAscentYear === null;
+    const firstRouteAscent = Boolean(succeeded && selectedRoute && !expeditions.some(item => item.routeId === selectedRoute.id && item.outcome === 'SUMMIT'));
     const baseDays = selectedRoute ? Math.max(2, Math.ceil(selectedRoute.estimatedHours / 9)) : 5;
     const durationDays = Math.max(2, Math.min(24, baseDays + rng.int(0, Math.max(2, Math.round(altitudeSeverity / 18)))));
     const highestElevation = succeeded ? elevation : Math.round(elevation * rng.int(68, 94) / 100);
@@ -621,6 +629,12 @@ function simulateTick(career: CareerState, state: LivingWorldState, tickYear: nu
         importance = 98;
         recordId = `record-first-ascent-${mountainId}`;
         records = [...records.filter(item => item.id !== recordId), { id: recordId, category: 'FIRST_ASCENTS', title: `Первое восхождение: ${mountainName}`, holderAthleteId: leader.id, holderName: leader.name, value: elevation, unit: 'м', mountainId, mountainName, year: tickYear, description: `Первое подтверждённое восхождение команды клуба «${club?.name ?? 'неизвестный клуб'}».` }];
+      } else if (firstRouteAscent && selectedRoute) {
+        headline = `${leader.name} открыл маршрут «${selectedRoute.name}»`;
+        summary = `Клуб «${club?.name ?? 'неизвестный клуб'}» первым подтвердил полное прохождение этой линии на ${mountainName}.`;
+        importance = 86;
+        recordId = `record-route-first-${selectedRoute.id}`;
+        records = [...records.filter(item => item.id !== recordId), { id: recordId, category: 'FIRST_ASCENTS', title: `Первое прохождение: ${selectedRoute.name}`, holderAthleteId: leader.id, holderName: leader.name, value: elevation, unit: 'м', mountainId, mountainName, year: tickYear, description: `Первое подтверждённое прохождение маршрута «${selectedRoute.name}».` }];
       } else {
         headline = `${leader.name} достиг вершины ${mountainName}`;
         summary = `Группа из ${team.length} человек прошла «${selectedRoute?.name ?? 'Свободную линию'}» за ${durationDays} дней и ушла на восстановление.`;
@@ -663,7 +677,7 @@ function simulateTick(career: CareerState, state: LivingWorldState, tickYear: nu
     mountainHistory[historyIndex] = history;
     const expedition: WorldExpedition = { id: `world-expedition-${state.tick}-${eventIndex}-${leader.id}`, year: tickYear, seasonDay: tickDay, mountainId, mountainName, routeId: selectedRoute?.id ?? null, routeName: selectedRoute?.name ?? 'Свободная линия', difficultyScore, leaderAthleteId: leader.id, memberAthleteIds: teammates.map(item => item.id), clubId: leader.clubId, outcome, highestElevation, durationDays, casualties, recordId, summary, teamSize: team.length, recoveryDays: expeditionRecoveryDays };
     expeditions.push(expedition);
-    const item: WorldNewsItem = { id: `world-news-${state.tick}-${eventIndex}-${leader.id}`, year: tickYear, seasonDay: tickDay, type: tragedy ? (casualties.length ? 'DEATH' : 'INJURY') : firstAscent ? 'RECORD' : succeeded ? 'SUMMIT' : outcome === 'RETREAT' ? 'RETREAT' : 'EXPEDITION', headline, summary, athleteIds: [leader.id, ...teammates.map(member => member.id)], clubIds: [leader.clubId], mountainId, importance, isBreaking: importance >= 90 };
+    const item: WorldNewsItem = { id: `world-news-${state.tick}-${eventIndex}-${leader.id}`, year: tickYear, seasonDay: tickDay, type: tragedy ? (casualties.length ? 'DEATH' : 'INJURY') : firstAscent || firstRouteAscent ? 'RECORD' : succeeded ? 'SUMMIT' : outcome === 'RETREAT' ? 'RETREAT' : 'EXPEDITION', headline, summary, athleteIds: [leader.id, ...teammates.map(member => member.id)], clubIds: [leader.clubId], mountainId, importance, isBreaking: importance >= 90 };
     news.push(item);
   }
 
@@ -719,6 +733,7 @@ export function registerHeroExpedition(career: CareerState, climb: Qualification
   const historyIndex = state.mountainHistory.findIndex(item => item.mountainId === climb.mountainId);
   const mountainHistory = state.mountainHistory.map(item => ({ ...item, firstAscentAthleteIds: [...item.firstAscentAthleteIds] }));
   const successful = report.outcome === 'SUMMIT';
+  const firstRouteAscent = Boolean(successful && climb.routeId && !state.expeditions.some(item => item.routeId === climb.routeId && item.outcome === 'SUMMIT'));
   let firstAscent = false;
   if (historyIndex >= 0) {
     const history = mountainHistory[historyIndex]!;
@@ -735,14 +750,14 @@ export function registerHeroExpedition(career: CareerState, climb: Qualification
     history.currentAttention = clamp(history.currentAttention + (firstAscent ? 20 : successful ? 7 : report.casualties.length ? 14 : 2));
     mountainHistory[historyIndex] = history;
   }
-  const importance = firstAscent ? 100 : successful ? 78 : report.casualties.length ? 96 : 48;
+  const importance = firstAscent ? 100 : firstRouteAscent ? 88 : successful ? 78 : report.casualties.length ? 96 : 48;
   const newsItem: WorldNewsItem = {
     id: `hero-news-${report.id}`,
     year: career.year,
     seasonDay: career.seasonDay,
-    type: firstAscent ? 'RECORD' : successful ? 'SUMMIT' : report.casualties.length ? 'DEATH' : 'RETREAT',
-    headline: firstAscent ? `${career.hero.name} открыл историю ${climb.mountainName}` : successful ? `${career.hero.name} вернулся с вершины ${climb.mountainName}` : `${career.hero.name} завершил попытку на ${climb.mountainName}`,
-    summary: firstAscent ? `Первое подтверждённое восхождение прошло по маршруту «${climb.routeName}».` : `${report.clubReaction} ${report.pressReaction}`,
+    type: firstAscent || firstRouteAscent ? 'RECORD' : successful ? 'SUMMIT' : report.casualties.length ? 'DEATH' : 'RETREAT',
+    headline: firstAscent ? `${career.hero.name} открыл историю ${climb.mountainName}` : firstRouteAscent ? `${career.hero.name} первым прошёл «${climb.routeName}»` : successful ? `${career.hero.name} вернулся с вершины ${climb.mountainName}` : `${career.hero.name} завершил попытку на ${climb.mountainName}`,
+    summary: firstAscent ? `Первое подтверждённое восхождение прошло по маршруту «${climb.routeName}».` : firstRouteAscent ? `Первое полное прохождение этой линии теперь записано за ${career.hero.name}.` : `${report.clubReaction} ${report.pressReaction}`,
     athleteIds: [career.hero.id, ...report.teamMemberIds],
     clubIds: [career.club.id],
     mountainId: climb.mountainId,
@@ -774,6 +789,8 @@ export function registerHeroExpedition(career: CareerState, climb: Qualification
   let records = state.records;
   if (firstAscent) {
     records = [...records, { id: `record-first-ascent-${climb.mountainId}`, category: 'FIRST_ASCENTS', title: `Первое восхождение: ${climb.mountainName}`, holderAthleteId: career.hero.id, holderName: career.hero.name, value: climb.summitElevation, unit: 'м', mountainId: climb.mountainId, mountainName: climb.mountainName, year: career.year, description: `Первое подтверждённое восхождение по маршруту «${climb.routeName}».` }];
+  } else if (firstRouteAscent) {
+    records = [...records, { id: `record-route-first-${climb.routeId}`, category: 'FIRST_ASCENTS', title: `Первое прохождение: ${climb.routeName}`, holderAthleteId: career.hero.id, holderName: career.hero.name, value: climb.summitElevation, unit: 'м', mountainId: climb.mountainId, mountainName: climb.mountainName, year: career.year, description: `Первое подтверждённое полное прохождение маршрута «${climb.routeName}».` }];
   }
   return {
     ...career,

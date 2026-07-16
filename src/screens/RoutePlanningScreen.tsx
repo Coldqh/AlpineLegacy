@@ -2,6 +2,7 @@ import { MountainArt } from '../components/MountainArt';
 import { EXPEDITION_RANK_LABELS, expeditionReadiness, getSelectedRoute, routesForMountain } from '../core/career';
 import type { CareerState, ExpeditionOffer, WorldState } from '../core/types';
 import { buildMountainMemory } from '../core/mountainMemory';
+import { buildMountainDynamics } from '../core/mountainDynamics';
 
 type Props = {
   world: WorldState;
@@ -32,6 +33,7 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
   const mountains = [...world.region.mountains].sort((a, b) => mountainScore(a) - mountainScore(b));
   const latestApplication = career.applications[career.applications.length - 1] ?? null;
   const mountainMemory = buildMountainMemory(career, mountain.id);
+  const routeDynamics = buildMountainDynamics(career, mountain.id, route.id);
 
   if (!career.membership.permissions.canChooseRoute) {
     return (
@@ -100,6 +102,11 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
         </div>
       </div>
 
+      <section className={`mountain-dynamic-banner is-${routeDynamics.status.toLowerCase()}`}>
+        <div><small>СОСТОЯНИЕ МАССИВА · ДЕНЬ {career.seasonDay}</small><strong>{routeDynamics.seasonTitle}</strong><p>{routeDynamics.seasonSummary}</p></div>
+        <span><small>МАРШРУТ</small><b>{routeDynamics.statusLabel}</b>{routeDynamics.closureReason && <em>{routeDynamics.closureReason}</em>}</span>
+      </section>
+
       <details className="workspace-panel mountain-memory-panel">
         <summary className="mountain-memory-summary">
           <div><small>MOUNTAIN MEMORY</small><strong>Память горы</strong></div>
@@ -156,10 +163,12 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
         <div className="route-choice-grid route-choice-grid--clear">
           {routes.map((item, index) => {
             const active = item.id === route.id;
+            const dynamics = buildMountainDynamics(career, mountain.id, item.id);
+            const closed = dynamics.status === 'CLOSED';
             return (
-              <button key={item.id} className={active ? 'is-active' : ''} onClick={() => onSelectRoute(item.id)}>
+              <button key={item.id} disabled={closed} className={`${active ? 'is-active' : ''} is-dynamic-${dynamics.status.toLowerCase()}`} onClick={() => onSelectRoute(item.id)}>
                 <div><span>{String(index + 1).padStart(2, '0')}</span><i /></div>
-                <small>{item.isSignature ? 'VERTICAL SLICE · ' : ''}{mountain.characterTitle} · {item.style}</small>
+                <small>{item.isSignature ? 'VERTICAL SLICE · ' : ''}{mountain.characterTitle} · {item.style} · {dynamics.statusLabel}</small>
                 <h3>{item.name}</h3>
                 <p>{item.summary}</p>
                 <dl>
@@ -168,7 +177,7 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
                   <div><dt>Риск</dt><dd>{level(item.objectiveRisk)}</dd></div>
                   <div><dt>Решения</dt><dd>{item.decisions?.length ?? 0}</dd></div>
                 </dl>
-                <footer>{active ? 'ВЫБРАНО' : 'ВЫБРАТЬ МАРШРУТ'}</footer>
+                <footer>{closed ? dynamics.closureReason ?? 'ВРЕМЕННО ЗАКРЫТ' : active ? 'ВЫБРАНО' : 'ВЫБРАТЬ МАРШРУТ'}</footer>
               </button>
             );
           })}
@@ -217,7 +226,7 @@ export function RoutePlanningScreen({ world, career, offers, onAcceptOffer, onSe
         </details>
       </section>
 
-      <button className="flow-next-action" onClick={onContinue}><span><small>СЛЕДУЮЩИЙ ШАГ</small><strong>Подобрать команду</strong></span><b>→</b></button>
+      <button className="flow-next-action" disabled={routeDynamics.status === 'CLOSED'} onClick={onContinue}><span><small>СЛЕДУЮЩИЙ ШАГ</small><strong>{routeDynamics.status === 'CLOSED' ? 'Выбери открытую линию' : 'Подобрать команду'}</strong></span><b>→</b></button>
     </section>
   );
 }

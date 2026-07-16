@@ -1,4 +1,5 @@
 import { createRng } from './rng';
+import { buildMountainDynamics, routeIsClosed } from './mountainDynamics';
 import { defaultDescentSegments, generateRoutesForWorld, getQualificationTarget } from './routeFactory';
 export { getQualificationTarget } from './routeFactory';
 import { getEntryOrganizations, getOrganization, offersForMembership, organizationToClub, rosterForOrganization } from './ecosystem';
@@ -785,7 +786,11 @@ export function updateExpeditionPlan(career: CareerState, patch: Partial<Expedit
 }
 
 export function availableExpeditionOffers(world: WorldState, career: CareerState): ExpeditionOffer[] {
-  return offersForMembership(world, career.membership, career.seasonDay);
+  return offersForMembership(world, career.membership, career.seasonDay)
+    .filter(offer => {
+      const route = career.routes.find(item => item.id === offer.routeId);
+      return !route || !routeIsClosed(career, route);
+    });
 }
 
 export function applicationForOffer(career: CareerState, offerId: string) {
@@ -880,7 +885,7 @@ export function canControlExpedition(career: CareerState) {
 export function selectRoute(career: CareerState, routeId: string): CareerState {
   if (!career.membership.permissions.canChooseRoute) return career;
   const route = career.routes.find(item => item.id === routeId);
-  if (!route) return career;
+  if (!route || routeIsClosed(career, route)) return career;
   return updateExpeditionPlan(leaveExpeditionOffer(career), { routeId, playerRole: 'LEADER', authorityMode: 'COMMAND' });
 }
 
@@ -892,7 +897,8 @@ export function selectMountain(career: CareerState, mountainId: string): CareerS
   if (!career.membership.permissions.canChooseRoute) return career;
   const routes = routesForMountain(career, mountainId);
   if (!routes.length) return career;
-  const recommended = [...routes].sort((a, b) => (a.objectiveRisk + a.technicality) - (b.objectiveRisk + b.technicality))[0]!;
+  const available = routes.filter(route => !routeIsClosed(career, route));
+  const recommended = [...(available.length ? available : routes)].sort((a, b) => (a.objectiveRisk + a.technicality) - (b.objectiveRisk + b.technicality))[0]!;
   return updateExpeditionPlan(leaveExpeditionOffer(career), { routeId: recommended.id, playerRole: 'LEADER', authorityMode: 'COMMAND' });
 }
 
@@ -976,11 +982,13 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
     : clamp(Math.round(team.reduce((sum, member) => sum + member.skill * 7 + member.endurance * 4 + member.trust * .22, 0) / Math.max(1, team.length)), 0, 100);
   const missingGear = route.requiredGearIds.filter(id => (career.expeditionPlan.gear[id] ?? 0) <= 0);
   const equipment = clamp(100 - missingGear.length * 23 - Math.max(0, expeditionWeight(career) - 16) * 3, 0, 100);
-  const weatherScore = clamp(Math.round(weather.stability - weather.windKmh * .25 - weather.snowfallCm * .7 + weather.durationHours * .4), 0, 100);
+  const dynamics = buildMountainDynamics(career, route.mountainId, route.id);
+  const weatherScore = clamp(Math.round(weather.stability + dynamics.stabilityDelta - (weather.windKmh + dynamics.windDelta) * .25 - weather.snowfallCm * .7 + weather.durationHours * .4), 0, 100);
   const acclimatization = clamp(career.expeditionPlan.acclimatizationDays * 13 + career.hero.skills.ENDURANCE * 4, 0, 100);
   const total = Math.round(heroBase * .25 + routeFit * .18 + teamScore * .17 + equipment * .18 + weatherScore * .12 + acclimatization * .1);
   const blockers: string[] = [];
   if (!career.selectedOfferId && !career.membership.permissions.canOrganize && !career.membership.permissions.canStartSolo) blockers.push('Сначала получи место в чужой экспедиции.');
+  if (dynamics.status === 'CLOSED') blockers.push(`Маршрут временно закрыт: ${dynamics.closureReason ?? dynamics.seasonSummary}`);
   if (missingGear.length) blockers.push(`Не хватает обязательного снаряжения: ${missingGear.map(id => GEAR_CATALOG.find(item => item.id === id)?.name ?? id).join(', ')}`);
   if (!soloPlan && team.length + 1 < route.recommendedTeamSize) blockers.push('Группа меньше рекомендованного состава.');
   if (soloPlan && route.objectiveRisk > 62) blockers.push('Этот маршрут слишком опасен для одиночного выхода.');
@@ -1010,6 +1018,9 @@ export function preparationInsights(career: CareerState): PreparationInsight[] {
     DESCENT: { tone: (career.expeditionPlan.gear.bivy ?? 0) > 0 && career.expeditionPlan.ropeMeters >= 60 ? 'GOOD' : 'WARNING', title: 'Главная опасность начнётся после вершины', detail: 'Запас верёвки и аварийное укрытие снижают цену медленного спуска. Не планируй выход на нулевом остатке сил.' },
   };
   insights.push(characterInsight[route.mountainCharacterId]);
+
+  const dynamics = buildMountainDynamics(career, route.mountainId, route.id);
+  insights.push({ tone: dynamics.status === 'CLOSED' ? 'DANGER' : dynamics.status === 'CAUTION' ? 'WARNING' : 'GOOD', title: `${dynamics.seasonTitle}: маршрут ${dynamics.statusLabel}`, detail: dynamics.closureReason ?? dynamics.seasonSummary });
 
   if (weight > 18) insights.push({ tone: 'DANGER', title: 'Группа перегружена', detail: `При ${weight.toFixed(1)} кг на человека каждый участок потребует больше сил. Убери лишнее или расширь состав.` });
   else if (weight > 15.5) insights.push({ tone: 'WARNING', title: 'Груз замедлит группу', detail: `${weight.toFixed(1)} кг на человека — рабочая, но тяжёлая загрузка. Быстрый темп станет опаснее.` });
