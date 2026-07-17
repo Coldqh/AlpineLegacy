@@ -16,7 +16,7 @@ export function BalanceLabScreen({ onClose }: { onClose: () => void }) {
   return (
     <main className="balance-lab">
       <header className="balance-lab__header">
-        <div><span>ALPINE LEGACY / 0.27.0 / DEV</span><h1>Лаборатория баланса</h1><p>{audit.totalRuns} детерминированных прохождений. Здесь видно, насколько различаются сложности и действительно ли груз меняет результат.</p></div>
+        <div><span>ALPINE LEGACY / 0.27.1 / DEV</span><h1>Лаборатория баланса</h1><p>{audit.totalRuns} детерминированных прохождений. Здесь видно, насколько различаются сложности и действительно ли груз меняет результат.</p></div>
         <button onClick={onClose}>Закрыть</button>
       </header>
 

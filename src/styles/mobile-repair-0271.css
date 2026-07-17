@@ -1,0 +1,244 @@
+/* 0.27.1 — mobile repair: one viewport, readable field UI and compact data screens */
+
+@media (max-width: 820px) {
+  /* Atlas mountain screen: one viewport with explicit subviews. */
+  .m-mountain-viewport {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: calc(44px + env(safe-area-inset-top)) 40px minmax(0, 1fr);
+    padding: 0 !important;
+  }
+  .m-mountain-viewport > .m-public-topbar {
+    height: calc(44px + env(safe-area-inset-top));
+    min-height: 0;
+    padding: env(safe-area-inset-top) 10px 0;
+  }
+  .m-mountain-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    height: 40px;
+    padding: 3px 8px;
+    border-bottom: 1px solid rgba(210, 225, 218, .12);
+    background: #101619;
+  }
+  .m-mountain-tabs button {
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #9eaaa5;
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .m-mountain-tabs button.is-active { background: #25332f; color: #f0ede5; }
+  .m-mountain-viewport__body {
+    min-height: 0;
+    overflow: hidden;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .m-mountain-hero-copy { flex: 0 0 auto; }
+  .m-mountain-hero-copy small,
+  .m-mountain-hero-copy strong { display: block; }
+  .m-mountain-hero-copy small { color: #91a099; font-size: 9px; letter-spacing: .13em; }
+  .m-mountain-hero-copy strong { margin-top: 2px; font: 600 25px/1 var(--serif); }
+  .m-mountain-viewport .mountain-model--detail {
+    flex: 1 1 auto;
+    min-height: 0 !important;
+    height: auto !important;
+    border-radius: 12px;
+  }
+  .m-mountain-viewport .mountain-model--detail svg { min-height: 0; }
+  .m-mountain-viewport .mountain-model__readout { padding: 7px 9px; }
+  .m-mountain-viewport .mountain-model__hint { display: none; }
+  .m-mountain-stats {
+    flex: 0 0 42px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-top: 1px solid rgba(210, 225, 218, .12);
+    border-bottom: 1px solid rgba(210, 225, 218, .12);
+  }
+  .m-mountain-stats span { display: grid; place-content: center; gap: 2px; color: #91a099; font-size: 9px; text-align: center; }
+  .m-mountain-stats b { color: #f0ede5; font-size: 12px; }
+  .m-mountain-career-action { flex: 0 0 50px; min-height: 50px !important; margin: 0 !important; }
+  .m-mountain-character-panel,
+  .m-mountain-history-panel {
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 13px;
+    border: 1px solid rgba(210, 225, 218, .15);
+    border-radius: 12px;
+    background: #14201d;
+  }
+  .m-mountain-character-panel > small,
+  .m-mountain-history-panel > header small { color: #91a099; font-size: 9px; letter-spacing: .14em; }
+  .m-mountain-character-panel h1 { margin: 8px 0; font-size: 23px; line-height: 1.15; }
+  .m-mountain-character-panel > p { margin: 0 0 12px; color: #c2cbc6; font-size: 13px; line-height: 1.45; }
+  .m-mountain-character-panel dl { margin: 0; }
+  .m-mountain-character-panel dl > div { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-top: 1px solid rgba(210,225,218,.11); }
+  .m-mountain-character-panel dt { color: #91a099; font-size: 10px; text-transform: uppercase; }
+  .m-mountain-character-panel dd { margin: 0; font-size: 13px; line-height: 1.35; }
+  .m-mountain-history-panel > header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .m-mountain-history-panel > header strong { font-size: 12px; }
+  .m-mountain-history-panel > div { display: grid; gap: 6px; }
+  .m-mountain-history-panel article { display: grid; grid-template-columns: 25px 1fr; gap: 8px; padding: 9px; border-radius: 8px; background: #0f1816; }
+  .m-mountain-history-panel article span { color: #91a099; font-size: 9px; }
+  .m-mountain-history-panel article p { margin: 0; font-size: 12px; line-height: 1.4; }
+
+  /* Field shell: readable text and fewer permanent controls. */
+  .mg-expedition-shell {
+    grid-template-rows: 42px 44px minmax(0, 1fr) !important;
+    gap: 4px !important;
+    padding-inline: 7px !important;
+  }
+  .mg-expedition-header { height: 42px !important; padding: 0 2px !important; }
+  .mg-expedition-header .mg-header-copy h1 { font-size: 17px !important; }
+  .mg-expedition-header .mg-header-copy small { max-width: 72vw !important; font-size: 10px !important; }
+  .mg-feedback-toggle { display: none !important; }
+  .mg-save-exit {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+    padding: 0 !important;
+    overflow: hidden;
+    font-size: 0 !important;
+  }
+  .mg-save-exit::after { content: '↙'; font-size: 16px; }
+  .mg-expedition-tabs { height: 44px !important; }
+  .mg-expedition-tabs button { height: 36px !important; }
+  .mg-expedition-tabs strong { font-size: 11px !important; }
+  .mg-expedition-tabs small { font-size: 9px !important; }
+
+  .mg-climb-tab { grid-template-rows: 44px minmax(0, 1fr) !important; }
+  .mg-climb-tab .mg-stage-topline { height: 44px !important; grid-template-columns: minmax(0, .75fr) minmax(0, 1.25fr) !important; padding: 4px 6px !important; }
+  .mg-stage-heading span { font-size: 8px !important; }
+  .mg-stage-heading h2 { font-size: 13px !important; }
+  .mg-field-hud b { font-size: 10px !important; }
+
+  .mg-climb-tab .mg-local-aside {
+    inset: auto 5px calc(5px + env(safe-area-inset-bottom)) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas: 'cell' 'actions' !important;
+    gap: 4px !important;
+  }
+  .mg-message--compact { display: none !important; }
+  .mg-speed-inline { display: none !important; }
+  .mg-selected-cell-card { padding: 7px 8px !important; }
+  .mg-selected-cell-card header small { font-size: 8px !important; }
+  .mg-selected-cell-card header strong { font-size: 13px !important; }
+  .mg-selected-cell-card header > b { font-size: 9px !important; }
+  .mg-cell-detail-toggle { height: 28px !important; font-size: 9px !important; }
+  .mg-primary-action-dock { padding: 4px !important; gap: 4px !important; }
+  .mg-primary-action-dock > button,
+  .mg-primary-action-dock > details > summary { min-height: 46px !important; }
+  .mg-primary-action-dock strong { font-size: 10px !important; }
+  .mg-rest-menu > div { bottom: calc(env(safe-area-inset-bottom) + 10px) !important; }
+  .mg-climb-tab .mg-local-cell.is-unknown { opacity: .68; }
+  .mg-climb-tab .mg-local-cell.is-revealed { opacity: 1; }
+  .mg-climb-tab .mg-cell-icon svg { width: 13px; height: 13px; }
+
+  /* Full-height 3D tab; no dead header/metric blocks. */
+  .mg-mountain-tab .mg-viewer-card {
+    height: 100% !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+    border-radius: 10px !important;
+  }
+  .mg-mountain-tab .mg-viewer-card > .mg-panel-head { display: none !important; }
+  .mg-mountain-tab .mountain-model--expedition {
+    height: 100% !important;
+    min-height: 0 !important;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) 38px;
+  }
+  .mg-mountain-tab .mountain-model--expedition svg { height: 100%; min-height: 0; }
+  .mg-mountain-tab .mountain-model__metrics {
+    left: 8px;
+    right: 8px;
+    bottom: 46px;
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+  .mg-mountain-tab .mountain-model__metrics span { padding: 5px 6px !important; border-bottom: 0 !important; }
+  .mg-mountain-tab .mountain-model__metrics small { font-size: 7px; }
+  .mg-mountain-tab .mountain-model__metrics b { font-size: 11px; }
+  .mg-mountain-tab .mountain-model__controls { height: 38px; padding: 3px 6px; }
+  .mg-mountain-tab .mountain-model__controls button { min-height: 30px; }
+  .mountain-model__marker text { font-size: 9px !important; }
+
+  /* Expedition state uses three internal pages instead of two long cards. */
+  .mg-expedition-tab { overflow: hidden !important; }
+  .mg-expedition-console { height: 100%; min-height: 0; display: grid; grid-template-rows: 55px 38px minmax(0, 1fr); gap: 6px; }
+  .mg-expedition-console__summary { padding: 8px 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #39423f; border-radius: 10px; background: #18211f; }
+  .mg-expedition-console__summary span,
+  .mg-expedition-console__summary strong { display: block; }
+  .mg-expedition-console__summary span { color: #9ba6a0; font-size: 8px; letter-spacing: .13em; }
+  .mg-expedition-console__summary strong { margin-top: 2px; font-size: 16px; }
+  .mg-expedition-console__summary small { color: #aeb7b2; font-size: 10px; text-align: right; }
+  .mg-expedition-subtabs { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border: 1px solid #39423f; border-radius: 9px; background: #111816; }
+  .mg-expedition-subtabs button { border: 0; border-radius: 6px; background: transparent; color: #9ba6a0; font-size: 11px; font-weight: 700; }
+  .mg-expedition-subtabs button.is-active { background: #293934; color: #f0ede5; }
+  .mg-expedition-console > .mg-side-card { min-height: 0; height: 100%; overflow: hidden; }
+  .mg-expedition-console .mg-panel-head { padding: 9px 10px; }
+  .mg-team-card--compact .mg-team-list { max-height: none !important; height: calc(100% - 47px); overflow-y: auto !important; padding: 7px; gap: 6px; }
+  .mg-team-card--compact .mg-team-list article { min-height: 64px; padding: 8px 9px !important; background: #111917; }
+  .mg-team-card--compact .mg-team-list article strong { color: #f0ede5 !important; font-size: 13px !important; }
+  .mg-team-card--compact .mg-team-list article span { color: #aeb7b2 !important; font-size: 10px !important; }
+  .mg-team-card--compact .mg-team-list article small { display: block !important; color: #c4ccc8 !important; font-size: 10px !important; line-height: 1.25; }
+  .mg-team-card--compact .mg-team-list article small + small { color: #91a099 !important; }
+  .mg-gear-card--compact .mg-route-metrics { height: calc(100% - 47px); padding: 8px; grid-template-columns: repeat(2, 1fr) !important; gap: 6px; overflow-y: auto; }
+  .mg-gear-card--compact .mg-route-metrics > div { min-height: 62px; padding: 9px; }
+  .mg-gear-card--compact .mg-route-metrics span { font-size: 8px; }
+  .mg-gear-card--compact .mg-route-metrics strong { margin-top: 5px; font-size: 13px; }
+  .mg-pace-card { padding-bottom: 10px; }
+  .mg-pace-controls--standalone { margin: 10px; }
+  .mg-pace-controls--standalone button { min-height: 74px; text-align: center; }
+  .mg-pace-controls--standalone button strong { font-size: 13px; }
+  .mg-pace-controls--standalone button small { font-size: 10px; }
+  .mg-pace-note { margin: 0 12px; color: #aeb7b2; font-size: 11px; line-height: 1.4; }
+
+  /* Journal is one continuous timeline. */
+  .mg-journal-tab { overflow: hidden !important; }
+  .mg-log-card--unified { height: 100%; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); }
+  .mg-log-card--unified .mg-panel-head { padding: 10px; }
+  .mg-journal-alerts { display: grid; gap: 5px; padding: 7px; border-bottom: 1px solid #343d3a; }
+  .mg-journal-alerts article { padding: 7px 8px; border-left: 3px solid #c86349; background: rgba(91, 42, 31, .28); }
+  .mg-journal-alerts strong,
+  .mg-journal-alerts small { display: block; }
+  .mg-journal-alerts strong { font-size: 11px; }
+  .mg-journal-alerts small { margin-top: 2px; color: #d2b2a8; font-size: 9px; }
+  .mg-log-card--unified .mg-event-log { min-height: 0; max-height: none !important; overflow-y: auto !important; padding: 7px !important; }
+  .mg-log-card--unified .mg-event-log li { min-height: 42px; align-items: center; }
+  .mg-log-card--unified .mg-event-log p { font-size: 10px; }
+
+  /* Archive data is a compact settings list, not four giant tiles. */
+  .mvp-data-actions {
+    height: auto !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-auto-rows: auto !important;
+    align-content: start;
+    gap: 6px !important;
+  }
+  .mvp-data-actions > button {
+    min-height: 62px;
+    padding: 9px 11px !important;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+  .mvp-data-actions > button strong { font-size: 12px; }
+  .mvp-data-actions > button span { font-size: 10px; }
+  .mvp-data-actions > button > b { font-size: 17px; }
+  .mvp-developer-data { border: 1px solid var(--m-line); border-radius: 9px; background: var(--m-surface); }
+  .mvp-developer-data > summary { min-height: 46px; padding: 0 11px; display: flex; align-items: center; font-size: 11px; font-weight: 700; }
+  .mvp-developer-data > div { padding: 0 7px 7px; display: grid; gap: 5px; }
+  .mvp-developer-data button { min-height: 54px; padding: 8px; border: 1px solid var(--m-line); border-radius: 7px; background: var(--m-bg); text-align: left; }
+  .mvp-developer-data strong,
+  .mvp-developer-data span { display: block; }
+  .mvp-developer-data strong { font-size: 10px; }
+  .mvp-developer-data span { margin-top: 3px; color: var(--m-muted); font-size: 9px; }
+}

@@ -93,22 +93,33 @@ export function MobileRegionScreen({ world, career, onBack, onCareer, onMountain
 }
 
 export function MobileMountainScreen({ mountain, onBack, onCareer }: { mountain: MountainData; onBack: () => void; onCareer: () => void }) {
-  useScrollReset(mountain.id);
+  const [view, setView] = useState<'OVERVIEW' | 'CHARACTER' | 'HISTORY'>('OVERVIEW');
+  useScrollReset(`${mountain.id}:${view}`);
   return (
-    <main className="m-public-shell">
-      <header className="m-public-topbar"><button onClick={onBack}>←</button><strong>Вершина</strong><span>{mountain.elevation} м</span></header>
-      <section className="m-region">
-        <p className="m-kicker">{mountain.characterTitle}</p><h1>{mountain.name}</h1>
-        <MountainModel mountain={mountain} variant="detail" label={mountain.name} />
-        <div className="m-inline-meta"><span>Техника {mountain.technicality}</span><span>Высота {mountain.altitudeSeverity}</span><span>Удалённость {mountain.remoteness}</span></div>
-        <section className="m-authored-mountain">
+    <main className="m-public-shell m-mountain-viewport">
+      <header className="m-public-topbar"><button onClick={onBack}>←</button><strong>{mountain.name}</strong><span>{mountain.elevation} м</span></header>
+      <nav className="m-mountain-tabs" aria-label="Разделы вершины">
+        <button className={view === 'OVERVIEW' ? 'is-active' : ''} onClick={() => setView('OVERVIEW')}>Обзор</button>
+        <button className={view === 'CHARACTER' ? 'is-active' : ''} onClick={() => setView('CHARACTER')}>Характер</button>
+        <button className={view === 'HISTORY' ? 'is-active' : ''} onClick={() => setView('HISTORY')}>История</button>
+      </nav>
+      <section className="m-mountain-viewport__body">
+        {view === 'OVERVIEW' && <>
+          <div className="m-mountain-hero-copy"><small>{mountain.characterTitle}</small><strong>{mountain.name}</strong></div>
+          <MountainModel mountain={mountain} variant="detail" label={mountain.name} />
+          <div className="m-mountain-stats"><span>Техника <b>{mountain.technicality}</b></span><span>Высота <b>{mountain.altitudeSeverity}</b></span><span>Удалённость <b>{mountain.remoteness}</b></span></div>
+          <button className="m-primary-card m-mountain-career-action" onClick={onCareer}><span><small>КАРЬЕРА</small><strong>Подготовить экспедицию</strong></span><b>→</b></button>
+        </>}
+        {view === 'CHARACTER' && <section className="m-mountain-character-panel">
           <small>ХАРАКТЕР ГОРЫ</small>
-          <strong>{mountain.identity.signatureFeature}</strong>
+          <h1>{mountain.identity.signatureFeature}</h1>
           <p>{mountain.identity.approachCharacter}. {mountain.identity.upperCharacter}.</p>
           <dl><div><dt>Лагеря</dt><dd>{mountain.identity.campPattern}</dd></div><div><dt>Погода</dt><dd>{mountain.identity.weatherRule}</dd></div><div><dt>Спуск</dt><dd>{mountain.identity.descentProblem}</dd></div></dl>
-        </section>
-        <button className="m-primary-card" onClick={onCareer}><span><small>КАРЬЕРА</small><strong>Подготовить экспедицию</strong></span><b>→</b></button>
-        <details className="m-details"><summary>История вершины</summary>{mountain.history.map(item => <p key={item}>{item}</p>)}</details>
+        </section>}
+        {view === 'HISTORY' && <section className="m-mountain-history-panel">
+          <header><small>ИСТОРИЯ ВЕРШИНЫ</small><strong>{mountain.history.length} записей</strong></header>
+          <div>{mountain.history.map((item, index) => <article key={`${index}-${item}`}><span>{String(index + 1).padStart(2, '0')}</span><p>{item}</p></article>)}</div>
+        </section>}
       </section>
     </main>
   );

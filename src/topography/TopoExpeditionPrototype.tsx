@@ -425,7 +425,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.27.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.27.1</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -444,6 +444,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const [speed, setSpeed] = useState<1 | 2 | 4>(1);
   const [selectedPoint, setSelectedPoint] = useState<GridPoint>({ x: 0, y: 0 });
   const [activeTab, setActiveTab] = useState<ExpeditionTab>(() => topo.started ? 'CLIMB' : 'EXPEDITION');
+  const [expeditionSection, setExpeditionSection] = useState<'PEOPLE' | 'SUPPLIES' | 'PACE'>('PEOPLE');
   const [cellCardOpen, setCellCardOpen] = useState(false);
   const [fieldFx, setFieldFx] = useState<FieldFx>('IDLE');
   const [dismissedMomentSerial, setDismissedMomentSerial] = useState<number | null>(null);
@@ -682,14 +683,14 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     <main className={`mg-app mg-expedition-shell is-${clock.phase} is-weather-${weatherMood} is-fx-${fieldFx.toLowerCase()}`}>
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.27.0</span>
+          <span>ALPINE LEGACY / 0.27.1</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()} · {clock.label}</small>
         </div>
         <div className="mg-header-actions">
           <button className="mg-feedback-toggle" onClick={toggleFeedback} aria-pressed={feedbackEnabled} title="Звук и вибрация">{feedbackEnabled ? 'FX ON' : 'FX OFF'}</button>
           {allowRegenerate && <button onClick={regenerate} disabled={topo.started}>Новая гора</button>}
-          <button onClick={() => onExit(completed)}>{completed ? 'Закрыть' : 'Сохранить и выйти'}</button>
+          <button className="mg-save-exit" onClick={() => onExit(completed)}>{completed ? 'Закрыть' : 'Сохранить и выйти'}</button>
         </div>
       </header>
 
@@ -851,62 +852,62 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                 <button onClick={() => { commit({ type: 'START' }); setActiveTab('CLIMB'); }}>Начать экспедицию →</button>
               </section>
             ) : (
-              <>
-                <section className="mg-expedition-overview">
-                  <div>
-                    <span>{phaseLabel}</span>
-                    <strong>{teamAverageEnergy} сил · {teamAverageCondition} состояние</strong>
-                    <small>мораль {teamAverageMorale} · доверие {teamAverageTrust} · в пути {formatMinutes(topo.elapsedMinutes)}</small>
+              <section className="mg-expedition-console">
+                <header className="mg-expedition-console__summary">
+                  <div><span>{phaseLabel}</span><strong>{teamAverageEnergy} сил · {teamAverageCondition} состояние</strong></div>
+                  <small>мораль {teamAverageMorale} · доверие {teamAverageTrust} · {formatMinutes(topo.elapsedMinutes)}</small>
+                </header>
+                <nav className="mg-expedition-subtabs" aria-label="Состояние экспедиции">
+                  <button className={expeditionSection === 'PEOPLE' ? 'is-active' : ''} onClick={() => setExpeditionSection('PEOPLE')}>Люди</button>
+                  <button className={expeditionSection === 'SUPPLIES' ? 'is-active' : ''} onClick={() => setExpeditionSection('SUPPLIES')}>Запасы</button>
+                  <button className={expeditionSection === 'PACE' ? 'is-active' : ''} onClick={() => setExpeditionSection('PACE')}>Темп</button>
+                </nav>
+
+                {expeditionSection === 'PEOPLE' && <section className="mg-side-card mg-team-card mg-team-card--compact">
+                  <div className="mg-panel-head"><div><span>ЛЮДИ</span><strong>{topo.participants.length} участников</strong></div><small>порядок зафиксирован</small></div>
+                  <div className="mg-team-list">{topo.participants.map(member => (
+                    <article key={member.id} className={member.status === 'INCAPACITATED' || member.status === 'DEAD' ? 'is-critical' : ''}>
+                      <div>
+                        <strong>{member.name}</strong>
+                        <span>{member.role} · {member.specialty}</span>
+                        <small>силы {Math.round(member.energy)} · состояние {Math.round(member.condition)} · груз {member.loadKg.toFixed(1)} кг</small>
+                        <small>мораль {Math.round(member.morale)} · доверие {Math.round(member.trust)}{member.injury ? ` · ${member.injury}` : ''}</small>
+                      </div>
+                    </article>
+                  ))}</div>
+                </section>}
+
+                {expeditionSection === 'SUPPLIES' && <section className="mg-side-card mg-gear-card mg-gear-card--compact">
+                  <div className="mg-panel-head"><div><span>ЗАПАСЫ</span><strong>Фактический остаток</strong></div></div>
+                  <div className="mg-route-metrics">
+                    <div><span>ЕДА</span><strong>{topo.supplies.foodUnits.toFixed(1)}</strong></div>
+                    <div><span>ВОДА</span><strong>{topo.supplies.waterUnits.toFixed(1)}</strong></div>
+                    <div><span>ТОПЛИВО</span><strong>{topo.supplies.fuelUnits.toFixed(1)}</strong></div>
+                    <div><span>АПТЕЧКА</span><strong>{topo.gear.medkitCharges}</strong></div>
+                    <div><span>ВЕРЁВКА</span><strong>{topo.ropeMeters} м · {Math.round(topo.gear.ropeCondition)}%</strong></div>
+                    <div><span>ТЕХНИКА</span><strong>скалы {Math.round(topo.gear.rockHardwareCondition)}% · лёд {Math.round(topo.gear.iceHardwareCondition)}%</strong></div>
+                    <div><span>УКРЫТИЕ</span><strong>{Math.round(topo.gear.shelterCondition)}%</strong></div>
+                    <div><span>РАДИО</span><strong>{Math.round(topo.gear.radioCondition)}%</strong></div>
                   </div>
-                  <div className="mg-pace-controls">
-                    <span>ОБЩИЙ ТЕМП</span>
+                </section>}
+
+                {expeditionSection === 'PACE' && <section className="mg-side-card mg-pace-card">
+                  <div className="mg-panel-head"><div><span>ОБЩИЙ ТЕМП</span><strong>{PACE_COPY[topo.pace].title}</strong></div></div>
+                  <div className="mg-pace-controls mg-pace-controls--standalone">
                     <div>{(Object.keys(PACE_COPY) as IntegratedPace[]).map(pace => <button key={pace} className={topo.pace === pace ? 'is-active' : ''} onClick={() => commit({ type: 'SET_PACE', pace })} disabled={!paused}><strong>{PACE_COPY[pace].title}</strong><small>{PACE_COPY[pace].detail}</small></button>)}</div>
                   </div>
-                </section>
-
-                <div className="mg-expedition-grid">
-                  <section className="mg-side-card mg-gear-card">
-                    <div className="mg-panel-head"><div><span>СНАРЯЖЕНИЕ И ЗАПАСЫ</span><strong>Фактический остаток</strong></div></div>
-                    <div className="mg-route-metrics">
-                      <div><span>ЕДА</span><strong>{topo.supplies.foodUnits.toFixed(1)}</strong></div>
-                      <div><span>ВОДА</span><strong>{topo.supplies.waterUnits.toFixed(1)}</strong></div>
-                      <div><span>ТОПЛИВО</span><strong>{topo.supplies.fuelUnits.toFixed(1)}</strong></div>
-                      <div><span>АПТЕЧКА</span><strong>{topo.gear.medkitCharges}</strong></div>
-                      <div><span>ВЕРЁВКА</span><strong>{topo.ropeMeters} м · {Math.round(topo.gear.ropeCondition)}%</strong></div>
-                      <div><span>СКАЛЬНОЕ</span><strong>{Math.round(topo.gear.rockHardwareCondition)}%</strong></div><div><span>ЛЕДОВОЕ</span><strong>{Math.round(topo.gear.iceHardwareCondition)}%</strong></div>
-                      <div><span>УКРЫТИЕ</span><strong>{Math.round(topo.gear.shelterCondition)}%</strong></div>
-                      <div><span>РАДИО</span><strong>{Math.round(topo.gear.radioCondition)}%</strong></div>
-                    </div>
-                  </section>
-
-                  <section className="mg-side-card mg-team-card">
-                    <div className="mg-panel-head"><div><span>ЛЮДИ</span><strong>{topo.participants.length} участников</strong></div><small>порядок зафиксирован перед выходом</small></div>
-                    <div className="mg-team-list">{topo.participants.map(member => (
-                      <article key={member.id} className={member.status === 'INCAPACITATED' || member.status === 'DEAD' ? 'is-critical' : ''}>
-                        <div>
-                          <strong>{member.name}</strong>
-                          <span>{member.role} · {member.specialty}</span>
-                          <small>Силы {Math.round(member.energy)} · состояние {Math.round(member.condition)} · груз {member.loadKg.toFixed(1)}/{member.carryCapacityKg.toFixed(1)} кг</small>
-                          <small>Выносливость {member.skills.ENDURANCE} · скалы {member.skills.ROCK} · лёд {member.skills.ICE} · навигация {member.skills.NAVIGATION} · медицина {member.skills.MEDICINE}</small>
-                          <small>Мораль {Math.round(member.morale)} · доверие {Math.round(member.trust)}{member.injury ? ` · ${member.injury}` : ''}</small>
-                        </div>
-                      </article>
-                    ))}</div>
-                  </section>
-                </div>
-              </>
+                  <p className="mg-pace-note">Темп влияет на длительность шага, расход сил всей группы и вероятность происшествия.</p>
+                </section>}
+              </section>
             )}
           </div>
         )}
 
         {activeTab === 'JOURNAL' && (
           <div role="tabpanel" className="mg-journal-tab">
-            <section className="mg-side-card">
-              <div className="mg-panel-head"><div><span>ПОСЛЕДСТВИЯ</span><strong>{topo.incidents.length || 'нет'} событий</strong></div></div>
-              {topo.incidents.length > 0 ? <ol className="mg-incident-list">{topo.incidents.slice().reverse().map(incident => <li key={incident.id}><strong>{incident.title}</strong><small>{incident.detail}</small></li>)}</ol> : <p className="mg-journal-empty">Серьёзных происшествий пока нет.</p>}
-            </section>
-            <section className="mg-side-card mg-log-card">
-              <div className="mg-panel-head"><div><span>ХОД ЭКСПЕДИЦИИ</span><strong>{topo.eventLog.length} записей</strong></div></div>
+            <section className="mg-side-card mg-log-card mg-log-card--unified">
+              <div className="mg-panel-head"><div><span>ЖУРНАЛ</span><strong>{topo.eventLog.length} записей</strong></div><small>{topo.incidents.length ? `происшествий: ${topo.incidents.length}` : 'без серьёзных происшествий'}</small></div>
+              {topo.incidents.length > 0 && <div className="mg-journal-alerts">{topo.incidents.slice().reverse().slice(0, 3).map(incident => <article key={incident.id}><strong>{incident.title}</strong><small>{incident.detail}</small></article>)}</div>}
               <ol className="mg-event-log">{topo.eventLog.slice().reverse().map(entry => <li key={`${entry.serial}-${entry.text}`} className={`is-${entry.severity.toLowerCase()}`}><span>{String(entry.serial).padStart(2, '0')}</span><p>{entry.text}</p></li>)}</ol>
             </section>
           </div>

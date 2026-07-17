@@ -1,3 +1,13 @@
+# 0.27.1 — Mobile Repair
+
+- 3D route segments and markers now share the terrain depth queue, so slopes occlude the reverse side.
+- Mountain detail is split into Overview, Character and History without vertical page scrolling on iPhone 14 Pro.
+- Expedition status is split into People, Supplies and Pace; participant text is visible again.
+- Journal is a single continuous timeline without the empty vertical gap.
+- 3D expedition view auto-fits the mountain and uses the available viewport.
+- Archive data actions are compact; developer tools are hidden under a disclosure.
+- Field header, HUD and bottom action dock are readable and respect the iPhone safe area.
+
 # 0.27.0 — Full Mobile Viewport
 
 - Полностью отдельная мобильная разметка карьеры под iPhone 14 Pro и другие телефоны.

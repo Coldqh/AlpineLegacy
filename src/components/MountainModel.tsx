@@ -37,6 +37,7 @@ type Props = {
 type ProjectedPoint = { x: number; y: number; depth: number };
 
 type RenderPolygon = {
+  type: 'POLYGON';
   key: string;
   points: string;
   fill: string;
@@ -44,6 +45,24 @@ type RenderPolygon = {
   terrain: MountainTerrain | 'BASE';
   stroke: string;
 };
+
+type RenderRouteSegment = {
+  type: 'ROUTE';
+  key: string;
+  a: ProjectedPoint;
+  b: ProjectedPoint;
+  depth: number;
+};
+
+type RenderMarker = {
+  type: 'MARKER';
+  key: string;
+  marker: MountainModelMarker;
+  projected: ProjectedPoint;
+  depth: number;
+};
+
+type RenderSceneItem = RenderPolygon | RenderRouteSegment | RenderMarker;
 
 const MATERIALS: Record<MountainTerrain, { shadow: [number, number, number]; mid: [number, number, number]; light: [number, number, number] }> = {
   VALLEY: { shadow: [38, 54, 47], mid: [69, 91, 76], light: [102, 124, 104] },
@@ -177,6 +196,7 @@ export function MountainModel({
         const projected = cells.map(item => project(item!.x, item!.y, item!.elevation, grid, yaw, pitch, zoom));
         const fill = materialFill(cell, grid);
         polygons.push({
+          type: 'POLYGON',
           key: `surface:${x}:${y}`,
           points: projected.map(point => `${point.x},${point.y}`).join(' '),
           fill,
@@ -192,17 +212,58 @@ export function MountainModel({
     return polygons;
   }, [grid, yaw, pitch, zoom, stride]);
 
-  const routePath = useMemo(() => route.map(point => {
-    const cell = cellAt(grid, point);
-    if (!cell) return null;
-    const projected = project(cell.x, cell.y, cell.elevation + Math.max(5, grid.relief * .003), grid, yaw, pitch, zoom);
-    return `${projected.x},${projected.y}`;
-  }).filter(Boolean).join(' '), [route, grid, yaw, pitch, zoom]);
+  const scene = useMemo(() => {
+    const items: RenderSceneItem[] = [...renderData];
+    const lift = Math.max(5, grid.relief * .003);
 
-  const projectedMarkers = useMemo(() => markers.map(marker => {
-    const cell = cellAt(grid, marker.point);
-    return cell ? { marker, projected: project(cell.x, cell.y, cell.elevation + Math.max(8, grid.relief * .004), grid, yaw, pitch, zoom) } : null;
-  }).filter((item): item is NonNullable<typeof item> => Boolean(item)), [markers, grid, yaw, pitch, zoom]);
+    for (let index = 0; index < route.length - 1; index += 1) {
+      const from = cellAt(grid, route[index]!);
+      const to = cellAt(grid, route[index + 1]!);
+      if (!from || !to) continue;
+      const a = project(from.x, from.y, from.elevation + lift, grid, yaw, pitch, zoom);
+      const b = project(to.x, to.y, to.elevation + lift, grid, yaw, pitch, zoom);
+      items.push({
+        type: 'ROUTE',
+        key: `route:${index}`,
+        a,
+        b,
+        // A tiny lift keeps the line above its own face while closer terrain still occludes it.
+        depth: (a.depth + b.depth) / 2 + .004,
+      });
+    }
+
+    for (const marker of markers) {
+      const cell = cellAt(grid, marker.point);
+      if (!cell) continue;
+      const projected = project(cell.x, cell.y, cell.elevation + Math.max(8, grid.relief * .004), grid, yaw, pitch, zoom);
+      items.push({ type: 'MARKER', key: `marker:${marker.id}`, marker, projected, depth: projected.depth + .006 });
+    }
+
+    items.sort((a, b) => a.depth - b.depth);
+
+    const coordinates: Array<{ x: number; y: number }> = [];
+    for (const polygon of renderData) {
+      for (const pair of polygon.points.split(' ')) {
+        const [x, y] = pair.split(',').map(Number);
+        if (Number.isFinite(x) && Number.isFinite(y)) coordinates.push({ x, y });
+      }
+    }
+    const minX = Math.min(...coordinates.map(point => point.x));
+    const maxX = Math.max(...coordinates.map(point => point.x));
+    const minY = Math.min(...coordinates.map(point => point.y));
+    const maxY = Math.max(...coordinates.map(point => point.y));
+    const modelWidth = Math.max(1, maxX - minX);
+    const modelHeight = Math.max(1, maxY - minY);
+    const targetWidth = variant === 'card' ? 820 : 880;
+    const targetHeight = variant === 'expedition' ? 570 : 545;
+    const fitScale = Math.max(.78, Math.min(1.34, Math.min(targetWidth / modelWidth, targetHeight / modelHeight)));
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const targetCenterY = variant === 'expedition' ? 350 : 365;
+    const transform = `translate(${500 - centerX * fitScale} ${targetCenterY - centerY * fitScale}) scale(${fitScale})`;
+
+    return { items, transform };
+  }, [renderData, route, markers, grid, yaw, pitch, zoom, variant]);
 
   const resetCamera = () => {
     setYaw(initialYaw);
@@ -255,30 +316,36 @@ export function MountainModel({
 
         <rect x="0" y="0" width="1000" height="700" fill={`url(#${backgroundId})`} className="mountain-model__backdrop" />
         <rect x="0" y="0" width="1000" height="700" fill={`url(#${glowId})`} className="mountain-model__sky-glow" />
-        <g className="mountain-model__surface">
-          {renderData.map(poly => (
-            <polygon
-              key={poly.key}
-              points={poly.points}
-              fill={poly.fill}
-              stroke={poly.stroke}
-              strokeWidth={variant === 'card' ? .7 : .85}
-              className={`mountain-model__face is-${poly.terrain.toLowerCase()}`}
-            />
-          ))}
+        <g className="mountain-model__scene" transform={scene.transform}>
+          {scene.items.map(item => {
+            if (item.type === 'POLYGON') return (
+              <polygon
+                key={item.key}
+                points={item.points}
+                fill={item.fill}
+                stroke={item.stroke}
+                strokeWidth={variant === 'card' ? .7 : .85}
+                className={`mountain-model__face is-${item.terrain.toLowerCase()}`}
+              />
+            );
+            if (item.type === 'ROUTE') return (
+              <g key={item.key} className="mountain-model__route-segment">
+                <line x1={item.a.x} y1={item.a.y} x2={item.b.x} y2={item.b.y} stroke="rgba(4,8,7,.72)" strokeWidth="8.5" strokeLinecap="round" />
+                <line x1={item.a.x} y1={item.a.y} x2={item.b.x} y2={item.b.y} stroke={routeColor} strokeWidth="3.7" strokeLinecap="round" className="mountain-model__route" />
+              </g>
+            );
+            const { marker, projected } = item;
+            return (
+              <g key={item.key} transform={`translate(${projected.x} ${projected.y})`} className={markerClass(marker)}>
+                {markerGlyph(marker)}
+                {marker.count && marker.count > 1 ? <text className="mountain-model__marker-count" x="0" y="3">{marker.count}</text> : null}
+                {marker.label && <text x="14" y="4">{marker.label}</text>}
+              </g>
+            );
+          })}
         </g>
 
-        <rect x="0" y="455" width="1000" height="245" fill={`url(#${fogId})`} className="mountain-model__altitude-fog" />
-
-        {routePath && <polyline points={routePath} fill="none" stroke="rgba(4,8,7,.72)" strokeWidth="8.5" strokeLinecap="round" strokeLinejoin="round" />}
-        {routePath && <polyline points={routePath} fill="none" stroke={routeColor} strokeWidth="3.7" strokeLinecap="round" strokeLinejoin="round" className="mountain-model__route" />}
-        {projectedMarkers.map(({ marker, projected }) => (
-          <g key={marker.id} transform={`translate(${projected.x} ${projected.y})`} className={markerClass(marker)}>
-            {markerGlyph(marker)}
-            {marker.count && marker.count > 1 ? <text className="mountain-model__marker-count" x="0" y="3">{marker.count}</text> : null}
-            {marker.label && <text x="14" y="4">{marker.label}</text>}
-          </g>
-        ))}
+        <rect x="0" y="470" width="1000" height="230" fill={`url(#${fogId})`} className="mountain-model__altitude-fog" />
       </svg>
 
       {readout?.length ? (
