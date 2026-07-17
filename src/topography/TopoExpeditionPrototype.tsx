@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { CareerState, QualificationClimb } from '../core/types';
 import { MountainModel, type MountainModelMarker } from '../components/MountainModel';
 import { ensureIntegratedExpedition, persistIntegratedExpedition } from '../core/career';
+import { EXPEDITION_PURPOSE_LABELS } from '../core/firstSeason';
 import { buildMountainMemory, type MountainMemorySnapshot } from '../core/mountainMemory';
 import { applyMountainDynamicsToMap, applyMountainDynamicsToWeather, buildMountainDynamics, type MountainDynamics } from '../core/mountainDynamics';
 import {
@@ -425,7 +426,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.27.1</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.28.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -683,9 +684,9 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     <main className={`mg-app mg-expedition-shell is-${clock.phase} is-weather-${weatherMood} is-fx-${fieldFx.toLowerCase()}`}>
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.27.1</span>
+          <span>ALPINE LEGACY / 0.28.0</span>
           <h1>{climb.mountainName}</h1>
-          <small>{routeName} · {phaseLabel.toLowerCase()} · {clock.label}</small>
+          <small>{EXPEDITION_PURPOSE_LABELS[climb.purpose ?? 'SUMMIT']} · {routeName} · {phaseLabel.toLowerCase()} · {clock.label}</small>
         </div>
         <div className="mg-header-actions">
           <button className="mg-feedback-toggle" onClick={toggleFeedback} aria-pressed={feedbackEnabled} title="Звук и вибрация">{feedbackEnabled ? 'FX ON' : 'FX OFF'}</button>

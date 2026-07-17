@@ -12,6 +12,7 @@ import {
 } from '../core/career';
 import { analyzeRouteEquipment, ROPE_BUNDLE_METERS } from '../core/gearPlanning';
 import { daysUntilSchoolDeparture, SCHOOL_EXPEDITION_PHASE_LABELS, schoolExpeditionPhase, schoolOfferCanAccept } from '../core/schoolExpeditions';
+import { EXPEDITION_PURPOSE_LABELS } from '../core/firstSeason';
 import type { CareerState, ExpeditionOffer, ExpeditionPlan, MountainData, WorldState } from '../core/types';
 
 type PrepStage = 'TARGET' | 'TEAM' | 'GEAR' | 'LAUNCH';
@@ -88,7 +89,7 @@ function SchoolBoard({ world, career, offers, onAcceptOffer }: Pick<Props, 'worl
             <article key={offer.id} className={canAccept ? '' : 'is-locked'}>
               <div className="school-board-clean__date"><b>{days}</b><small>дн. до выхода</small></div>
               <div className="school-board-clean__copy">
-                <small>{SCHOOL_EXPEDITION_PHASE_LABELS[phase]} · {leader?.name ?? 'Инструктор не назначен'}</small>
+                <small>{offer.featured ? 'ГЛАВНЫЙ ПЛАН · ' : ''}{offer.purposeLabel ?? EXPEDITION_PURPOSE_LABELS[offer.purpose ?? 'SUMMIT']} · {SCHOOL_EXPEDITION_PHASE_LABELS[phase]}</small>
                 <strong>{route?.mountainName ?? 'Гора'} · {route?.name ?? 'Маршрут'}</strong>
                 <span>{roleLabel[offer.playerRole]} · {offer.memberNpcIds.length + 1} человек · риск {riskLabel(route?.objectiveRisk ?? 50)}</span>
               </div>
@@ -132,7 +133,7 @@ function AcceptedSchoolPlan({ world, career, offer, onWaitForDeparture, launchMe
       </header>
 
       <section className="school-plan-clean__facts">
-        <span><small>СТАДИЯ</small><strong>{SCHOOL_EXPEDITION_PHASE_LABELS[phase]}</strong></span>
+        <span><small>ЗАДАЧА</small><strong>{offer.purposeLabel ?? EXPEDITION_PURPOSE_LABELS[offer.purpose ?? 'SUMMIT']}</strong></span><span><small>СТАДИЯ</small><strong>{SCHOOL_EXPEDITION_PHASE_LABELS[phase]}</strong></span>
         <span><small>ТВОЯ РОЛЬ</small><strong>{roleLabel[offer.playerRole]}</strong></span>
         <span><small>ГРУППА</small><strong>{offer.memberNpcIds.length + 2} чел.</strong></span>
         <span><small>ВЕРШИНА</small><strong>{route.summitElevation} м</strong></span>

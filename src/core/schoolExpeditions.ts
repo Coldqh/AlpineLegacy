@@ -1,4 +1,5 @@
 import { createRng } from './rng';
+import { EXPEDITION_PURPOSE_LABELS, firstSeasonPurposeForOffer, normalizeFirstSeasonState } from './firstSeason';
 import type {
   CareerState,
   ExpeditionOffer,
@@ -124,7 +125,7 @@ function briefingFor(leader: NpcDefinition, route: ExpeditionRoute, phase: Schoo
   return `Команда вернулась. Инструктор разбирает решения, люди восстанавливаются и освобождают снаряжение.`;
 }
 
-export function buildSchoolExpeditionBoard(world: WorldState, career: Pick<CareerState, 'year' | 'seasonDay' | 'routes' | 'acceptedOffer'>): ExpeditionOffer[] {
+export function buildSchoolExpeditionBoard(world: WorldState, career: CareerState): ExpeditionOffer[] {
   const offers: ExpeditionOffer[] = [];
   const occupiedNpcIds = new Set<string>();
   const organizations = world.ecosystem.content.organizations.allIds
@@ -156,6 +157,7 @@ export function buildSchoolExpeditionBoard(world: WorldState, career: Pick<Caree
         ]) : null;
         const departureDay = anchor + 17 + delayDays;
         const expectedReturnDay = Math.min(180, departureDay + 5 + mentorIndex * 2);
+        const purpose = firstSeasonPurposeForOffer(career, mentorIndex, planSeries);
         const provisional: ExpeditionOffer = {
           id: `board-${career.year}-${organization.id}-${leader.id}-${cycle}`,
           organizationId: organization.id,
@@ -179,6 +181,8 @@ export function buildSchoolExpeditionBoard(world: WorldState, career: Pick<Caree
           cancellationReason,
           preparationProgress: 0,
           planSeries,
+          purpose,
+          purposeLabel: EXPEDITION_PURPOSE_LABELS[purpose],
         };
         const initialPhase = schoolExpeditionPhase(provisional, career.seasonDay);
         const blocksPeople = ['ANNOUNCED', 'RECRUITING', 'PREPARING', 'WEATHER_HOLD', 'DEPARTING', 'ON_ROUTE'].includes(initialPhase);
@@ -209,6 +213,55 @@ export function buildSchoolExpeditionBoard(world: WorldState, career: Pick<Caree
       });
     });
   });
+
+  const firstSeason = normalizeFirstSeasonState(career);
+  if (firstSeason.stage === 'FINALE' && firstSeason.finaleRouteId) {
+    const route = career.routes.find(item => item.id === firstSeason.finaleRouteId);
+    const organization = world.ecosystem.content.organizations.byId[career.membership.organizationId ?? '']
+      ?? organizations.find(item => item.regionId === career.currentRegionId)
+      ?? organizations[0];
+    const leader = firstSeason.mentorNpcId ? world.ecosystem.content.npcs.byId[firstSeason.mentorNpcId] : null;
+    if (route && organization && leader) {
+      let departureDay = firstSeason.stageStartedDay + 7;
+      while (departureDay < career.seasonDay + 2) departureDay += 14;
+      const rivalId = firstSeason.rivalNpcId && organization.memberNpcIds.includes(firstSeason.rivalNpcId) ? firstSeason.rivalNpcId : null;
+      const crew = [
+        ...(rivalId ? [rivalId] : []),
+        ...organization.memberNpcIds.filter(id => id !== leader.id && id !== rivalId).slice(0, Math.max(2, route.recommendedTeamSize - 2)),
+      ].slice(0, Math.max(2, route.recommendedTeamSize - 1));
+      const finale: ExpeditionOffer = {
+        id: `first-season-finale-${career.year}-${departureDay}`,
+        organizationId: organization.id,
+        routeId: route.id,
+        leaderNpcId: leader.id,
+        memberNpcIds: crew,
+        playerRole: 'ROPE_LEAD',
+        requiredRank: 'SPECIALIST',
+        authority: 'SPECIALIST',
+        solo: false,
+        status: 'OPEN',
+        opensOnDay: Math.max(1, departureDay - 9),
+        expiresOnDay: Math.min(180, departureDay + 12),
+        recruitmentClosesDay: departureDay - 3,
+        departureDay,
+        expectedReturnDay: Math.min(180, departureDay + Math.max(6, Math.ceil(route.estimatedHours / 8))),
+        cycle: 99,
+        openSlots: 1,
+        scheduleStatus: 'ON_TIME',
+        delayDays: 0,
+        cancellationReason: null,
+        preparationProgress: career.seasonDay < departureDay - 3 ? 74 : 92,
+        planSeries: 0,
+        purpose: 'FINALE',
+        purposeLabel: EXPEDITION_PURPOSE_LABELS.FINALE,
+        featured: true,
+        briefing: `${leader.name} собирает сильную связку на главную цель сезона. Это итоговая проверка твоей работы в школе.`,
+      };
+      finale.phase = schoolExpeditionPhase(finale, career.seasonDay);
+      finale.status = ['ANNOUNCED', 'RECRUITING', 'PREPARING', 'WEATHER_HOLD'].includes(finale.phase) ? 'OPEN' : 'CLOSED';
+      offers.unshift(finale);
+    }
+  }
 
   if (career.acceptedOffer && !offers.some(item => item.id === career.acceptedOffer!.id)) {
     offers.push({ ...career.acceptedOffer, phase: schoolExpeditionPhase(career.acceptedOffer, career.seasonDay) });

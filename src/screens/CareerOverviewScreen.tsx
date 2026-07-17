@@ -2,6 +2,7 @@ import { MountainModel } from '../components/MountainModel';
 import { TRAINING_ACTIONS, SKILL_LABELS, careerReadiness, expeditionReadiness, getSelectedRoute } from '../core/career';
 import { normalizeCareerProgression } from '../core/progression';
 import { daysUntilSchoolDeparture } from '../core/schoolExpeditions';
+import { FIRST_SEASON_STAGE_LABELS, firstSeasonObjective, normalizeFirstSeasonState } from '../core/firstSeason';
 import { careerRegion } from '../core/regionalCareer';
 import type { CareerState, SkillId, TrainingId, WorldState } from '../core/types';
 
@@ -48,6 +49,10 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
   const latestNews = career.livingWorld.news[0];
   const activeStory = [...career.storyState.events].reverse().find(event => event.status === 'OPEN') ?? null;
   const acceptedSchoolPlan = career.acceptedOffer && career.membership.mode !== 'INDEPENDENT' ? career.acceptedOffer : null;
+  const firstSeason = normalizeFirstSeasonState(career);
+  const seasonObjective = firstSeasonObjective(career);
+  const seasonMentor = firstSeason.mentorNpcId ? career.teamRoster.find(member => member.id === firstSeason.mentorNpcId) : null;
+  const seasonRival = firstSeason.rivalNpcId ? career.teamRoster.find(member => member.id === firstSeason.rivalNpcId) : null;
   const departureDays = daysUntilSchoolDeparture(acceptedSchoolPlan, career.seasonDay);
   const nextTitle = career.recoveryDays > 0
     ? 'Вернуть силы после экспедиции'
@@ -55,16 +60,20 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
       ? 'Продолжить восхождение'
       : acceptedSchoolPlan
         ? departureDays > 0 ? `Выход через ${departureDays} дн.` : 'Школа готова выходить'
-        : expedition.blockers.length
-          ? 'Закончить подготовку'
-          : 'Группа готова к выходу';
+        : !firstSeason.graduated
+          ? seasonObjective.title
+          : expedition.blockers.length
+            ? 'Закончить подготовку'
+            : 'Группа готова к выходу';
   const nextDetail = career.recoveryDays > 0
     ? `Осталось ${career.recoveryDays} дн. восстановления.`
     : career.activeClimb
       ? `${career.activeClimb.mountainName} · ${Math.round(career.activeClimb.currentElevation)} м.`
       : acceptedSchoolPlan
         ? `${target.mountainName} · ${target.name}. Место подтверждено, календарь можно промотать одним нажатием.`
-        : expedition.blockers[0] ?? `${target.mountainName} · ${target.name}.`;
+        : !firstSeason.graduated
+          ? seasonObjective.detail
+          : expedition.blockers[0] ?? `${target.mountainName} · ${target.name}.`;
   const focusAction = career.recoveryDays > 0
     ? () => onTrain('RECOVERY')
     : acceptedSchoolPlan
@@ -101,6 +110,12 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
         <article><span>Здоровье</span><strong>{Math.round(career.hero.health)}</strong><i><b style={{ width: `${career.hero.health}%` }} /></i></article>
         <article><span>Усталость</span><strong>{Math.round(career.hero.fatigue)}</strong><i className="is-inverted"><b style={{ width: `${career.hero.fatigue}%` }} /></i></article>
         <article><span>Готовность</span><strong>{readiness}</strong><i><b style={{ width: `${readiness}%` }} /></i></article>
+      </section>
+
+      <section className="first-season-panel">
+        <header><div><small>ПУТЬ ПЕРВОГО СЕЗОНА · {seasonObjective.step}/{seasonObjective.total}</small><h2>{FIRST_SEASON_STAGE_LABELS[firstSeason.stage]}</h2><p>{seasonObjective.detail}</p></div><span>{firstSeason.graduated ? 'ЗАВЕРШЁН' : 'В РАБОТЕ'}</span></header>
+        <div className="first-season-track">{(['FIRST_OUTING', 'RECOVERY', 'SKILL_TEST', 'FINALE'] as const).map((stage, index) => <i key={stage} className={firstSeason.completedObjectiveIds.includes(stage) || seasonObjective.step > index + 1 || firstSeason.graduated ? 'is-complete' : stage === firstSeason.stage ? 'is-active' : ''}><b>{index + 1}</b><span>{FIRST_SEASON_STAGE_LABELS[stage]}</span></i>)}</div>
+        <footer><span>Наставник <b>{seasonMentor?.name ?? 'не назначен'} · {firstSeason.mentorScore}</b></span><span>Соперник <b>{seasonRival?.name ?? 'не определён'} · {firstSeason.rivalScore}</b></span></footer>
       </section>
 
       <div className="ux-hq__columns">

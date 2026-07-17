@@ -25,6 +25,7 @@ import { buildExpeditionReport, createClimbTeamStates, enrichRoster, finalizeRos
 import { advanceLivingWorld, createLivingWorld, hydrateLivingWorld, registerHeroExpedition } from './worldSimulation';
 import { createCareerProgression, currentSeasonExpeditionCount, expeditionLimitForTier, hydrateCareerProgression, normalizeCareerProgression, rollCareerSeason, syncCareerProgression } from './progression';
 import { advanceCareerStories, createCareerStoryState, hydrateCareerStoryState } from './careerStories';
+import { advanceFirstSeasonAfterExpedition, createFirstSeasonState, firstSeasonRankBonus, normalizeFirstSeasonState, refreshFirstSeasonAfterTime } from './firstSeason';
 import { createParticipantExpeditionState, evaluateParticipant, getCurrentParticipantNode, getCurrentParticipantScene, leaderPace, resolveParticipantSkill } from './expeditionEngine';
 import { beginSimulationDescent, beginSimulationRetreat, createExpeditionSimulation, hydrateExpeditionSimulation, resolveExpeditionEventChoice, resolveExpeditionFieldAction as resolveSimulationFieldAction } from './simulationEngine';
 import { beginStrategicDescent, beginStrategicRetreat, createStrategicExpedition, hydrateStrategicExpedition, resolveStrategicRest, resolveStrategicSector } from './strategicEngine';
@@ -398,12 +399,14 @@ export function formatSeasonDate(year: number, seasonDay: number) {
 }
 
 function permissionsForMembership(mode: CareerMembership['mode'], rank: CareerMembership['rank']): CareerMembership['permissions'] {
-  const commandRank = ['LEADER', 'ORGANIZER'].includes(rank);
+  const routeRank = ['ROPE_LEAD', 'DEPUTY', 'LEADER', 'ORGANIZER'].includes(rank);
+  const teamRank = ['DEPUTY', 'LEADER', 'ORGANIZER'].includes(rank);
+  const commandRank = ['DEPUTY', 'LEADER', 'ORGANIZER'].includes(rank);
   return {
-    canChooseRoute: mode === 'INDEPENDENT' || commandRank,
-    canChooseTeam: commandRank,
+    canChooseRoute: mode === 'INDEPENDENT' || routeRank,
+    canChooseTeam: mode === 'INDEPENDENT' || teamRank,
     canIssueOrders: mode === 'INDEPENDENT' || commandRank,
-    canOrganize: rank === 'ORGANIZER',
+    canOrganize: ['LEADER', 'ORGANIZER'].includes(rank),
     canStartSolo: mode === 'INDEPENDENT',
   };
 }
@@ -424,7 +427,8 @@ function progressMembership(career: CareerState, climb: QualificationClimb, succ
   const authorityBonus = climb.authorityMode === 'COMMAND' ? 3 : 0;
   const safetyBonus = climb.casualties.length === 0 ? 2 : -8;
   const participantGain = climb.participant?.evaluation?.rankPoints ?? 0;
-  const gain = Math.max(0, participantGain || ((successful ? 7 : climb.retreating ? 3 : 1) + authorityBonus + safetyBonus));
+  const baseGain = participantGain || ((successful ? 7 : climb.retreating ? 3 : 1) + authorityBonus + safetyBonus);
+  const gain = Math.max(0, baseGain + firstSeasonRankBonus(climb.purpose));
   const rankPoints = career.membership.rankPoints + gain;
   const rank = rankForPoints(rankPoints);
   return { ...career.membership, rankPoints, rank, authority: career.membership.mode === 'INDEPENDENT' || ['LEADER', 'ORGANIZER'].includes(rank) ? 'COMMAND' as const : 'PARTICIPANT' as const, permissions: permissionsForMembership(career.membership.mode, rank) };
@@ -507,7 +511,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
   const activeClimb = normalizedActiveClimb && activeRoute ? { ...normalizedActiveClimb, simulation: normalizedActiveClimb.simulation ? hydrateExpeditionSimulation(normalizedActiveClimb, activeRoute) : null, strategic: hydrateStrategicExpedition(normalizedActiveClimb, activeRoute) } : normalizedActiveClimb;
   const foundation = {
     ...career,
-    schemaVersion: 21,
+    schemaVersion: 22,
     club,
     routes,
     teamRoster,
@@ -525,6 +529,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
     travelHistory: career.travelHistory ?? [],
     resolvedSchoolOfferIds: career.resolvedSchoolOfferIds ?? [],
     storyState: career.storyState ?? null as unknown as CareerState['storyState'],
+    firstSeason: career.firstSeason ?? null as unknown as CareerState['firstSeason'],
     expeditionPlan: normalizeRopeGear({
       ...defaultPlan(routes, teamRoster, career.weatherWindows?.length ? career.weatherWindows : makeWeatherWindows(world)),
       ...career.expeditionPlan,
@@ -545,6 +550,7 @@ export function hydrateCareerFoundation(career: any, world: WorldState, preserve
   foundation.weatherWindows = career.weatherWindows?.length ? career.weatherWindows : makeWeatherWindows(world, foundation.currentRegionId);
   foundation.seasonPlan = normalizeSeasonCampaignPlan(foundation);
   foundation.storyState = hydrateCareerStoryState(foundation, career.storyState);
+  foundation.firstSeason = normalizeFirstSeasonState(foundation);
   return hydrateCareerProgression(foundation);
 }
 
@@ -557,7 +563,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
   const teamRoster = rosterForOrganization(world, membership.organizationId);
   const weatherWindows = makeWeatherWindows(world);
   const career: CareerState = {
-    schemaVersion: 21,
+    schemaVersion: 22,
     id: `career-${world.id}-${draft.name.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 24) || 'climber'}`,
     worldId: world.id,
     rootSeed: world.config.seed,
@@ -611,6 +617,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     travelHistory: [],
     resolvedSchoolOfferIds: [],
     storyState: null as unknown as CareerState['storyState'],
+    firstSeason: null as unknown as CareerState['firstSeason'],
   };
 
   career.expeditionPlan = normalizeRopeGear({
@@ -623,6 +630,7 @@ export function createCareer(world: WorldState, draft: CareerDraft): CareerState
     : `Принят новичком в «${club.name}». Команды пока нет: сначала нужно получить место в чужой экспедиции.`;
   career.seasonPlan = createSeasonCampaignPlan(career);
   career.storyState = createCareerStoryState(career);
+  career.firstSeason = createFirstSeasonState(career);
   career.log.push(careerLog(career, 'CAREER', 'Начало карьеры', `${career.hero.name}, ${career.hero.age} лет. ${opening}`));
   career.log.push(careerLog(career, 'CLUB', membership.mode === 'INDEPENDENT' ? 'Самостоятельный путь' : 'Первый инструктор', membership.mode === 'INDEPENDENT' ? club.doctrine : `${club.mentorName}, ${club.mentorTitle}. Его правило: «${club.doctrine}»`));
   career.progression = createCareerProgression(career);
@@ -842,7 +850,7 @@ export function applyTraining(career: CareerState, trainingId: TrainingId): Care
   const prepared = addSeasonPreparation(next, trainingId === 'RECOVERY' ? Math.ceil(action.days * .35) : action.days);
   const advanced = advanceLivingWorld(prepared, action.days);
   const progressed = timeline.year > career.year ? rollCareerSeason(career, advanced) : syncCareerProgression(advanced);
-  return advanceCareerStories(progressed);
+  return refreshFirstSeasonAfterTime(advanceCareerStories(progressed));
 }
 
 export function waitForSchoolDeparture(world: WorldState, career: CareerState): CareerState {
@@ -1442,6 +1450,7 @@ export function startPlannedClimb(career: CareerState): CareerState {
     leaderNpcId: career.expeditionPlan.leaderNpcId,
     playerRole: career.expeditionPlan.playerRole,
     authorityMode: career.expeditionPlan.authorityMode,
+    purpose: career.acceptedOffer?.purpose ?? 'SUMMIT',
     mountainId: route.mountainId,
     mountainName: route.mountainName,
     routeId: route.id,
@@ -1880,6 +1889,8 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     recoveryDays,
     maintenanceCost,
     skillPractice,
+    purpose: completed.purpose ?? 'SUMMIT',
+    mentorEvaluation: successful ? 'Наставник отметил уверенное возвращение группы.' : completed.retreating ? 'Безопасный отход засчитан как полезный опыт.' : 'Выход потребует подробного разбора с инструктором.',
   };
   const heroExpeditionState = completed.topo?.participants.find(participant => participant.memberId === null);
   const heroInjuries = heroExpeditionState?.injury && !career.hero.injuries.includes(heroExpeditionState.injury)
@@ -1900,7 +1911,7 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     cohesion: clamp(career.permanentTeam.cohesion + (successful ? 6 : completed.retreating ? 2 : -3) - permanentLosses * 18, 0, 100),
     memberIds: career.permanentTeam.memberIds.filter(id => !completed.casualties.includes(id)),
   } : career.permanentTeam;
-  const next: CareerState = {
+  let next: CareerState = {
     ...career,
     completedClimbs: career.completedClimbs + (successful ? 1 : 0),
     highestElevation: Math.max(career.highestElevation, climb.topo?.highestElevation ?? (climb.summitReached ? climb.summitElevation : climb.currentElevation)),
@@ -1937,6 +1948,42 @@ function finishClimb(career: CareerState, climb: QualificationClimb): CareerStat
     careerLog(next, 'PRESS', 'Реакция после экспедиции', `${report.clubReaction} ${report.pressReaction}`),
     careerLog(next, 'INJURY', 'Восстановление после выхода', `${recoveryDays} дн. без тяжёлой подготовки. Обслуживание снаряжения: ${maintenanceCost} кр.`),
   ];
+  const previousSeasonStage = normalizeFirstSeasonState(career).stage;
+  const seasonAdvanced = advanceFirstSeasonAfterExpedition(next, completed, report);
+  next = seasonAdvanced;
+  const stageRankFloor = previousSeasonStage === 'FIRST_OUTING' ? expeditionRankThresholds.MEMBER
+    : previousSeasonStage === 'SKILL_TEST' ? expeditionRankThresholds.SPECIALIST
+      : 0;
+  if (stageRankFloor > next.membership.rankPoints) {
+    const rankPoints = stageRankFloor;
+    const rank = rankForPoints(rankPoints);
+    next = {
+      ...next,
+      membership: {
+        ...next.membership,
+        rankPoints,
+        rank,
+        authority: next.membership.mode === 'INDEPENDENT' || ['DEPUTY', 'LEADER', 'ORGANIZER'].includes(rank) ? 'COMMAND' : 'PARTICIPANT',
+        permissions: permissionsForMembership(next.membership.mode, rank),
+      },
+      log: [...next.log, careerLog(next, 'CLUB', `Новый ранг: ${EXPEDITION_RANK_LABELS[rank]}`, previousSeasonStage === 'FIRST_OUTING' ? 'Первый учебный выход закрыт. Теперь школа доверяет тебе полноценное место в связке.' : 'Второй выход подтвердил специальность. Ты допущен к главной экспедиции сезона.')],
+    };
+  }
+  if (!career.firstSeason?.graduated && next.firstSeason.graduated) {
+    const rankPoints = Math.max(next.membership.rankPoints, expeditionRankThresholds.ROPE_LEAD);
+    const rank = rankForPoints(rankPoints);
+    next = {
+      ...next,
+      membership: {
+        ...next.membership,
+        rankPoints,
+        rank,
+        authority: next.membership.mode === 'INDEPENDENT' || ['DEPUTY', 'LEADER', 'ORGANIZER'].includes(rank) ? 'COMMAND' : 'PARTICIPANT',
+        permissions: permissionsForMembership(next.membership.mode, rank),
+      },
+      log: [...next.log, careerLog(next, 'CLUB', 'Первый сезон завершён', 'Учебный цикл закрыт. Школа допускает тебя к выбору сложных линий и самостоятельной работе ведущим связки.')],
+    };
+  }
   return recordSeasonExpeditionResult(next, climb.routeId, successful);
 }
 

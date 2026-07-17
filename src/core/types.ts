@@ -39,6 +39,8 @@ export type SchoolExpeditionPhase = 'ANNOUNCED' | 'RECRUITING' | 'PREPARING' | '
 export type PermanentTeamStyle = 'CAUTIOUS' | 'BALANCED' | 'AGGRESSIVE';
 export type SeasonRiskPolicy = 'CAUTIOUS' | 'BALANCED' | 'AGGRESSIVE';
 export type SeasonBudgetPolicy = 'LEAN' | 'STANDARD' | 'FULL';
+export type ExpeditionPurpose = 'TRAINING' | 'ACCLIMATIZATION' | 'RECON' | 'CARRY' | 'RESCUE' | 'SUMMIT' | 'FINALE';
+export type FirstSeasonStage = 'FIRST_OUTING' | 'RECOVERY' | 'SKILL_TEST' | 'FINALE' | 'COMPLETE';
 
 export type RegionId = string;
 export type MountainId = string;
@@ -374,6 +376,9 @@ export interface ExpeditionOffer {
   cancellationReason?: string | null;
   preparationProgress?: number;
   planSeries?: number;
+  purpose?: ExpeditionPurpose;
+  purposeLabel?: string;
+  featured?: boolean;
 }
 
 export interface WorldContentRegistry {
@@ -946,6 +951,7 @@ export interface QualificationClimb {
   leaderNpcId: NpcId | null;
   playerRole: TeamRole;
   authorityMode: ExpeditionAuthority;
+  purpose?: ExpeditionPurpose;
   mountainId: string;
   mountainName: string;
   routeId: string;
@@ -1033,6 +1039,8 @@ export interface ExpeditionReport {
   skillPractice?: Partial<Record<SkillId, number>>;
   incidentSummary?: string[];
   expeditionStrengths?: string[];
+  purpose?: ExpeditionPurpose;
+  mentorEvaluation?: string;
 }
 
 export type ClubRiskProfile = 'CAUTIOUS' | 'BALANCED' | 'AGGRESSIVE';
@@ -1350,6 +1358,34 @@ export interface CareerStoryState {
   unreadCount: number;
 }
 
+
+export interface FirstSeasonDebrief {
+  id: string;
+  year: number;
+  seasonDay: number;
+  purpose: ExpeditionPurpose;
+  outcome: 'SUMMIT' | 'RETREAT' | 'FAILED';
+  title: string;
+  summary: string;
+  mentorDelta: number;
+  rivalDelta: number;
+}
+
+export interface FirstSeasonState {
+  version: 1;
+  year: number;
+  stage: FirstSeasonStage;
+  stageStartedDay: number;
+  mentorNpcId: NpcId | null;
+  rivalNpcId: NpcId | null;
+  mentorScore: number;
+  rivalScore: number;
+  finaleRouteId: RouteId | null;
+  completedObjectiveIds: string[];
+  debriefs: FirstSeasonDebrief[];
+  graduated: boolean;
+}
+
 export interface RegionTravelRecord {
   id: string;
   fromRegionId: RegionId;
@@ -1361,7 +1397,7 @@ export interface RegionTravelRecord {
 }
 
 export interface CareerState {
-  schemaVersion: 21;
+  schemaVersion: 22;
   id: string;
   worldId: string;
   rootSeed: string;
@@ -1399,6 +1435,7 @@ export interface CareerState {
   travelHistory: RegionTravelRecord[];
   resolvedSchoolOfferIds: ExpeditionOfferId[];
   storyState: CareerStoryState;
+  firstSeason: FirstSeasonState;
 }
 
 export interface CareerDraft {

@@ -15,6 +15,7 @@ import {
   schoolExpeditionBoard,
 } from '../core/career';
 import { activeCareerStory, careerStoryNpc } from '../core/careerStories';
+import { EXPEDITION_PURPOSE_LABELS, FIRST_SEASON_STAGE_LABELS, firstSeasonObjective, normalizeFirstSeasonState } from '../core/firstSeason';
 import { analyzeRouteEquipment } from '../core/gearPlanning';
 import { runBalanceSample } from '../core/playtest';
 import { careerRegion, regionAccessList, regionMountains } from '../core/regionalCareer';
@@ -122,13 +123,17 @@ export function MobileViewportOverview({ world, career, onTrain, onOpenExpeditio
   const route = getSelectedRoute(career);
   const readiness = expeditionReadiness(career);
   const openStory = activeCareerStory(career);
+  const firstSeason = normalizeFirstSeasonState(career);
+  const seasonObjective = firstSeasonObjective(career);
+  const seasonMentor = firstSeason.mentorNpcId ? career.teamRoster.find(member => member.id === firstSeason.mentorNpcId) : null;
+  const seasonRival = firstSeason.rivalNpcId ? career.teamRoster.find(member => member.id === firstSeason.rivalNpcId) : null;
   const accepted = career.acceptedOffer?.scheduleStatus !== 'CANCELLED' ? career.acceptedOffer : null;
   const waitDays = accepted?.departureDay ? Math.max(0, accepted.departureDay - career.seasonDay) : 0;
   const mainAction = career.recoveryDays > 0
     ? { title: 'Восстановление', detail: `Ещё ${career.recoveryDays} дн.`, action: () => onTrain('RECOVERY') }
     : accepted
       ? { title: waitDays > 0 ? `Выход через ${waitDays} дн.` : 'Группа готова к выходу', detail: `${route.mountainName} · ${route.name}`, action: onWaitForDeparture }
-      : { title: readiness.blockers.length ? 'Закончить подготовку' : 'Экспедиция готова', detail: readiness.blockers[0] ?? route.mountainName, action: onOpenExpedition };
+      : { title: firstSeason.graduated ? (readiness.blockers.length ? 'Закончить подготовку' : 'Экспедиция готова') : seasonObjective.title, detail: firstSeason.graduated ? (readiness.blockers[0] ?? route.mountainName) : seasonObjective.detail, action: onOpenExpedition };
 
   return <MobileViewportFrame
     tabs={[{ id: 'OVERVIEW', label: 'Обзор' }, { id: 'TRAINING', label: 'Тренировки' }, { id: 'CAREER', label: 'Карьера' }]}
@@ -152,6 +157,7 @@ export function MobileViewportOverview({ world, career, onTrain, onOpenExpeditio
     {view === 'CAREER' && <div className="mvp-career-grid">
       <article><small>УРОВЕНЬ</small><strong>{CAREER_TIER_LABELS[progression.tier]}</strong><span>№ {careerWorldRank(career)} в мире</span></article>
       <article><small>СЕЗОН</small><strong>{progression.seasonNumber}</strong><span>{career.completedClimbs} завершённых выходов</span></article>
+      <article className="is-wide mvp-season-path"><small>ПУТЬ ПЕРВОГО СЕЗОНА · {seasonObjective.step}/{seasonObjective.total}</small><strong>{FIRST_SEASON_STAGE_LABELS[firstSeason.stage]}</strong><span>{seasonObjective.detail}</span><div className="mvp-season-track">{(['FIRST_OUTING', 'RECOVERY', 'SKILL_TEST', 'FINALE'] as const).map((stage, index) => <i key={stage} className={firstSeason.completedObjectiveIds.includes(stage) || seasonObjective.step > index + 1 || firstSeason.graduated ? 'is-complete' : stage === firstSeason.stage ? 'is-active' : ''} />)}</div><footer><span>{seasonMentor?.name ?? 'Наставник'} <b>{firstSeason.mentorScore}</b></span><span>{seasonRival?.name ?? 'Соперник'} <b>{firstSeason.rivalScore}</b></span></footer></article>
       <article className="is-wide"><small>СЛЕДУЮЩАЯ ЦЕЛЬ</small><strong>{milestone?.title ?? 'Карьерная вершина достигнута'}</strong><span>{milestone?.description ?? 'Продолжай строить наследие команды.'}</span></article>
       <article className="is-wide"><small>НАВЫКИ</small><div className="mvp-skill-chips">{Object.entries(career.hero.skills).map(([skill, value]) => <span key={skill}>{SKILL_LABELS[skill as keyof typeof SKILL_LABELS]} <b>{value}</b></span>)}</div></article>
     </div>}
@@ -213,7 +219,7 @@ function MobileSchoolExpedition({ world, career, launchMessage, onAcceptOffer, o
     const phase = schoolExpeditionPhase(offer, career.seasonDay);
     const rankOk = rankAllows(career.membership.rank, offer.requiredRank);
     const available = rankOk && schoolOfferCanAccept(offer, career.seasonDay);
-    return <button key={offer.id} className={career.selectedOfferId === offer.id ? 'is-active' : ''} disabled={!available && career.selectedOfferId !== offer.id} onClick={() => onAcceptOffer?.(offer.id)}><div><small>{SCHOOL_EXPEDITION_PHASE_LABELS[phase]} · {instructor?.name ?? 'Инструктор'}</small><strong>{offerMountain?.name ?? offerRoute?.mountainName}</strong><span>{offerRoute?.name} · выход день {offer.departureDay ?? '—'}</span></div><b>{career.selectedOfferId === offer.id ? '✓' : available ? '›' : '—'}</b></button>;
+    return <button key={offer.id} className={career.selectedOfferId === offer.id ? 'is-active' : ''} disabled={!available && career.selectedOfferId !== offer.id} onClick={() => onAcceptOffer?.(offer.id)}><div><small>{offer.featured ? 'ГЛАВНЫЙ ПЛАН · ' : ''}{offer.purposeLabel ?? EXPEDITION_PURPOSE_LABELS[offer.purpose ?? 'SUMMIT']} · {SCHOOL_EXPEDITION_PHASE_LABELS[phase]}</small><strong>{offerMountain?.name ?? offerRoute?.mountainName}</strong><span>{instructor?.name ?? 'Инструктор'} · {offerRoute?.name} · выход день {offer.departureDay ?? '—'}</span></div><b>{career.selectedOfferId === offer.id ? '✓' : available ? '›' : '—'}</b></button>;
   };
 
   return <MobileViewportFrame
@@ -325,7 +331,7 @@ export function MobileViewportWorld({ world, career, activeTab, onTab, onTravel 
       <button className="mvp-region-card" onClick={() => setRegionSheet(true)}><div><small>{currentRegion.country} · {currentRegion.rangeName}</small><strong>{currentRegion.name}</strong><span>{currentRegion.climbingSeason}</span></div><b>Сменить ›</b></button>
       <div className="mvp-world-summary"><span>Школы <b>{career.livingWorld.clubs.filter(item => item.regionId === currentRegion.id).length}</b></span><span>Планы <b>{plans.length}</b></span><span>Альпинисты <b>{localAthleteCount}</b></span></div>
       <div className="mvp-compact-heading"><strong>Планы школ</strong><span>{plans.length}</span></div>
-      <div className="mvp-mini-plans">{plans.map(plan => { const route = career.routes.find(item => item.id === plan.routeId); const leader = plan.leaderNpcId ? world.ecosystem.content.npcs.byId[plan.leaderNpcId] : null; return <article key={plan.id}><small>{SCHOOL_EXPEDITION_PHASE_LABELS[schoolExpeditionPhase(plan, career.seasonDay)]}</small><strong>{route?.mountainName}</strong><span>{leader?.name ?? 'Инструктор'} · день {plan.departureDay ?? '—'}</span></article>; })}</div>
+      <div className="mvp-mini-plans">{plans.map(plan => { const route = career.routes.find(item => item.id === plan.routeId); const leader = plan.leaderNpcId ? world.ecosystem.content.npcs.byId[plan.leaderNpcId] : null; return <article key={plan.id}><small>{plan.purposeLabel ?? EXPEDITION_PURPOSE_LABELS[plan.purpose ?? 'SUMMIT']} · {SCHOOL_EXPEDITION_PHASE_LABELS[schoolExpeditionPhase(plan, career.seasonDay)]}</small><strong>{route?.mountainName}</strong><span>{leader?.name ?? 'Инструктор'} · день {plan.departureDay ?? '—'}</span></article>; })}</div>
       {latestExpedition && <article className="mvp-latest-expedition"><small>ПОСЛЕДНИЙ ВЫХОД</small><strong>{latestExpedition.mountainName}</strong><span>{latestExpedition.routeName} · {latestExpedition.outcome}</span></article>}
     </>}
 

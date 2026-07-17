@@ -1,3 +1,14 @@
+# 0.28.0 — First Playable Season
+
+- Added a four-step first-season journey: school outing, recovery, skill test and season finale.
+- School expeditions now carry explicit purposes instead of every plan being a generic summit attempt.
+- Mentor evaluation, rival progress and expedition debriefs persist across the season.
+- A featured finale plan is generated from the player's region, mentor and rival.
+- First-season promotions unlock member, specialist and rope-lead ranks at clear milestones.
+- Added compact season progress UI on desktop and iPhone layouts.
+- Career saves now use schema v22 and migrate v21 automatically.
+- Added first-season tests; full suite now covers 150 scenarios.
+
 # 0.27.1 — Mobile Repair
 
 - 3D route segments and markers now share the terrain depth queue, so slopes occlude the reverse side.
