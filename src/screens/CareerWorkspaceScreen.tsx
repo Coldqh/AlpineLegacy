@@ -2,7 +2,16 @@ import { useState } from 'react';
 import { CareerShell } from '../components/CareerShell';
 import { CareerFlowGuide } from '../components/CareerFlowGuide';
 import { TopoExpeditionLoader } from '../components/TopoExpeditionLoader';
-import { useScrollReset } from '../mobile/useMobile';
+import { useIsMobile, useScrollReset } from '../mobile/useMobile';
+import { MobileCareerShell } from '../mobile/MobileCareerShell';
+import {
+  MobileViewportArchive,
+  MobileViewportOverview,
+  MobileViewportPeople,
+  MobileViewportPreparation,
+  MobileViewportStories,
+  MobileViewportWorld,
+} from '../mobile/MobileViewportScreens';
 import {
   applyEquipmentPreset,
   applyToExpeditionOffer,
@@ -17,6 +26,9 @@ import {
   setGearQuantity,
   startPlannedClimb,
   toggleTeamMember,
+  saveCurrentAsPermanentTeam,
+  setPermanentTeamStyle,
+  usePermanentTeam,
   travelToRegion,
   updateExpeditionPlan,
   waitForSchoolDeparture,
@@ -45,6 +57,7 @@ const preparationTabs: CareerTabId[] = ['ROUTE', 'TEAM', 'EQUIPMENT', 'EXPEDITIO
 const worldTabs: CareerTabId[] = ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'];
 
 export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersist, onTrain, onExit, onAtlas }: Props) {
+  const mobile = useIsMobile();
   const [launchMessage, setLaunchMessage] = useState<string | null>(null);
   const expeditionLocked = Boolean(career.activeClimb);
   const tab = expeditionLocked ? 'CLIMB' as const : activeTab;
@@ -88,6 +101,59 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
     const blocker = expeditionReadiness(next).blockers.find(item => !item.includes('ещё готовится')) ?? expeditionReadiness(next).blockers[0];
     setLaunchMessage(blocker ?? 'Школа не смогла начать выход. Выбери новый план.');
   };
+
+
+  if (mobile) {
+    const renderMobile = () => {
+      if (tab === 'OVERVIEW') {
+        return <MobileViewportOverview
+          world={world}
+          career={career}
+          onTrain={onTrain}
+          onOpenExpedition={() => onTab('EXPEDITION')}
+          onWaitForDeparture={waitAndLaunch}
+          onOpenStories={() => onTab('STORIES')}
+        />;
+      }
+      if (preparationTabs.includes(tab)) {
+        return <MobileViewportPreparation
+          world={world}
+          career={career}
+          activeTab={tab}
+          launchMessage={launchMessage}
+          onTab={navigate}
+          onAcceptOffer={offerId => onPersist(applyToExpeditionOffer(world, career, offerId))}
+          onSelectMountain={mountainId => onPersist(selectMountain(career, mountainId))}
+          onSelectRoute={routeId => onPersist(selectRoute(career, routeId))}
+          onToggleMember={memberId => onPersist(toggleTeamMember(career, memberId))}
+          onSetGearQuantity={(gearId, quantity) => onPersist(setGearQuantity(career, gearId, quantity))}
+          onSetPlan={(patch: Partial<ExpeditionPlan>) => onPersist(updateExpeditionPlan(career, patch))}
+          onPreset={preset => onPersist(applyEquipmentPreset(career, preset))}
+          onSelectWeather={windowId => onPersist(selectWeatherWindow(career, windowId))}
+          onLaunch={launch}
+          onWaitForDeparture={waitAndLaunch}
+          onOpenPeople={() => onTab('PEOPLE')}
+          onSavePermanent={() => onPersist(saveCurrentAsPermanentTeam(career))}
+          onUsePermanent={() => onPersist(usePermanentTeam(career))}
+          onTeamStyle={style => onPersist(setPermanentTeamStyle(career, style))}
+        />;
+      }
+      if (worldTabs.includes(tab)) {
+        return <MobileViewportWorld
+          world={world}
+          career={career}
+          activeTab={tab}
+          onTab={navigate}
+          onTravel={regionId => onPersist(travelToRegion(world, career, regionId))}
+        />;
+      }
+      if (tab === 'PEOPLE') return <MobileViewportPeople career={career} />;
+      if (tab === 'STORIES') return <MobileViewportStories career={career} onResolve={(eventId, choiceId) => onPersist(resolveCareerStory(career, eventId, choiceId))} onRead={() => onPersist(markCareerStoriesRead(career))} />;
+      return <MobileViewportArchive world={world} career={career} />;
+    };
+
+    return <MobileCareerShell world={world} career={career} activeTab={tab} onTab={navigate} locked={expeditionLocked} onExit={onExit} onAtlas={onAtlas}><CareerFlowGuide career={career} activeTab={tab} onTab={navigate} onStep={step => onPersist(setCareerTutorialStep(career, step))} onDismiss={() => onPersist(dismissOnboarding(career))} />{renderMobile()}</MobileCareerShell>;
+  }
 
   const renderTab = () => {
     if (tab === 'OVERVIEW') {

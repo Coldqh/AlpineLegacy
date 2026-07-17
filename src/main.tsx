@@ -16,6 +16,7 @@ import './styles/visual-023.css';
 import './styles/live-expedition-024.css';
 import './styles/career-stories-025.css';
 import './styles/balance-lab-026.css';
+import './styles/mobile-viewport-027.css';
 
 registerOfflineApp();
 

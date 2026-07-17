@@ -425,7 +425,7 @@ export function TopoExpeditionPrototype({ career, onPersist, onExit, allowRegene
   if (!climb || !topo) {
     return (
       <main className="mg-app">
-        <header className="mg-header"><div><span>ALPINE LEGACY / 0.26.1</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
+        <header className="mg-header"><div><span>ALPINE LEGACY / 0.27.0</span><h1>Экспедиция недоступна</h1></div><div className="mg-header-actions"><button onClick={() => onExit(true)}>Вернуться</button></div></header>
       </main>
     );
   }
@@ -444,6 +444,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
   const [speed, setSpeed] = useState<1 | 2 | 4>(1);
   const [selectedPoint, setSelectedPoint] = useState<GridPoint>({ x: 0, y: 0 });
   const [activeTab, setActiveTab] = useState<ExpeditionTab>(() => topo.started ? 'CLIMB' : 'EXPEDITION');
+  const [cellCardOpen, setCellCardOpen] = useState(false);
   const [fieldFx, setFieldFx] = useState<FieldFx>('IDLE');
   const [dismissedMomentSerial, setDismissedMomentSerial] = useState<number | null>(null);
   const [feedbackEnabled, setFeedbackEnabled] = useState(() => typeof window === 'undefined' ? true : window.localStorage.getItem('alpine-legacy:field-feedback') !== 'off');
@@ -681,7 +682,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
     <main className={`mg-app mg-expedition-shell is-${clock.phase} is-weather-${weatherMood} is-fx-${fieldFx.toLowerCase()}`}>
       <header className="mg-header mg-expedition-header">
         <div className="mg-header-copy">
-          <span>ALPINE LEGACY / 0.26.1</span>
+          <span>ALPINE LEGACY / 0.27.0</span>
           <h1>{climb.mountainName}</h1>
           <small>{routeName} · {phaseLabel.toLowerCase()} · {clock.label}</small>
         </div>
@@ -768,8 +769,9 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                   {showMoment && <ExpeditionMoment state={topo} onClose={() => { setDismissedMomentSerial(topo.lastEvent.serial); if (topo.lastEvent.kind === 'EXPEDITION_COMPLETE') setActiveTab('EXPEDITION'); }} />}
                 </div>
                 <aside className="mg-local-aside mg-field-dock">
-                  <section className={`mg-selected-cell-card is-risk-${selectedRisk.band.toLowerCase()}`}>
-                    <header><div><small>{TERRAIN_COPY[selectedCell.terrain]} · {slopeBand(selectedCell.slope)} · {Math.round(selectedCell.slope)}°</small><strong>{selectedCell.elevation} м</strong></div><b>{RISK_COPY[selectedRisk.band]}</b></header>
+                  <section className={`mg-selected-cell-card is-risk-${selectedRisk.band.toLowerCase()} ${cellCardOpen ? 'is-open' : ''}`}>
+                    <header><div><small>{TERRAIN_COPY[selectedCell.terrain]} · {slopeBand(selectedCell.slope)} · {Math.round(selectedCell.slope)}°</small><strong>{selectedCell.elevation} м</strong></div><b>{RISK_COPY[selectedRisk.band]}</b><button className="mg-cell-detail-toggle" onClick={() => setCellCardOpen(value => !value)} aria-expanded={cellCardOpen}>{cellCardOpen ? '×' : 'Подробнее'}</button></header>
+                    <div className="mg-selected-cell-details">
                     <p><strong>{HAZARD_COPY[selectedCell.hazard]}.</strong> {selectedCell.ropeRequired ? 'Без закреплённой линии группа рискует сорваться и потерять прогресс.' : selectedCell.ropeRecommended ? 'Верёвка снижает вероятность происшествия и защищает обратный путь.' : 'Главный расход здесь дают высота, склон, погода и вес рюкзаков.'}</p>
                     <div className="mg-active-gear" aria-label="Работающее снаряжение">
                       {selectedRockGearActive && <span className={topo.gear.rockHardwareCondition < 35 ? 'is-critical' : ''}><i>СКАЛЫ</i><b>{Math.round(topo.gear.rockHardwareCondition)}%</b></span>}
@@ -781,6 +783,7 @@ function ActiveTopoExpedition({ integratedCareer, climb, topo, onPersist, onExit
                     <div className="mg-cell-compare">
                       <span><small>БЕЗ ВЕРЁВКИ</small><strong>{selectedRiskWithoutRope.minutes} мин · риск {selectedRiskWithoutRope.score}</strong><em>силы всей группы −{selectedRiskWithoutRope.energy}</em></span>
                       <span><small>С ВЕРЁВКОЙ</small><strong>{selectedRiskWithRope.minutes} мин · риск {selectedRiskWithRope.score}</strong><em>{selectedProtected ? 'обратный путь защищён' : `установка +${Math.max(18, 44 - Math.max(technician.skills.ROCK, technician.skills.ICE) * 2)} мин · останется ${Math.max(0, topo.ropeMeters - 20)} м`}</em></span>
+                    </div>
                     </div>
                   </section>
 

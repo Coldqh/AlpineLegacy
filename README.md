@@ -1,4 +1,4 @@
-# Alpine Legacy v0.26.1
+# Alpine Legacy v0.27.0
 
 ## v0.26.1 — очистка интерфейса
 
