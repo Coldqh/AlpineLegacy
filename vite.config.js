@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-const OFFLINE_CACHE = 'alpine-legacy-0.26.0';
+const OFFLINE_CACHE = 'alpine-legacy-0.26.1';
 function offlineServiceWorker() {
     let base = './';
     return {

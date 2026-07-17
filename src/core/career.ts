@@ -874,6 +874,18 @@ export function waitForSchoolDeparture(world: WorldState, career: CareerState): 
   }
   const currentOffer = buildSchoolExpeditionBoard(world, next).find(item => item.id === offer.id) ?? { ...offer, phase: schoolExpeditionPhase(offer, next.seasonDay), preparationProgress: 100 };
   next = { ...next, acceptedOffer: currentOffer };
+
+  // A school expedition owns the preparation plan. Waiting to departure must not leave
+  // the player on a second hidden checklist after the calendar has already advanced.
+  next = applyEquipmentPreset(next, 'RECOMMENDED');
+  const route = getSelectedRoute(next);
+  const acclimatizationDays = route.summitElevation >= 6500 ? 7 : route.summitElevation >= 5000 ? 5 : 3;
+  const bestWindow = [...next.weatherWindows].sort((a, b) => b.stability - a.stability || a.startsInDays - b.startsInDays)[0];
+  next = updateExpeditionPlan(next, {
+    acclimatizationDays: Math.max(next.expeditionPlan.acclimatizationDays, acclimatizationDays),
+    weatherWindowId: bestWindow?.id ?? next.expeditionPlan.weatherWindowId,
+  });
+
   const started = startPlannedClimb(next);
   return started.activeClimb ? started : syncCareerProgression(next);
 }
@@ -1232,9 +1244,9 @@ export function expeditionReadiness(career: CareerState): ExpeditionReadiness {
   if (career.hero.fatigue > 72) blockers.push('Герой слишком утомлён для выхода.');
   if (career.expeditionPlan.acclimatizationDays < 2) blockers.push('Акклиматизация сорвана.');
   const plannedCost = expeditionCost(career);
-  if (plannedCost > career.hero.money) blockers.push('Не хватает средств на подготовку.');
+  if (!scheduledSchoolPlan && plannedCost > career.hero.money) blockers.push('Не хватает средств на подготовку.');
   if (!scheduledSchoolPlan && seasonPlan.spentCredits + plannedCost > seasonPlan.reserveCredits) blockers.push('Сезонный бюджет исчерпан. Измени бюджет или выбери более дешёвую цель.');
-  if (seasonPlan.riskPolicy === 'CAUTIOUS' && route.objectiveRisk > 82) blockers.push('Маршрут выше допустимого риска сезона. Измени риск-политику или цель.');
+  if (!scheduledSchoolPlan && seasonPlan.riskPolicy === 'CAUTIOUS' && route.objectiveRisk > 82) blockers.push('Маршрут выше допустимого риска сезона. Измени риск-политику или цель.');
   const progression = normalizeCareerProgression(career);
   if (currentSeasonExpeditionCount(career) >= expeditionLimitForTier(progression.tier)) blockers.push('Лимит экспедиций сезона исчерпан.');
   return { total: clamp(total, 0, 100), hero: heroBase, routeFit, team: teamScore, equipment, weather: weatherScore, acclimatization, blockers };
@@ -1417,7 +1429,8 @@ export function startPlannedClimb(career: CareerState): CareerState {
   const route = getSelectedRoute(career);
   const window = getSelectedWeather(career);
   const team = selectedTeam(career);
-  const cost = expeditionCost(career);
+  const schoolPlan = Boolean(career.acceptedOffer && career.membership.mode !== 'INDEPENDENT');
+  const cost = schoolPlan ? 0 : expeditionCost(career);
   const startEnergy = clamp(96 - career.hero.fatigue * .28 - Math.max(0, packWeight(career) - 13) * 1.2, 58, 96);
   const simulation = createExpeditionSimulation(route);
   const strategic = createStrategicExpedition(route);
@@ -1485,7 +1498,7 @@ export function startPlannedClimb(career: CareerState): CareerState {
   if (climb.participant && climb.strategic) {
     climb.participant.targetActions = climb.strategic.ascentSectors.length + climb.strategic.descentSectors.length;
   }
-  const timeline = advanceDays(career, window.startsInDays + career.expeditionPlan.acclimatizationDays);
+  const timeline = advanceDays(career, schoolPlan ? 0 : window.startsInDays + career.expeditionPlan.acclimatizationDays);
   let next: CareerState = {
     ...career,
     year: timeline.year,

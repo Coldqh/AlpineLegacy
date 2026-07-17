@@ -89,6 +89,28 @@ describe('rotating school expeditions and permanent teams', () => {
     expect(started.activeClimb?.expeditionOfferId).toBe(offer.id);
   });
 
+  it('turns waiting into a one-click school launch without a hidden personal checklist', () => {
+    const { world, career } = organizationCareer();
+    const offer = schoolExpeditionBoard(world, career).find(item => ['ANNOUNCED', 'RECRUITING'].includes(schoolExpeditionPhase(item, career.seasonDay)))!;
+    let accepted = applyToExpeditionOffer(world, career, offer.id);
+    accepted = {
+      ...accepted,
+      hero: { ...accepted.hero, money: 0 },
+      expeditionPlan: {
+        ...accepted.expeditionPlan,
+        acclimatizationDays: 0,
+        foodDays: 1,
+        fuelUnits: 0,
+        gear: {},
+      },
+    };
+    const started = waitForSchoolDeparture(world, accepted);
+    expect(started.activeClimb).toBeTruthy();
+    expect(started.activeClimb?.expeditionOfferId).toBe(offer.id);
+    expect(started.hero.money).toBe(0);
+    expect(started.expeditionPlan.acclimatizationDays).toBeGreaterThanOrEqual(3);
+  });
+
   it('removes a resolved school plan after retreat', () => {
     const { world, career } = organizationCareer();
     const offer = schoolExpeditionBoard(world, career).find(item => ['ANNOUNCED', 'RECRUITING'].includes(schoolExpeditionPhase(item, career.seasonDay)))!;

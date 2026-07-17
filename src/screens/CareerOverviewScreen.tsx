@@ -1,6 +1,7 @@
 import { MountainModel } from '../components/MountainModel';
 import { TRAINING_ACTIONS, SKILL_LABELS, careerReadiness, expeditionReadiness, getSelectedRoute } from '../core/career';
 import { normalizeCareerProgression } from '../core/progression';
+import { daysUntilSchoolDeparture } from '../core/schoolExpeditions';
 import { careerRegion } from '../core/regionalCareer';
 import type { CareerState, SkillId, TrainingId, WorldState } from '../core/types';
 
@@ -11,6 +12,8 @@ type Props = {
   onOpenExpedition: () => void;
   onOpenWorld: () => void;
   onOpenStories: () => void;
+  onWaitForDeparture: () => void;
+  launchMessage?: string | null;
 };
 
 const trainingForSkill: Record<SkillId, TrainingId> = {
@@ -31,7 +34,7 @@ function routePrimarySkill(career: CareerState) {
   return (Object.entries(count).sort((a, b) => b[1]! - a[1]!)[0]?.[0] as SkillId | undefined) ?? 'ENDURANCE';
 }
 
-export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition, onOpenWorld, onOpenStories }: Props) {
+export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition, onOpenWorld, onOpenStories, onWaitForDeparture, launchMessage }: Props) {
   const target = getSelectedRoute(career);
   const currentRegion = careerRegion(world, career);
   const mountain = world.ecosystem.content.mountains.byId[target.mountainId] ?? world.region.mountains[0]!;
@@ -44,18 +47,36 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
   const nextMilestone = progression.milestones.find(item => !item.completed);
   const latestNews = career.livingWorld.news[0];
   const activeStory = [...career.storyState.events].reverse().find(event => event.status === 'OPEN') ?? null;
+  const acceptedSchoolPlan = career.acceptedOffer && career.membership.mode !== 'INDEPENDENT' ? career.acceptedOffer : null;
+  const departureDays = daysUntilSchoolDeparture(acceptedSchoolPlan, career.seasonDay);
   const nextTitle = career.recoveryDays > 0
     ? 'Вернуть силы после экспедиции'
     : career.activeClimb
       ? 'Продолжить восхождение'
-      : expedition.blockers.length
-        ? 'Закончить подготовку'
-        : 'Группа готова к выходу';
+      : acceptedSchoolPlan
+        ? departureDays > 0 ? `Выход через ${departureDays} дн.` : 'Школа готова выходить'
+        : expedition.blockers.length
+          ? 'Закончить подготовку'
+          : 'Группа готова к выходу';
   const nextDetail = career.recoveryDays > 0
     ? `Осталось ${career.recoveryDays} дн. восстановления.`
     : career.activeClimb
       ? `${career.activeClimb.mountainName} · ${Math.round(career.activeClimb.currentElevation)} м.`
-      : expedition.blockers[0] ?? `${target.mountainName} · ${target.name}.`;
+      : acceptedSchoolPlan
+        ? `${target.mountainName} · ${target.name}. Место подтверждено, календарь можно промотать одним нажатием.`
+        : expedition.blockers[0] ?? `${target.mountainName} · ${target.name}.`;
+  const focusAction = career.recoveryDays > 0
+    ? () => onTrain('RECOVERY')
+    : acceptedSchoolPlan
+      ? onWaitForDeparture
+      : onOpenExpedition;
+  const focusActionLabel = career.recoveryDays > 0
+    ? 'Восстановиться'
+    : career.activeClimb
+      ? 'Вернуться на маршрут'
+      : acceptedSchoolPlan
+        ? departureDays > 0 ? `Подождать ${departureDays} дн. и начать` : 'Начать экспедицию'
+        : 'Открыть экспедицию';
 
   return (
     <section className="ux-hq workspace-page">
@@ -65,7 +86,7 @@ export function CareerOverviewScreen({ world, career, onTrain, onOpenExpedition,
       </header>
 
       <section className="ux-hq__focus">
-        <div className="ux-hq__focus-copy"><small>ГЛАВНОЕ СЕЙЧАС</small><h2>{nextTitle}</h2><p>{nextDetail}</p><button onClick={career.recoveryDays > 0 ? () => onTrain('RECOVERY') : onOpenExpedition}>{career.recoveryDays > 0 ? 'Восстановиться' : career.activeClimb ? 'Вернуться на маршрут' : 'Открыть экспедицию'}<b>→</b></button></div>
+        <div className="ux-hq__focus-copy"><small>ГЛАВНОЕ СЕЙЧАС</small><h2>{nextTitle}</h2><p>{nextDetail}</p><button onClick={focusAction}>{focusActionLabel}<b>→</b></button>{launchMessage && <p className="prep-launch-message" role="alert">{launchMessage}</p>}</div>
         <div className="ux-hq__focus-mountain"><MountainModel mountain={mountain} seed={world.config.seed} variant="hero" label={target.mountainName} /><footer><span>{target.mountainName}</span><strong>{target.name}</strong><small>{target.summitElevation} м · готовность {Math.round(expedition.total)}%</small></footer></div>
       </section>
 

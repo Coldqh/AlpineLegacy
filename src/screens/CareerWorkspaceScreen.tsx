@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { CareerShell } from '../components/CareerShell';
 import { CareerFlowGuide } from '../components/CareerFlowGuide';
 import { TopoExpeditionLoader } from '../components/TopoExpeditionLoader';
@@ -44,6 +45,7 @@ const preparationTabs: CareerTabId[] = ['ROUTE', 'TEAM', 'EQUIPMENT', 'EXPEDITIO
 const worldTabs: CareerTabId[] = ['WORLD', 'NEWS', 'RIVALS', 'RECORDS'];
 
 export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersist, onTrain, onExit, onAtlas }: Props) {
+  const [launchMessage, setLaunchMessage] = useState<string | null>(null);
   const expeditionLocked = Boolean(career.activeClimb);
   const tab = expeditionLocked ? 'CLIMB' as const : activeTab;
   const navigate = (next: CareerTabId) => { if (!expeditionLocked || next === 'CLIMB') onTab(next); };
@@ -64,16 +66,27 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
   }
 
   const launch = () => {
-    const readiness = expeditionReadiness(career);
     const next = startPlannedClimb(career);
     onPersist(next);
-    if (next.activeClimb && readiness.blockers.length === 0) onTab('CLIMB');
+    if (next.activeClimb) {
+      setLaunchMessage(null);
+      onTab('CLIMB');
+      return;
+    }
+    const blocker = expeditionReadiness(next).blockers[0];
+    setLaunchMessage(blocker ?? 'Экспедиция не началась. Проверь план выхода.');
   };
 
   const waitAndLaunch = () => {
     const next = waitForSchoolDeparture(world, career);
     onPersist(next);
-    if (next.activeClimb) onTab('CLIMB');
+    if (next.activeClimb) {
+      setLaunchMessage(null);
+      onTab('CLIMB');
+      return;
+    }
+    const blocker = expeditionReadiness(next).blockers.find(item => !item.includes('ещё готовится')) ?? expeditionReadiness(next).blockers[0];
+    setLaunchMessage(blocker ?? 'Школа не смогла начать выход. Выбери новый план.');
   };
 
   const renderTab = () => {
@@ -85,6 +98,8 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
         onOpenExpedition={() => onTab('EXPEDITION')}
         onOpenWorld={() => onTab('WORLD')}
         onOpenStories={() => onTab('STORIES')}
+        onWaitForDeparture={waitAndLaunch}
+        launchMessage={launchMessage}
       />;
     }
 
@@ -104,6 +119,7 @@ export function CareerWorkspaceScreen({ world, career, activeTab, onTab, onPersi
         onOpenPeople={() => onTab('PEOPLE')}
         onLaunch={launch}
         onWaitForDeparture={waitAndLaunch}
+        launchMessage={launchMessage}
       />;
     }
 

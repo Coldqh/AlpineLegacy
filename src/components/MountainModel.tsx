@@ -45,16 +45,6 @@ type RenderPolygon = {
   stroke: string;
 };
 
-type SurfaceFeature = {
-  key: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  depth: number;
-  kind: 'ICE' | 'ROCK' | 'RIDGE';
-};
-
 const MATERIALS: Record<MountainTerrain, { shadow: [number, number, number]; mid: [number, number, number]; light: [number, number, number] }> = {
   VALLEY: { shadow: [38, 54, 47], mid: [69, 91, 76], light: [102, 124, 104] },
   SCREE: { shadow: [63, 58, 50], mid: [119, 107, 88], light: [160, 145, 117] },
@@ -177,24 +167,6 @@ export function MountainModel({
 
   const renderData = useMemo(() => {
     const polygons: RenderPolygon[] = [];
-    const features: SurfaceFeature[] = [];
-    const add = (
-      key: string,
-      points: ProjectedPoint[],
-      fill: string,
-      terrain: MountainTerrain | 'BASE',
-      stroke = 'transparent',
-    ) => {
-      polygons.push({
-        key,
-        points: points.map(point => `${point.x},${point.y}`).join(' '),
-        fill,
-        stroke,
-        terrain,
-        depth: points.reduce((sum, point) => sum + point.depth, 0) / points.length,
-      });
-    };
-
     for (let y = 0; y < grid.height - 1; y += stride) {
       const y2 = Math.min(grid.height - 1, y + stride);
       for (let x = 0; x < grid.width - 1; x += stride) {
@@ -203,59 +175,22 @@ export function MountainModel({
         if (cells.some(cell => !cell)) continue;
         const cell = cells[0]!;
         const projected = cells.map(item => project(item!.x, item!.y, item!.elevation, grid, yaw, pitch, zoom));
-        const edge = cell.terrain === 'GLACIER' || cell.terrain === 'SNOW'
-          ? 'rgba(245,252,252,.045)'
-          : cell.terrain === 'ROCK' || cell.terrain === 'SCREE'
-            ? 'rgba(8,12,11,.09)'
-            : 'rgba(255,255,255,.025)';
-        add(`surface:${x}:${y}`, projected, materialFill(cell, grid), cell.terrain, edge);
-
-        if (variant !== 'card' && ((cell.terrain === 'GLACIER' && cell.hazard === 'CREVASSE') || (cell.terrain === 'ROCK' && cell.slope > 44) || cell.terrain === 'RIDGE')) {
-          const a = projected[0]!;
-          const c = projected[2]!;
-          features.push({
-            key: `feature:${x}:${y}`,
-            x1: mix(a.x, c.x, .22),
-            y1: mix(a.y, c.y, .22),
-            x2: mix(a.x, c.x, .78),
-            y2: mix(a.y, c.y, .78),
-            depth: (a.depth + c.depth) / 2 + .002,
-            kind: cell.terrain === 'GLACIER' ? 'ICE' : cell.terrain === 'RIDGE' ? 'RIDGE' : 'ROCK',
-          });
-        }
+        const fill = materialFill(cell, grid);
+        polygons.push({
+          key: `surface:${x}:${y}`,
+          points: projected.map(point => `${point.x},${point.y}`).join(' '),
+          fill,
+          stroke: fill,
+          terrain: cell.terrain,
+          depth: projected.reduce((sum, point) => sum + point.depth, 0) / projected.length,
+        });
       }
     }
-
-    const baseElevation = grid.baseElevation - Math.max(150, grid.relief * .095);
-    const skirt = (key: string, a: MountainCell, b: MountainCell, fill: string) => add(key, [
-      project(a.x, a.y, a.elevation, grid, yaw, pitch, zoom),
-      project(b.x, b.y, b.elevation, grid, yaw, pitch, zoom),
-      project(b.x, b.y, baseElevation, grid, yaw, pitch, zoom),
-      project(a.x, a.y, baseElevation, grid, yaw, pitch, zoom),
-    ], fill, 'BASE', 'rgba(6,10,9,.18)');
-
-    for (let x = 0; x < grid.width - 1; x += stride) {
-      const x2 = Math.min(grid.width - 1, x + stride);
-      skirt(`north:${x}`, cellAt(grid, { x, y: 0 })!, cellAt(grid, { x: x2, y: 0 })!, '#293833');
-      skirt(`south:${x}`, cellAt(grid, { x: x2, y: grid.height - 1 })!, cellAt(grid, { x, y: grid.height - 1 })!, '#151e1b');
-    }
-    for (let y = 0; y < grid.height - 1; y += stride) {
-      const y2 = Math.min(grid.height - 1, y + stride);
-      skirt(`west:${y}`, cellAt(grid, { x: 0, y: y2 })!, cellAt(grid, { x: 0, y })!, '#202e29');
-      skirt(`east:${y}`, cellAt(grid, { x: grid.width - 1, y })!, cellAt(grid, { x: grid.width - 1, y: y2 })!, '#121a18');
-    }
-
-    add('base:bottom', [
-      project(0, 0, baseElevation, grid, yaw, pitch, zoom),
-      project(grid.width - 1, 0, baseElevation, grid, yaw, pitch, zoom),
-      project(grid.width - 1, grid.height - 1, baseElevation, grid, yaw, pitch, zoom),
-      project(0, grid.height - 1, baseElevation, grid, yaw, pitch, zoom),
-    ], '#101816', 'BASE', 'rgba(4,8,7,.2)');
-
+    // Only the terrain surface is rendered. The old vertical skirts and black bottom
+    // could sort in front of the mountain during rotation and appear as black blocks.
     polygons.sort((a, b) => a.depth - b.depth);
-    features.sort((a, b) => a.depth - b.depth);
-    return { polygons, features };
-  }, [grid, yaw, pitch, zoom, stride, variant]);
+    return polygons;
+  }, [grid, yaw, pitch, zoom, stride]);
 
   const routePath = useMemo(() => route.map(point => {
     const cell = cellAt(grid, point);
@@ -278,7 +213,6 @@ export function MountainModel({
   const backgroundId = `mountain-sky-${uid}`;
   const fogId = `mountain-fog-${uid}`;
   const glowId = `mountain-glow-${uid}`;
-  const mountainShadowId = `mountain-shadow-${uid}`;
 
   return (
     <div className={`mountain-model mountain-model--${variant} ${interactive ? 'is-interactive' : ''}`}>
@@ -309,49 +243,32 @@ export function MountainModel({
             <stop offset="1" stopColor="#26352f" />
           </linearGradient>
           <linearGradient id={fogId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#d4e5df" stopOpacity="0" />
-            <stop offset=".55" stopColor="#b9d0c8" stopOpacity=".08" />
-            <stop offset="1" stopColor="#aec6bd" stopOpacity=".32" />
+            <stop offset="0" stopColor="#172925" stopOpacity="0" />
+            <stop offset=".7" stopColor="#172925" stopOpacity=".18" />
+            <stop offset="1" stopColor="#0b1210" stopOpacity=".9" />
           </linearGradient>
           <radialGradient id={glowId} cx="25%" cy="18%" r="65%">
             <stop offset="0" stopColor="#d6eee8" stopOpacity=".2" />
             <stop offset="1" stopColor="#d6eee8" stopOpacity="0" />
           </radialGradient>
-          <filter id={mountainShadowId} x="-30%" y="-30%" width="160%" height="180%">
-            <feDropShadow dx="0" dy="13" stdDeviation="12" floodColor="#020504" floodOpacity=".5" />
-          </filter>
         </defs>
 
         <rect x="0" y="0" width="1000" height="700" fill={`url(#${backgroundId})`} className="mountain-model__backdrop" />
         <rect x="0" y="0" width="1000" height="700" fill={`url(#${glowId})`} className="mountain-model__sky-glow" />
-        <g className="mountain-model__cloud-layer mountain-model__cloud-layer--far">
-          <ellipse cx="160" cy="205" rx="165" ry="30" />
-          <ellipse cx="760" cy="170" rx="210" ry="34" />
-        </g>
-        <ellipse cx="500" cy="590" rx="330" ry="54" className="mountain-model__ground-shadow" />
-
-        <g filter={`url(#${mountainShadowId})`} className="mountain-model__surface">
-          {renderData.polygons.map(poly => (
+        <g className="mountain-model__surface">
+          {renderData.map(poly => (
             <polygon
               key={poly.key}
               points={poly.points}
               fill={poly.fill}
               stroke={poly.stroke}
-              strokeWidth={variant === 'card' ? .28 : .42}
+              strokeWidth={variant === 'card' ? .7 : .85}
               className={`mountain-model__face is-${poly.terrain.toLowerCase()}`}
             />
           ))}
         </g>
 
-        <g className="mountain-model__surface-features">
-          {renderData.features.map(feature => <line key={feature.key} x1={feature.x1} y1={feature.y1} x2={feature.x2} y2={feature.y2} className={`is-${feature.kind.toLowerCase()}`} />)}
-        </g>
-
-        <rect x="0" y="335" width="1000" height="365" fill={`url(#${fogId})`} className="mountain-model__altitude-fog" />
-        <g className="mountain-model__cloud-layer mountain-model__cloud-layer--near">
-          <ellipse cx="290" cy="440" rx="210" ry="36" />
-          <ellipse cx="825" cy="380" rx="155" ry="27" />
-        </g>
+        <rect x="0" y="455" width="1000" height="245" fill={`url(#${fogId})`} className="mountain-model__altitude-fog" />
 
         {routePath && <polyline points={routePath} fill="none" stroke="rgba(4,8,7,.72)" strokeWidth="8.5" strokeLinecap="round" strokeLinejoin="round" />}
         {routePath && <polyline points={routePath} fill="none" stroke={routeColor} strokeWidth="3.7" strokeLinecap="round" strokeLinejoin="round" className="mountain-model__route" />}
